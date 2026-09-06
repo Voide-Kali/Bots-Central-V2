@@ -1,5 +1,20 @@
 # Current State
 
+## Fase atual: 2A — AUTH + SECURITY MODEL
+
+- Branch de trabalho: `phase/auth-security-model`.
+- [AUTH.md](AUTH.md) especifica conta, credenciais, link token de alta entropia,
+  código humano protegido por HMAC, sessões, access/refresh opacos, recuperação,
+  reautenticação, Security Gate, limites e auditoria.
+- [THREAT_MODEL.md](THREAT_MODEL.md) registra ameaças, mitigações propostas e riscos
+  residuais; não declara controles de autenticação já implementados.
+- [ADR-006](ADR/ADR-006-authentication-session-strategy.md) e
+  [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) registram decisões de desenho.
+- Implementação de auth ainda não iniciada: nenhum endpoint, modelo SQL, migration
+  ou dependência nova. As decisões da Foundation permanecem preservadas.
+- Os resultados de Foundation abaixo são o registro histórico da etapa anterior;
+  não constituem testes das políticas de autenticação propostas nesta fase.
+
 ## Validated locally:
 
 - A aplicação FastAPI inicia e expõe `GET /api/v1/health` via transporte ASGI público.
@@ -18,11 +33,17 @@
 ## Not validated:
 
 - Gitleaks local permanece pendente; o scanner continua configurado no CI.
+- Políticas da Fase 2A, incluindo concorrência de refresh, revogação e recuperação:
+  são especificações e ainda não têm implementação para teste.
 
 ## Known blockers:
 
 - Nenhum bloqueador técnico conhecido para a foundation; Gitleaks local ainda não foi
   instalado neste ambiente.
+- Antes de implementar/ativar auth: decidir bibliotecas e operação das chaves,
+  validar parâmetros/limites, retenção e critérios de recuperação sem e-mail.
+- Prova reforçada e consentimento para poderes remotos permanecem indefinidos;
+  a política proposta mantém essas ações negadas até decisão específica.
 
 ## Funcionando
 
@@ -41,4 +62,5 @@
 
 ## Commit atual
 
-- Sem commits; repositório inicializado localmente.
+- `a78793cd9e02e631cb50b6931bc00a90023ea24d` — `chore: establish Bots Central V2 foundation`.
+- Documentação da Fase 2A em alterações locais, sem commit ou push nesta etapa.
