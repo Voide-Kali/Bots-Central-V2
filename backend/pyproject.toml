@@ -33,6 +33,9 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --cov=app --cov-report=term-missing"
+markers = [
+  "postgresql: requires a real PostgreSQL database configured by TEST_DATABASE_URL",
+]
 
 [tool.coverage.run]
 branch = true
