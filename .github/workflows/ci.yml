@@ -13,6 +13,8 @@ jobs:
     services:
       postgres:
         image: postgres:17-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_DB: bots_central_test
           POSTGRES_USER: bots_central_test
