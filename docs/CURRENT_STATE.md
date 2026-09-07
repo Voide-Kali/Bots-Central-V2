@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.4B — EMAIL VERIFICATION CHALLENGE FOUNDATION
+## Fase atual: 2B.4C — EMAIL VERIFICATION ISSUANCE + RESEND
 
-- Branch de trabalho: `phase/email-verification-foundation`.
+- Branch de trabalho: `phase/email-verification-issuance`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -39,6 +39,11 @@
   sua fundação: schema/model, migration `0003`, enums, geração e validação estrita de
   material, framing/HMAC-SHA-256 e keyring configurável. Issuance, resend, consume e
   transições de conta continuam fora desta etapa.
+- A Fase 2B.4C implementa o serviço síncrono de staging de issuance/resend em
+  `app/auth/email_verification_issuance.py`: locks PostgreSQL `UserEmail → User →
+  Challenge`, relógio `clock_timestamp()` pós-lock, cooldown compartilhado de 60 segundos,
+  supersede de siblings vivos e resultados plaintext efêmeros. A transação externa,
+  commit e qualquer delivery permanecem responsabilidade do caller/fase futura.
 
 ## Current implemented
 
@@ -53,6 +58,8 @@
   HMAC-SHA-256 e comparação constant-time.
 - Keyring HMAC externo versionado, com segredo base64url de no mínimo 256 bits,
   carregado e validado somente quando o componente é instanciado, sem default.
+- Issuance/resend de LINK e CODE sem delivery, endpoint, consume ou alteração de estado
+  de conta; testes de PostgreSQL real incluem rollback, cooldown, siblings e concorrência.
 
 ## Design approved
 
@@ -61,9 +68,9 @@
 
 ## Not implemented
 
-- Serviços de issuance/resend/consume de challenges, incremento operacional de
-  tentativas, cooldown, locks, transição `pending_verification → active`, entrega ou
-  execução da verificação de e-mail e endpoints HTTP de auth/registro.
+- Consume de challenges, incremento operacional de tentativas, transição
+  `pending_verification → active`, entrega ou execução da verificação de e-mail e
+  endpoints HTTP de auth/registro.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
   Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
@@ -102,12 +109,14 @@
   `0 failed`, `0 errors` e cobertura total de `93%`. `app/auth/registration.py`
   atingiu 95% de cobertura e `app/auth/passwords.py`, 100%. Não há senha de banco nem
   URL de teste registrada aqui.
-- A validação final da Fase 2B.4B executou a suíte completa contra PostgreSQL 17 real,
-  exclusivamente no banco dedicado `bots_central_test`: `121 passed`, `0 skipped`,
+- A validação corrente da Fase 2B.4C executou a suíte completa contra PostgreSQL 17 real,
+  exclusivamente no banco dedicado `bots_central_test`: `142 passed`, `0 skipped`,
   `0 failed`, `0 errors` e cobertura total de `93%`. A migration `base -> head`, o
   catálogo PostgreSQL de constraints/índices/enums, a matriz de NULL/três valores e a
-  configuração do keyring por ambiente foram cobertos por testes de regressão. Não há
-  senha de banco, URL de teste ou segredo operacional registrado aqui.
+  configuração do keyring por ambiente foram cobertos por testes de regressão. A suíte
+  também cobre issuance/resend 2B.4C em PostgreSQL real, incluindo cooldown, rollback,
+  siblings vivos e duas transações concorrentes. Não há senha de banco, URL de teste ou
+  segredo operacional registrado aqui.
 
 ## Not validated:
 

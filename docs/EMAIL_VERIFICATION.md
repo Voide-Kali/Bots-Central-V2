@@ -1,8 +1,9 @@
 # Email Verification Security Contract
 
-Status: design aprovado na Fase 2B.4A; a Fase 2B.4B implementa somente a fundação de
-persistência e material: tabela/model, migration `0003`, enums, token/código, framing
-HMAC e keyring. Issuance, resend, consume, ativação, entrega e endpoint não existem.
+Status: a Fase 2B.4B implementa a fundação de persistência e material: tabela/model,
+migration `0003`, enums, token/código, framing HMAC e keyring. A Fase 2B.4C implementa
+o staging de issuance/resend síncrono no domínio, sem delivery. Consume, ativação,
+entrega e endpoint não existem.
 O escopo continua somente `email_verification` para `User` em `pending_verification` e
 seu `UserEmail` específico não verificado.
 
@@ -99,16 +100,28 @@ e `(user_email_id, created_at DESC)` para emissão/resend/cleanup. Não indexar 
 código: a entrada de código sempre inclui `challenge_id` e o HMAC é recomputado após
 carregar a linha.
 
-## Serviços operacionais futuros: consumo, tentativas e resend
+## Serviços operacionais: issuance/resend e consumo futuro
 
-**Issuance/resend** primeiro carrega e trava o `UserEmail` alvo com `SELECT … FOR
-UPDATE`. Ele é a âncora estável que serializa inclusive a primeira emissão, quando não
-há challenge para travar. Deriva então `user_id`, trava `User`, confirma que conta e
-e-mail ainda podem participar e que o e-mail não está verificado; só depois consulta e
-trava challenge anterior quando existir, aplica cooldown, invalida anterior e cria o
-novo material/challenge no mesmo commit.
+**Issuance/resend** carrega e trava o `UserEmail` alvo com `SELECT … FOR UPDATE`. Ele é
+a âncora estável que serializa inclusive a primeira emissão, quando não há challenge
+para travar. Deriva então `user_id`, trava `User`, confirma que conta e e-mail ainda
+podem participar e que o e-mail não está verificado; só depois consulta challenges,
+aplica cooldown, trava siblings vivos, invalida os anteriores e cria o novo challenge.
 **Ordem global obrigatória neste domínio:** `UserEmail` → `User` →
 `EmailVerificationChallenge`. Nunca adquirir esses locks em ordem inversa.
+
+O serviço de domínio recebe uma `Session` síncrona com transação pertencente ao caller:
+usa savepoint e `flush`, mas não faz commit nem rollback da transação externa. Após os
+locks de `UserEmail` e `User`, obtém uma única vez `SELECT clock_timestamp()`; este é o
+tempo autoritativo para decisão, `created_at`, cooldown, `invalidated_at` e TTL. LINK e
+CODE compartilham cooldown de 60 segundos por `user_email_id`. Somente siblings vivos
+(`consumed_at`/`invalidated_at` nulos e `expires_at` futuro) recebem `superseded`; um
+challenge expirado continua apenas expirado.
+
+O resultado é `StagedLinkChallenge` ou `StagedCodeChallenge`: contém plaintext somente
+como `SecretStr`, não implica commit e só pode ser entregue depois de commit externo bem
+sucedido. A ordem futura obrigatória é `stage → caller commit → delivery`; não existe
+delivery, SMTP, fila ou outbox nesta fase.
 
 **Consume de código:** lookup inicial por `challenge_id` sem lock somente descobre
 `user_email_id`; inexistente retorna resultado interno inválido/genérico. Em seguida
