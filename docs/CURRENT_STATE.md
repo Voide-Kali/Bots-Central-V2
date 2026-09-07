@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.2 — PASSWORD SECURITY + ARGON2ID
+## Fase atual: 2B.3 — AUTH REGISTRATION FOUNDATION
 
-- Branch de trabalho: `phase/password-security`.
+- Branch de trabalho: `phase/auth-registration`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -20,8 +20,20 @@
   retornam `False`; `VerificationError` genérico torna-se `PasswordVerificationError`;
   `UnsupportedParametersError` e falhas inesperadas não são escondidos. A decisão de
   rehash não mascara hash corrompido. Consulte [PASSWORD_SECURITY.md](PASSWORD_SECURITY.md).
-  Nenhuma senha em texto puro é persistida ou registrada; login, cadastro e endpoints
-  continuam ausentes.
+  Nenhuma senha em texto puro é persistida ou registrada; login e endpoints continuam
+  ausentes.
+- A Fase 2B.3 adiciona somente o serviço de domínio de registro. Ele valida e
+  canonicaliza o e-mail, reutiliza Argon2id, e cria `User`, `UserEmail` principal não
+  verificado e `PasswordCredential` em savepoint dentro da transação do chamador. A
+  conta começa em `pending_verification`; nenhuma sessão, token, e-mail ou confirmação
+  é criada. A unicidade de `email_canonical` no PostgreSQL permanece a autoridade e
+  duplicidade é exposta internamente como `DuplicateEmailError`; a constraint
+  `user_emails_email_canonical_key` foi confirmada no catálogo PostgreSQL. O serviço
+  exige `Session` sem estado prévio `new`/`dirty`/`deleted`, para não fazer flush
+  silencioso da unidade de trabalho do chamador antes do savepoint; o chamador mantém
+  responsabilidade pela transação externa. Não foram criados endpoint HTTP, login,
+  sessão/token operacional, envio/verificação de e-mail nem schema/migration novos.
+  Consulte [REGISTRATION.md](REGISTRATION.md).
 
 ## Validated locally:
 
@@ -53,6 +65,11 @@
   exclusivamente no banco dedicado `bots_central_test`: `42 passed`, `0 skipped`,
   `0 failed`, `0 errors` e cobertura total de `93%`; `app/auth/passwords.py` atingiu
   100% de cobertura. Não há senha de banco nem URL de teste registrada aqui.
+- A validação final da Fase 2B.3 executou a suíte completa contra PostgreSQL 17 real,
+  exclusivamente no banco dedicado `bots_central_test`: `58 passed`, `0 skipped`,
+  `0 failed`, `0 errors` e cobertura total de `93%`. `app/auth/registration.py`
+  atingiu 95% de cobertura e `app/auth/passwords.py`, 100%. Não há senha de banco nem
+  URL de teste registrada aqui.
 
 ## Not validated:
 

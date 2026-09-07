@@ -2,9 +2,9 @@
 
 ## Escopo
 
-Esta fase adiciona somente o armazenamento persistente que será consumido por fluxos
-de autenticação futuros. Não há endpoint, emissão de token, verificação de senha,
-registro, login, recuperação ou Security Gate.
+Esta fase adicionou o armazenamento persistente consumido por fluxos de autenticação.
+As Fases 2B.2 e 2B.3 agora usam este schema para hashing de senha e registro interno.
+Não há endpoint, emissão de token, login, recuperação ou Security Gate.
 
 PostgreSQL continua sendo a fonte autoritativa para estado de conta, sessão e
 revogação. A migration `0002_auth_database_foundation` sucede
@@ -16,7 +16,7 @@ revogação. A migration `0002_auth_database_foundation` sucede
 | --- | --- |
 | `users` | Conta com UUID, estado controlado, versão de segurança e timestamps UTC. |
 | `user_emails` | Identidade de e-mail canônica, apresentação preservada, verificação e e-mail principal. |
-| `password_credentials` | Um resultado futuro de hash de senha por usuário; não implementa Argon2id. |
+| `password_credentials` | Um hash Argon2id por usuário, sem plaintext ou salt separado. |
 | `sessions` | Sessão server-side, prazo absoluto/ocioso, estado de autenticação e revogação. |
 | `access_tokens` | Digest SHA-256 de bearer access token futuro ligado a uma sessão. |
 | `refresh_tokens` | Histórico de digests de refresh por família e geração para rotação e detecção de reuse futuros. |
@@ -40,20 +40,19 @@ apagados em cascata por acidente. Identificadores são UUIDs v4 gerados no servi
   índices por família e por `(session_id, family_id)`.
 
 O banco não força que todo usuário tenha e-mail principal nem que ele esteja
-verificado. Essas regras dependem de fluxos transacionais que ainda não existem; a
-constraint parcial evita dois principais concorrentes. A rotação futura também deverá
-confirmar, em transação, que sucessor, sessão e família correspondem antes de gravar
-`replaced_by_id`.
+verificado. O serviço de registro atual cria o e-mail inicial como principal e não
+verificado em sua unidade transacional; a constraint parcial evita dois principais
+concorrentes. A rotação futura deverá confirmar, em transação, que sucessor, sessão e
+família correspondem antes de gravar `replaced_by_id`.
 
 ## Normalização de e-mail
 
-O schema separa `email_canonical` de `email_display`, mas não normaliza ou valida e-mail.
-O fluxo de cadastro futuro deverá fornecer o valor canônico conforme o contrato aprovado
-em [AUTH.md](AUTH.md): comparação sem distinção de maiúsculas para local-part ASCII,
-domínio validado/normalizado por biblioteca apropriada, preservação da apresentação e sem
-remoção de pontos ou sufixos `+`. Suporte EAI e local-parts sensíveis a caixa continuam
-fora do escopo até revisão explícita. A identidade canônica já é única no banco para que
-a reserva seja atômica quando esse fluxo existir.
+O schema separa `email_canonical` de `email_display`; o serviço interno de registro
+fornece os valores conforme o contrato aprovado em [AUTH.md](AUTH.md): comparação sem
+distinção de maiúsculas para local-part ASCII, domínio validado/normalizado por biblioteca
+apropriada, preservação da apresentação e sem remoção de pontos ou sufixos `+`. Suporte
+EAI e local-parts sensíveis a caixa continuam fora do escopo até revisão explícita. A
+identidade canônica é única no banco para que a reserva seja atômica, inclusive em corridas.
 
 ## Dados sensíveis
 
@@ -62,6 +61,6 @@ não possui campo de token plaintext, token bruto ou segredo. Plaintext de acces
 token só poderá existir durante emissão e verificação futuras, nunca em persistência,
 URLs, `repr` ou logs. `repr` dos modelos omite hashes, digests e metadados.
 
-O hash de senha armazenado é apenas um campo opaco nesta fase. A escolha/uso de Argon2id,
-geração de tokens e cálculo SHA-256 pertencem à implementação posterior, conforme
+O hash de senha armazenado é gerado pela camada Argon2id da Fase 2B.2. Geração de tokens
+e cálculo SHA-256 para tokens pertencem a implementações posteriores, conforme
 [AUTH.md](AUTH.md).

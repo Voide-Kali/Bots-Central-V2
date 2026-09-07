@@ -1,9 +1,10 @@
 # AUTH + SECURITY MODEL — Fase 2A
 
-Status: especificação para implementação futura. Nenhum endpoint, tabela, migration,
-provedor de e-mail ou mecanismo de autenticação é implementado por este documento.
-Os valores de tempo, tamanho e limites abaixo são decisões iniciais do projeto;
-precisam de testes de carga e segurança antes de serem habilitados.
+Status: desenho aprovado com implementação parcial. As primitivas Argon2id, a
+canonicalização de e-mail e o serviço interno de registro estão implementados nas
+Fases 2B.2 e 2B.3. Endpoints HTTP, login, sessões, tokens, desafios e entrega de
+e-mail permanecem planejados. Requisitos marcados como **PLANNED** não devem ser
+interpretados como funcionalidade disponível.
 
 ## 1. Escopo e decisões preservadas
 
@@ -48,14 +49,16 @@ Os nomes a seguir descrevem informações e invariantes, não um esquema SQL.
 | Timestamps | `created_at` e `updated_at` em UTC, definidos pelo servidor. |
 | Security state | Versão de segurança, exigência de troca de senha, restrição de recuperação, motivo/prazo de bloqueio e contexto de risco. |
 
-Para a primeira implementação, a política de identidade de e-mail será comparação
-sem distinção de maiúsculas em endereços com local-part ASCII e domínio validado e
-normalizado por biblioteca apropriada. Preservar o endereço apresentado para envio.
-Não retirar pontos ou sufixos `+`, nem aplicar regras específicas de provedores.
-Essa comparação é uma escolha de produto, não uma afirmação sobre todos os servidores
-de e-mail; local-parts sensíveis a caixa e suporte EAI precisam de revisão explícita.
-Reservar a identidade canônica de modo atômico para impedir contas concorrentes
-com o mesmo identificador. Todas as operações usam a mesma política de comparação.
+**CURRENT — registro interno:** a identidade de e-mail é validada por biblioteca
+apropriada sem consulta DNS de entregabilidade. Somente whitespace externo é removido.
+`email_display` preserva o endereço aceito para apresentação; `email_canonical` é a
+identidade de comparação, com local-part ASCII em minúsculas e domínio validado e
+normalizado. Não retirar pontos ou sufixos `+`, nem aplicar regras específicas de
+provedores. Essa comparação é uma escolha de produto, não uma afirmação sobre todos
+os servidores de e-mail; local-parts sensíveis a caixa e suporte EAI precisam de
+revisão explícita. PostgreSQL reserva `email_canonical` de modo atômico para impedir
+contas concorrentes com o mesmo identificador. Todas as operações atuais usam essa
+política de comparação.
 
 | Estado | Acesso e transição permitidos |
 | --- | --- |
@@ -77,39 +80,28 @@ ativa pode estar em `recovery_restricted` e não poder executar ações crítica
 
 ## 4. Senhas
 
-Argon2id é obrigatório. Cada gravação gera salt aleatório novo de pelo menos
-16 bytes; a biblioteca armazena hash, salt, parâmetros e versão no formato codificado
-suportado por ela. Não armazenar plaintext, senha reversivelmente cifrada ou hash
-rápido de senha. A verificação usa a função segura da biblioteca, com comparação
-constant-time; nunca comparação manual de hashes. Isso não torna o fluxo HTTP
-inteiro imune a canais de tempo. Ver [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
+**CURRENT — password security:** Argon2id é obrigatório, com salt aleatório por hash
+e perfil explícito: `time_cost=3`, `memory_cost=65536` KiB, `parallelism=4`,
+`hash_len=32`, `salt_len=16` e `encoding=UTF-8`. A biblioteca armazena hash, salt e
+parâmetros no formato codificado. Não armazenar plaintext, senha reversivelmente
+cifrada ou hash rápido de senha; a verificação usa somente a função da biblioteca.
 
-Baseline do projeto: memória de 64 MiB, 3 iterações e paralelismo 1. São parâmetros
-configuráveis centralmente, sujeitos a benchmark de memória, latência e concorrência.
-O piso de revisão é a recomendação de Argon2id com 19 MiB, 2 iterações e paralelismo 1
-da mesma referência OWASP; reduzir abaixo desse piso exige nova decisão de segurança.
-O servidor nunca aceita parâmetros enviados pelo cliente. Aplicar limites antes de
-operações caras e usar execução limitada fora do event loop do FastAPI.
+Criação e alteração aceitam 15 a 1024 caracteres Unicode. Verificação aplica somente
+o máximo técnico de 1024 caracteres, sem mínimo, para preservar compatibilidade com
+hashes de política anterior. Não há trim, normalização Unicode, case folding ou
+truncamento; espaços e cada sequência Unicode fornecida são significativos. Não há
+regras de composição. `VerifyMismatchError` e `InvalidHashError` retornam `False`;
+`VerificationError` genérico torna-se erro interno de domínio, e falhas de plataforma
+ou parâmetros não são mascaradas. Rehash é apenas uma decisão da biblioteca e hash
+corrompido não é tratado como atual. Ver [PASSWORD_SECURITY.md](PASSWORD_SECURITY.md).
 
-Após verificação correta, a função de avaliação de rehash da biblioteca pode indicar
-atualização; gravar hash novo com salt novo de modo atômico. Rehash não equivale a
-troca de senha nem renova autenticação recente. Hash desconhecido/corrompido falha
-com segurança; não há fallback para um algoritmo fraco.
-
-Política inicial: 15 a 128 caracteres Unicode após normalização NFC, máximo de
-512 bytes UTF-8 normalizados e limite de corpo de requisição aplicado antes disso.
-Rejeitar excesso sem truncamento. Aplicar a mesma normalização na criação e na
-verificação; não remover espaços, alterar caixa ou exigir combinações arbitrárias
-de símbolos, números e letras. Permitir colar, gerenciadores de senha e passphrases.
-Rejeitar senhas comuns/comprometidas por lista apropriada, sem enviar senhas a terceiros.
-Não impor troca periódica sem evidência de comprometimento. O comprimento mínimo e
-a ausência de regras de composição seguem a orientação de
-[NIST SP 800-63B-4](https://pages.nist.gov/800-63-4/sp800-63b/authenticators/).
-
-Contas inexistentes devem percorrer verificação fictícia de custo comparável e
-receber a mesma resposta pública de credencial inválida, respeitando limites de
-carga. O hash fictício não é uma credencial de conta. Não prometer indistinguibilidade
-perfeita de tempo; medir diferenças e regressões na implementação.
+**PLANNED — login ou integração HTTP:** bloquear senhas comuns/comprometidas sem
+enviá-las a terceiros; aplicar limites de corpo e de carga antes de hashing; executar
+hashing fora do event loop com concorrência limitada; usar verificação fictícia de
+custo comparável para conta inexistente; e medir canais de tempo e regressões. Esses
+requisitos não estão implementados e não há login ou transporte HTTP nesta fase. O
+rehash bem-sucedido poderá gravar hash novo com salt novo de modo atômico em fluxo
+futuro; isso não equivale a troca de senha nem autenticação recente.
 
 ## 5. Desafios de e-mail e códigos de segurança
 
