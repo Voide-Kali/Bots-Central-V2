@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.3 — AUTH REGISTRATION FOUNDATION
+## Fase atual: 2B.4A — EMAIL VERIFICATION SECURITY DESIGN
 
-- Branch de trabalho: `phase/auth-registration`.
+- Branch de trabalho: `phase/email-verification-design`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -34,6 +34,29 @@
   responsabilidade pela transação externa. Não foram criados endpoint HTTP, login,
   sessão/token operacional, envio/verificação de e-mail nem schema/migration novos.
   Consulte [REGISTRATION.md](REGISTRATION.md).
+- A Fase 2B.4A aprovou somente o contrato de segurança de challenges de verificação
+  de e-mail em [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) e ADR-008. Schema,
+  geração de material, HMAC, token, entrega, consumo, endpoint HTTP, login e emissão
+  de sessão/token continuam não implementados.
+
+## Current implemented
+
+- Backend foundation e auth database foundation.
+- Modelos `User`, `UserEmail` e `PasswordCredential`.
+- Segurança de senha Argon2id, canonicalização de e-mail e serviço interno de registro.
+- Criação de conta `pending_verification` com e-mail principal não verificado.
+
+## Design approved
+
+- Contrato de segurança de email verification da Fase 2B.4A, incluindo materiais,
+  HMAC, rotação de chaves, concorrência, retenção e specification da futura migration.
+
+## Not implemented
+
+- Schema/generation/consumption de challenges, HMAC, geração de token, entrega ou
+  verificação de e-mail e endpoints HTTP de auth/registro.
+- Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
+  Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
 ## Validated locally:
 
@@ -94,13 +117,3 @@
 - FastAPI `0.141.1` resolve Starlette `1.6.0` sem pin direto.
 - MTU `1400` foi necessário neste host por um problema de PMTU/bridge Docker. É uma
   nota de troubleshooting do ambiente, não um requisito universal de instalação.
-
-## Ainda não implementado
-
-- Autenticação, usuários, identidade de dispositivo, QR Code, integrações, agentes,
-  automações, mobile, IA, dashboard, WebSocket e tabelas de domínio.
-
-## Commit atual
-
-- `bd640c3` — `docs: define authentication and security model`.
-- A Fase 2B.1 está em alterações locais, sem commit ou push nesta etapa.

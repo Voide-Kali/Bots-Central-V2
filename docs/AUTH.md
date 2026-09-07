@@ -123,7 +123,8 @@ pode usar SHA-256 simples: o banco permitiria adivinhação offline. Seu digest 
 HMAC-SHA-256 de uma codificação canônica com `challenge_id`, `purpose`, `user_id` ou
 identificador de conta quando conhecido e o código normalizado de oito dígitos. O
 segredo HMAC/pepper fica fora do PostgreSQL, repositório, imagem e logs. Geração,
-armazenamento seguro, versionamento e rotação serão definidos antes da implementação.
+armazenamento seguro, versionamento e rotação estão definidos em
+[EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) e ADR-008, mas continuam sem implementação.
 Não implementar HMAC, segredo ou comparação nesta fase.
 
 Ao verificar código, o servidor normaliza somente separadores de apresentação, requer
