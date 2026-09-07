@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.4A — EMAIL VERIFICATION SECURITY DESIGN
+## Fase atual: 2B.4B — EMAIL VERIFICATION CHALLENGE FOUNDATION
 
-- Branch de trabalho: `phase/email-verification-design`.
+- Branch de trabalho: `phase/email-verification-foundation`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -34,10 +34,11 @@
   responsabilidade pela transação externa. Não foram criados endpoint HTTP, login,
   sessão/token operacional, envio/verificação de e-mail nem schema/migration novos.
   Consulte [REGISTRATION.md](REGISTRATION.md).
-- A Fase 2B.4A aprovou somente o contrato de segurança de challenges de verificação
-  de e-mail em [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) e ADR-008. Schema,
-  geração de material, HMAC, token, entrega, consumo, endpoint HTTP, login e emissão
-  de sessão/token continuam não implementados.
+- A Fase 2B.4A aprovou o contrato de segurança de challenges de verificação de e-mail
+  em [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) e ADR-008. A Fase 2B.4B implementa
+  sua fundação: schema/model, migration `0003`, enums, geração e validação estrita de
+  material, framing/HMAC-SHA-256 e keyring configurável. Issuance, resend, consume e
+  transições de conta continuam fora desta etapa.
 
 ## Current implemented
 
@@ -45,16 +46,24 @@
 - Modelos `User`, `UserEmail` e `PasswordCredential`.
 - Segurança de senha Argon2id, canonicalização de e-mail e serviço interno de registro.
 - Criação de conta `pending_verification` com e-mail principal não verificado.
+- Fundação persistente de `email_verification_challenges`: enums, modelo SQLAlchemy,
+  migration `0003`, constraints materiais/terminais e índices PostgreSQL.
+- Primitivas de material: token de link de 32 bytes/CSPRNG com base64url canônico e
+  digest SHA-256 dos bytes; código ASCII de oito dígitos, framing HMAC canônico,
+  HMAC-SHA-256 e comparação constant-time.
+- Keyring HMAC externo versionado, com segredo base64url de no mínimo 256 bits,
+  carregado e validado somente quando o componente é instanciado, sem default.
 
 ## Design approved
 
-- Contrato de segurança de email verification da Fase 2B.4A, incluindo materiais,
-  HMAC, rotação de chaves, concorrência, retenção e specification da futura migration.
+- Contrato operacional de email verification da Fase 2B.4A, incluindo key rotation,
+  concorrência, retenção, locks, issuance/resend e consume futuros.
 
 ## Not implemented
 
-- Schema/generation/consumption de challenges, HMAC, geração de token, entrega ou
-  verificação de e-mail e endpoints HTTP de auth/registro.
+- Serviços de issuance/resend/consume de challenges, incremento operacional de
+  tentativas, cooldown, locks, transição `pending_verification → active`, entrega ou
+  execução da verificação de e-mail e endpoints HTTP de auth/registro.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
   Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
@@ -93,6 +102,12 @@
   `0 failed`, `0 errors` e cobertura total de `93%`. `app/auth/registration.py`
   atingiu 95% de cobertura e `app/auth/passwords.py`, 100%. Não há senha de banco nem
   URL de teste registrada aqui.
+- A validação final da Fase 2B.4B executou a suíte completa contra PostgreSQL 17 real,
+  exclusivamente no banco dedicado `bots_central_test`: `121 passed`, `0 skipped`,
+  `0 failed`, `0 errors` e cobertura total de `93%`. A migration `base -> head`, o
+  catálogo PostgreSQL de constraints/índices/enums, a matriz de NULL/três valores e a
+  configuração do keyring por ambiente foram cobertos por testes de regressão. Não há
+  senha de banco, URL de teste ou segredo operacional registrado aqui.
 
 ## Not validated:
 

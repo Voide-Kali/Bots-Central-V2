@@ -1,8 +1,10 @@
 # Email Verification Security Contract
 
-Status: design aprovado na Fase 2B.4A; nenhuma tabela, segredo, token, HMAC, e-mail
-ou endpoint existe ainda. O escopo é somente `email_verification` para `User` em
-`pending_verification` e seu `UserEmail` específico não verificado.
+Status: design aprovado na Fase 2B.4A; a Fase 2B.4B implementa somente a fundação de
+persistência e material: tabela/model, migration `0003`, enums, token/código, framing
+HMAC e keyring. Issuance, resend, consume, ativação, entrega e endpoint não existem.
+O escopo continua somente `email_verification` para `User` em `pending_verification` e
+seu `UserEmail` específico não verificado.
 
 ## Estratégia e materiais
 
@@ -20,8 +22,9 @@ ou Security Gate.
   válidas e uso único. SHA-256 simples é proibido para esse material de ~27 bits.
 
 Plaintext existe apenas entre geração e entrega futura, jamais em banco, logs, audit,
-telemetria ou filas. Abrir link por GET nunca o consome; uma operação explícita futura
-o fará. Não há provedor SMTP/Gmail nesta fase.
+telemetria ou filas. A fundação gera material somente em memória e não o persiste
+automaticamente. Abrir link por GET nunca o consome; uma operação explícita futura o
+fará. Não há provedor SMTP/Gmail nesta fase.
 
 Verificação humana recebe conceitualmente `challenge_id` + `code`. `challenge_id` é
 UUID opaco público, não secreto e não autenticador: ele somente localiza o challenge.
@@ -49,11 +52,14 @@ u32be(8) || normalized_code ASCII
 nem usar JSON. A comparação futura usa a primitiva constant-time da biblioteca.
 
 O pepper tem no mínimo 256 bits, gerados por CSPRNG, e é fornecido em runtime como
-valor base64url por configuração externa. Produção exige mapa de chaves por versão e
-versão ativa configurada, sem default/fallback; ausência ou formato inválido impede a
-inicialização. Desenvolvimento/teste usam segredo explícito isolado, nunca um default
-de produção. Segredos não ficam em PostgreSQL, Git, imagem ou logs. Um secret manager
-ou KMS pode substituir a injeção de configuração no futuro, sem mudar o contrato.
+valor base64url canônico por configuração externa: uma versão ativa e um mapa JSON de
+`version → secret` compatível com `pydantic-settings`. Os valores usam máscara de
+segredo. A configuração é opcional no startup global para não quebrar componentes que
+não usam email verification, mas a construção do keyring falha fechada se estiver
+ausente, inválida, curta, não canônica ou sem a versão ativa. Não há default/fallback,
+inclusive em development/test; testes fornecem chave efêmera explicitamente. Segredos
+não ficam em PostgreSQL, Git, imagem ou logs. Um secret manager ou KMS pode substituir
+a injeção de configuração no futuro, sem mudar o contrato.
 
 O challenge de código armazena apenas `hmac_key_version`. Nova emissão usa a chave
 ativa; validação escolhe exatamente a versão gravada. Durante rotação, manter chave
@@ -65,7 +71,7 @@ chave; links não dependem do pepper.
 
 ## Schema conceitual para migration 0003
 
-`0003` deve criar os enums `email_verification_material_type` (`link`, `code`) e
+`0003` cria os enums `email_verification_material_type` (`link`, `code`) e
 `email_verification_invalidation_reason` (`superseded`, `attempts_exhausted`,
 `account_state_changed`, `email_already_verified`, `key_compromised`), e a tabela
 `email_verification_challenges` com: `id UUID` (PK), `user_email_id UUID NOT NULL`
@@ -93,7 +99,7 @@ e `(user_email_id, created_at DESC)` para emissão/resend/cleanup. Não indexar 
 código: a entrada de código sempre inclui `challenge_id` e o HMAC é recomputado após
 carregar a linha.
 
-## Consumo, tentativas e resend
+## Serviços operacionais futuros: consumo, tentativas e resend
 
 **Issuance/resend** primeiro carrega e trava o `UserEmail` alvo com `SELECT … FOR
 UPDATE`. Ele é a âncora estável que serializa inclusive a primeira emissão, quando não

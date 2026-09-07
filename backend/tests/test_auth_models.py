@@ -7,8 +7,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DatabaseSession
 
 from app.auth.repository import AuthRepository
-from app.db.enums import AccountStatus, AuthenticationLevel, SessionRevocationReason
-from app.db.models import AccessToken, PasswordCredential, RefreshToken, Session, User, UserEmail
+from app.db.enums import (
+    AccountStatus,
+    AuthenticationLevel,
+    EmailVerificationInvalidationReason,
+    EmailVerificationMaterialType,
+    SessionRevocationReason,
+)
+from app.db.models import (
+    AccessToken,
+    EmailVerificationChallenge,
+    PasswordCredential,
+    RefreshToken,
+    Session,
+    User,
+    UserEmail,
+)
 
 
 def now() -> datetime:
@@ -37,6 +51,90 @@ def create_session(session: DatabaseSession, user: User) -> Session:
     session.add(auth_session)
     session.flush()
     return auth_session
+
+
+def create_user_email(session: DatabaseSession, user: User, suffix: str) -> UserEmail:
+    email = UserEmail(
+        user_id=user.id,
+        email_canonical=f"user-{suffix}@example.com",
+        email_display=f"user-{suffix}@example.com",
+    )
+    session.add(email)
+    session.flush()
+    return email
+
+
+def valid_link_challenge(user_email_id: uuid.UUID) -> EmailVerificationChallenge:
+    created_at = now()
+    return EmailVerificationChallenge(
+        user_email_id=user_email_id,
+        material_type=EmailVerificationMaterialType.LINK,
+        link_token_digest=b"l" * 32,
+        created_at=created_at,
+        expires_at=created_at + timedelta(minutes=15),
+    )
+
+
+def valid_code_challenge(user_email_id: uuid.UUID) -> EmailVerificationChallenge:
+    created_at = now()
+    return EmailVerificationChallenge(
+        user_email_id=user_email_id,
+        material_type=EmailVerificationMaterialType.CODE,
+        code_digest=b"c" * 32,
+        hmac_key_version="test-v1",
+        attempt_count=0,
+        max_attempts=5,
+        created_at=created_at,
+        expires_at=created_at + timedelta(minutes=10),
+    )
+
+
+def insert_email_verification_challenge(
+    session: DatabaseSession, values: dict[str, object]
+) -> None:
+    session.execute(
+        text(
+            "INSERT INTO email_verification_challenges ("
+            "id, user_email_id, material_type, link_token_digest, code_digest, "
+            "hmac_key_version, attempt_count, max_attempts, created_at, expires_at, "
+            "consumed_at, invalidated_at, invalidation_reason) "
+            "VALUES (:id, :user_email_id, "
+            "CAST(:material_type AS email_verification_material_type), "
+            ":link_token_digest, :code_digest, :hmac_key_version, :attempt_count, "
+            ":max_attempts, :created_at, :expires_at, :consumed_at, :invalidated_at, "
+            "CAST(:invalidation_reason AS email_verification_invalidation_reason))"
+        ),
+        values,
+    )
+
+
+def challenge_values(user_email_id: uuid.UUID, material_type: str) -> dict[str, object]:
+    created_at = now()
+    values: dict[str, object] = {
+        "id": uuid.uuid4(),
+        "user_email_id": user_email_id,
+        "material_type": material_type,
+        "link_token_digest": None,
+        "code_digest": None,
+        "hmac_key_version": None,
+        "attempt_count": None,
+        "max_attempts": None,
+        "created_at": created_at,
+        "expires_at": created_at + timedelta(minutes=15),
+        "consumed_at": None,
+        "invalidated_at": None,
+        "invalidation_reason": None,
+    }
+    if material_type == "link":
+        values["link_token_digest"] = b"l" * 32
+    else:
+        values.update(
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            attempt_count=0,
+            max_attempts=5,
+        )
+    return values
 
 
 @pytest.mark.postgresql
@@ -209,9 +307,238 @@ def test_refresh_family_generation_and_digest_lookup(postgresql_session: Databas
     assert AuthRepository(postgresql_session).get_refresh_token_by_digest(digest) == token
 
 
+@pytest.mark.postgresql
+def test_email_verification_challenge_roundtrip_and_constraints(
+    postgresql_session: DatabaseSession,
+) -> None:
+    user = create_user(postgresql_session)
+    user_email = create_user_email(postgresql_session, user, "challenge")
+    link = valid_link_challenge(user_email.id)
+    code = valid_code_challenge(user_email.id)
+    postgresql_session.add_all((link, code))
+    postgresql_session.flush()
+
+    assert link.user_email_id == user_email.id
+    assert code.max_attempts == 5
+    assert "user_id" not in EmailVerificationChallenge.__table__.columns
+    assert "llll" not in repr(link)
+    assert "cccc" not in repr(code)
+
+    invalid_cases = (
+        valid_link_challenge(uuid.uuid4()),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.LINK,
+            created_at=now(),
+            expires_at=now(),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.LINK,
+            link_token_digest=b"x" * 31,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=15),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.LINK,
+            link_token_digest=b"x" * 32,
+            code_digest=b"c" * 32,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=15),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 31,
+            hmac_key_version="test-v1",
+            attempt_count=0,
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 32,
+            hmac_key_version="",
+            attempt_count=0,
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            link_token_digest=b"l" * 32,
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            attempt_count=0,
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            attempt_count=-1,
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            attempt_count=6,
+            max_attempts=5,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+        EmailVerificationChallenge(
+            user_email_id=user_email.id,
+            material_type=EmailVerificationMaterialType.CODE,
+            code_digest=b"c" * 32,
+            hmac_key_version="test-v1",
+            attempt_count=0,
+            max_attempts=4,
+            created_at=now(),
+            expires_at=now() + timedelta(minutes=10),
+        ),
+    )
+    for invalid in invalid_cases:
+        with pytest.raises(IntegrityError):
+            with postgresql_session.begin_nested():
+                postgresql_session.add(invalid)
+                postgresql_session.flush()
+
+
+@pytest.mark.postgresql
+def test_email_verification_terminal_state_and_digest_indexes(
+    postgresql_session: DatabaseSession,
+) -> None:
+    user = create_user(postgresql_session)
+    first_email = create_user_email(postgresql_session, user, "first")
+    second_email = create_user_email(postgresql_session, user, "second")
+    first_link = valid_link_challenge(first_email.id)
+    first_code = valid_code_challenge(first_email.id)
+    second_code = valid_code_challenge(second_email.id)
+    postgresql_session.add_all((first_link, first_code, second_code))
+    postgresql_session.flush()
+
+    with pytest.raises(IntegrityError):
+        with postgresql_session.begin_nested():
+            postgresql_session.add(valid_link_challenge(second_email.id))
+            postgresql_session.flush()
+
+    assert first_code.code_digest == second_code.code_digest
+    invalidated_at = now()
+    terminal_conflict = valid_link_challenge(first_email.id)
+    terminal_conflict.link_token_digest = b"t" * 32
+    terminal_conflict.consumed_at = invalidated_at
+    terminal_conflict.invalidated_at = invalidated_at
+    terminal_conflict.invalidation_reason = EmailVerificationInvalidationReason.SUPERSEDED
+    with pytest.raises(IntegrityError):
+        with postgresql_session.begin_nested():
+            postgresql_session.add(terminal_conflict)
+            postgresql_session.flush()
+
+    invalidation_without_reason = valid_code_challenge(second_email.id)
+    invalidation_without_reason.code_digest = b"z" * 32
+    invalidation_without_reason.invalidated_at = invalidated_at
+    with pytest.raises(IntegrityError):
+        with postgresql_session.begin_nested():
+            postgresql_session.add(invalidation_without_reason)
+            postgresql_session.flush()
+
+
+@pytest.mark.postgresql
+@pytest.mark.parametrize(
+    ("material_type", "overrides"),
+    [
+        ("link", {"link_token_digest": None}),
+        ("link", {"code_digest": b"c" * 32}),
+        ("link", {"hmac_key_version": "test-v1"}),
+        ("link", {"attempt_count": 0}),
+        ("link", {"max_attempts": 5}),
+        ("link", {"link_token_digest": b"l" * 31}),
+        ("link", {"link_token_digest": b"l" * 33}),
+        ("code", {"code_digest": None}),
+        ("code", {"link_token_digest": b"l" * 32}),
+        ("code", {"hmac_key_version": None}),
+        ("code", {"hmac_key_version": ""}),
+        ("code", {"attempt_count": None}),
+        ("code", {"max_attempts": None}),
+        ("code", {"max_attempts": 4}),
+        ("code", {"attempt_count": -1}),
+        ("code", {"attempt_count": 6}),
+        ("code", {"code_digest": b"c" * 31}),
+        ("code", {"code_digest": b"c" * 33}),
+    ],
+)
+def test_email_verification_null_and_three_valued_logic_rejected_by_postgresql(
+    postgresql_session: DatabaseSession, material_type: str, overrides: dict[str, object]
+) -> None:
+    user = create_user(postgresql_session)
+    user_email = create_user_email(postgresql_session, user, uuid.uuid4().hex)
+    values = challenge_values(user_email.id, material_type)
+    values.update(overrides)
+
+    with pytest.raises(IntegrityError):
+        with postgresql_session.begin_nested():
+            insert_email_verification_challenge(postgresql_session, values)
+
+
+@pytest.mark.postgresql
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"consumed_at": now(), "invalidated_at": now(), "invalidation_reason": "superseded"},
+        {"invalidated_at": now()},
+        {"invalidation_reason": "superseded"},
+    ],
+)
+def test_email_verification_terminal_null_states_rejected_by_postgresql(
+    postgresql_session: DatabaseSession, overrides: dict[str, object]
+) -> None:
+    user = create_user(postgresql_session)
+    user_email = create_user_email(postgresql_session, user, uuid.uuid4().hex)
+    values = challenge_values(user_email.id, "code")
+    values.update(overrides)
+
+    with pytest.raises(IntegrityError):
+        with postgresql_session.begin_nested():
+            insert_email_verification_challenge(postgresql_session, values)
+
 def test_sensitive_models_have_no_plaintext_credential_fields() -> None:
     prohibited_fields = {"plaintext_token", "raw_token", "secret"}
-    for model in (User, UserEmail, PasswordCredential, Session, AccessToken, RefreshToken):
+    for model in (
+        User,
+        UserEmail,
+        PasswordCredential,
+        EmailVerificationChallenge,
+        Session,
+        AccessToken,
+        RefreshToken,
+    ):
         assert not prohibited_fields.intersection(model.__table__.columns.keys())
 
     credential = PasswordCredential(

@@ -122,10 +122,11 @@ no banco. O código humano tem aproximadamente 27 bits de espaço de busca e **n
 pode usar SHA-256 simples: o banco permitiria adivinhação offline. Seu digest é
 HMAC-SHA-256 de uma codificação canônica com `challenge_id`, `purpose`, `user_id` ou
 identificador de conta quando conhecido e o código normalizado de oito dígitos. O
-segredo HMAC/pepper fica fora do PostgreSQL, repositório, imagem e logs. Geração,
-armazenamento seguro, versionamento e rotação estão definidos em
-[EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) e ADR-008, mas continuam sem implementação.
-Não implementar HMAC, segredo ou comparação nesta fase.
+segredo HMAC/pepper fica fora do PostgreSQL, repositório, imagem e logs. A Fase 2B.4B
+implementa a fundação de geração/validação de material, framing, HMAC-SHA-256,
+comparação constant-time e keyring versionado; [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md)
+e ADR-008 definem o contrato completo. Emissão, reenvio, consumo, rotação operacional,
+locks e transições de conta continuam sem implementação.
 
 Ao verificar código, o servidor normaliza somente separadores de apresentação, requer
 exatamente oito dígitos, recompõe o HMAC usando o challenge carregado por ID e compara

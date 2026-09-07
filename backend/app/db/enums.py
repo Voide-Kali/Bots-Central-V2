@@ -26,3 +26,16 @@ class SessionRevocationReason(StrEnum):
     ACCOUNT_DISABLED = "account_disabled"
     REFRESH_REUSE_DETECTED = "refresh_reuse_detected"
     SECURITY_CONTAINMENT = "security_containment"
+
+
+class EmailVerificationMaterialType(StrEnum):
+    LINK = "link"
+    CODE = "code"
+
+
+class EmailVerificationInvalidationReason(StrEnum):
+    SUPERSEDED = "superseded"
+    ATTEMPTS_EXHAUSTED = "attempts_exhausted"
+    ACCOUNT_STATE_CHANGED = "account_state_changed"
+    EMAIL_ALREADY_VERIFIED = "email_already_verified"
+    KEY_COMPROMISED = "key_compromised"

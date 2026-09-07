@@ -20,6 +20,8 @@ from app.db.base import Base
 from app.db.enums import (
     AccountStatus,
     AuthenticationLevel,
+    EmailVerificationInvalidationReason,
+    EmailVerificationMaterialType,
     SessionRevocationReason,
     persisted_enum_values,
 )
@@ -106,6 +108,100 @@ class PasswordCredential(Base):
 
     def __repr__(self) -> str:
         return f"PasswordCredential(user_id={self.user_id!s})"
+
+
+class EmailVerificationChallenge(Base):
+    __tablename__ = "email_verification_challenges"
+    __table_args__ = (
+        CheckConstraint(
+            "expires_at > created_at", name="ck_email_verification_expires_after_created"
+        ),
+        CheckConstraint(
+            "NOT (consumed_at IS NOT NULL AND invalidated_at IS NOT NULL)",
+            name="ck_email_verification_terminal_states_exclusive",
+        ),
+        CheckConstraint(
+            "(invalidated_at IS NULL AND invalidation_reason IS NULL) "
+            "OR (invalidated_at IS NOT NULL AND invalidation_reason IS NOT NULL)",
+            name="ck_email_verification_invalidation_state",
+        ),
+        CheckConstraint(
+            "(material_type = 'link' "
+            "AND link_token_digest IS NOT NULL "
+            "AND octet_length(link_token_digest) = 32 "
+            "AND code_digest IS NULL "
+            "AND hmac_key_version IS NULL "
+            "AND attempt_count IS NULL "
+            "AND max_attempts IS NULL) "
+            "OR (material_type = 'code' "
+            "AND link_token_digest IS NULL "
+            "AND code_digest IS NOT NULL "
+            "AND octet_length(code_digest) = 32 "
+            "AND hmac_key_version IS NOT NULL "
+            "AND hmac_key_version <> '' "
+            "AND max_attempts IS NOT NULL "
+            "AND max_attempts = 5 "
+            "AND attempt_count IS NOT NULL "
+            "AND attempt_count >= 0 "
+            "AND attempt_count <= 5)",
+            name="ck_email_verification_material_fields",
+        ),
+        Index(
+            "uq_email_verification_link_token_digest",
+            "link_token_digest",
+            unique=True,
+            postgresql_where=text("link_token_digest IS NOT NULL"),
+        ),
+        Index("ix_email_verification_challenges_user_email_id", "user_email_id"),
+        Index(
+            "ix_email_verification_challenges_user_email_created_at",
+            "user_email_id",
+            text("created_at DESC"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_email_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_emails.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    material_type: Mapped[EmailVerificationMaterialType] = mapped_column(
+        Enum(
+            EmailVerificationMaterialType,
+            name="email_verification_material_type",
+            values_callable=persisted_enum_values,
+        ),
+        nullable=False,
+    )
+    link_token_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
+    code_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
+    hmac_key_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_attempts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidation_reason: Mapped[EmailVerificationInvalidationReason | None] = mapped_column(
+        Enum(
+            EmailVerificationInvalidationReason,
+            name="email_verification_invalidation_reason",
+            values_callable=persisted_enum_values,
+        ),
+        nullable=True,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            "EmailVerificationChallenge("
+            f"id={self.id!s}, user_email_id={self.user_email_id!s}, "
+            f"material_type={self.material_type.value!r}, "
+            f"consumed={self.consumed_at is not None!r}, "
+            f"invalidated={self.invalidated_at is not None!r})"
+        )
 
 
 class Session(Base):
