@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.1 — AUTH DOMAIN + DATABASE FOUNDATION
+## Fase atual: 2B.2 — PASSWORD SECURITY + ARGON2ID
 
-- Branch de trabalho: `phase/auth-database-foundation`.
+- Branch de trabalho: `phase/password-security`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -12,6 +12,16 @@
   e-mail canônico e digest. Não há emissão/verificação de credencial nem endpoint de auth.
 - A validação PostgreSQL real da Fase 2B.1 foi executada no banco dedicado
   `bots_central_test`; não foram criados endpoints ou fluxos de autenticação.
+- A Fase 2B.2 adiciona apenas primitivas de senha: Argon2id com perfil explícito
+  (`time_cost=3`, `memory_cost=65536` KiB, `parallelism=4`, `hash_len=32` e
+  `salt_len=16`, `encoding=UTF-8`), validação de criação/alteração entre 15 e 1024
+  caracteres Unicode e limite técnico máximo de 1024 também na verificação, sem
+  mínimo nesta última para manter compatibilidade futura. Mismatch e `InvalidHashError`
+  retornam `False`; `VerificationError` genérico torna-se `PasswordVerificationError`;
+  `UnsupportedParametersError` e falhas inesperadas não são escondidos. A decisão de
+  rehash não mascara hash corrompido. Consulte [PASSWORD_SECURITY.md](PASSWORD_SECURITY.md).
+  Nenhuma senha em texto puro é persistida ou registrada; login, cadastro e endpoints
+  continuam ausentes.
 
 ## Validated locally:
 
@@ -39,6 +49,10 @@
 - `pytest` com `TEST_DATABASE_URL` real passou com `19 passed`, `0 skipped` e cobertura total
   de `92%`.
 - `alembic upgrade head --sql` gerou DDL PostgreSQL para `0002_auth_database_foundation`.
+- A validação final da Fase 2B.2 executou a suíte completa contra PostgreSQL 17 real,
+  exclusivamente no banco dedicado `bots_central_test`: `42 passed`, `0 skipped`,
+  `0 failed`, `0 errors` e cobertura total de `93%`; `app/auth/passwords.py` atingiu
+  100% de cobertura. Não há senha de banco nem URL de teste registrada aqui.
 
 ## Not validated:
 
