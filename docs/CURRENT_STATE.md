@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.4C — EMAIL VERIFICATION ISSUANCE + RESEND
+## Fase atual: 2B.4D — EMAIL VERIFICATION CONSUME + ACCOUNT ACTIVATION
 
-- Branch de trabalho: `phase/email-verification-issuance`.
+- Branch de trabalho: `phase/email-verification-consume`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -44,6 +44,14 @@
   Challenge`, relógio `clock_timestamp()` pós-lock, cooldown compartilhado de 60 segundos,
   supersede de siblings vivos e resultados plaintext efêmeros. A transação externa,
   commit e qualquer delivery permanecem responsabilidade do caller/fase futura.
+- A Fase 2B.4D implementa `app/auth/email_verification_consume.py`: consume CODE/LINK,
+  tentativas/exaustão commitáveis, confirmação do e-mail, ativação de conta pendente e
+  invalidação de siblings vivos em uma transação. Mantém locks `UserEmail → User →
+  Challenge`, reload autoritativo com `populate_existing=True` e um `clock_timestamp()`
+  pós-lock. Caller controla commit/rollback externo; futura integração deve commitar
+  antes de mapear/serializar HTTP ou executar I/O, inclusive para WrongCode e
+  AttemptsExhausted. ACTIVE, LOCKED e DISABLED não são elegíveis. Não há schema novo,
+  migration, endpoint HTTP, delivery, login ou criação de sessão/token nesta fase.
 
 ## Current implemented
 
@@ -58,19 +66,22 @@
   HMAC-SHA-256 e comparação constant-time.
 - Keyring HMAC externo versionado, com segredo base64url de no mínimo 256 bits,
   carregado e validado somente quando o componente é instanciado, sem default.
-- Issuance/resend de LINK e CODE sem delivery, endpoint, consume ou alteração de estado
-  de conta; testes de PostgreSQL real incluem rollback, cooldown, siblings e concorrência.
+- Issuance/resend de LINK e CODE sem delivery/endpoint; testes de PostgreSQL real incluem
+  rollback, cooldown, siblings e concorrência.
+- Consume de CODE/LINK com precedência de estados, attempts_exhausted, verified_at,
+  pending_verification → active e siblings vivos invalidados por email_already_verified.
+  Retry consumido é idempotente; versão HMAC desconhecida falha fechada sem mutação.
 
 ## Design approved
 
 - Contrato operacional de email verification da Fase 2B.4A, incluindo key rotation,
-  concorrência, retenção, locks, issuance/resend e consume futuros.
+  concorrência, retenção, locks, issuance/resend e consume; rotação/retenção operacional
+  permanecem futuras.
 
 ## Not implemented
 
-- Consume de challenges, incremento operacional de tentativas, transição
-  `pending_verification → active`, entrega ou execução da verificação de e-mail e
-  endpoints HTTP de auth/registro.
+- Entrega de e-mail, endpoints HTTP de auth/registro/verificação e verificação de e-mail
+  secundário em conta ACTIVE.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
   Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
@@ -109,7 +120,7 @@
   `0 failed`, `0 errors` e cobertura total de `93%`. `app/auth/registration.py`
   atingiu 95% de cobertura e `app/auth/passwords.py`, 100%. Não há senha de banco nem
   URL de teste registrada aqui.
-- A validação corrente da Fase 2B.4C executou a suíte completa contra PostgreSQL 17 real,
+- A validação da Fase 2B.4C executou a suíte completa contra PostgreSQL 17 real,
   exclusivamente no banco dedicado `bots_central_test`: `142 passed`, `0 skipped`,
   `0 failed`, `0 errors` e cobertura total de `93%`. A migration `base -> head`, o
   catálogo PostgreSQL de constraints/índices/enums, a matriz de NULL/três valores e a
@@ -117,6 +128,16 @@
   também cobre issuance/resend 2B.4C em PostgreSQL real, incluindo cooldown, rollback,
   siblings vivos e duas transações concorrentes. Não há senha de banco, URL de teste ou
   segredo operacional registrado aqui.
+- A validação corrente da Fase 2B.4D usou PostgreSQL 17.11 real no banco dedicado
+  `bots_central_test`: consume `80 passed`; suíte completa `222 passed`, `0 skipped`,
+  `0 failed`, `0 errors`. Cobertura total `93%`; consume `95%`. Os testes incluem
+  serialização consume-vs-consume/consume-vs-resend nos dois sentidos comprovada por
+  `pg_blocking_pids()`, locator obsoleto, identity map de UserEmail/User/Challenge/siblings,
+  commit/rollback de tentativas e sucesso, e rollback integral do savepoint após falha
+  no flush. `ruff check .`, `mypy app tests`, `pip check` e `git diff --check` passaram.
+  `pip-audit --vulnerability-service osv` passou sem vulnerabilidades conhecidas.
+  A consulta padrão `pip-audit` ao PyPI não concluiu por reset de conexão, inclusive
+  fora do sandbox; OSV foi a alternativa de auditoria efetivamente validada.
 
 ## Not validated:
 

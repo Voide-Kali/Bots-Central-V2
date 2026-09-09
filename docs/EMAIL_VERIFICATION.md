@@ -2,8 +2,9 @@
 
 Status: a Fase 2B.4B implementa a fundação de persistência e material: tabela/model,
 migration `0003`, enums, token/código, framing HMAC e keyring. A Fase 2B.4C implementa
-o staging de issuance/resend síncrono no domínio, sem delivery. Consume, ativação,
-entrega e endpoint não existem.
+o staging de issuance/resend síncrono no domínio, sem delivery. A Fase 2B.4D implementa
+consume síncrono de CODE/LINK e ativação atômica da conta pendente. Nenhum endpoint HTTP,
+delivery, login, sessão ou token de autenticação é criado nesta fase.
 O escopo continua somente `email_verification` para `User` em `pending_verification` e
 seu `UserEmail` específico não verificado.
 
@@ -14,7 +15,7 @@ genérica. Isso preserva constraints claras e não acopla esta fase a recovery, 
 ou Security Gate.
 
 - **Link:** 32 bytes de CSPRNG, externamente base64url canônico sem padding: exatamente
-  43 caracteres ASCII. Validação futura rejeita padding, caracteres fora de base64url,
+  43 caracteres ASCII. A validação rejeita padding, caracteres fora de base64url,
   tamanho diferente de 43 e decodificação diferente de 32 bytes; persistir somente
   `SHA-256(token_bytes)` (32 bytes), nunca hash da string textual. TTL máximo de 15
   minutos, uso único.
@@ -24,8 +25,9 @@ ou Security Gate.
 
 Plaintext existe apenas entre geração e entrega futura, jamais em banco, logs, audit,
 telemetria ou filas. A fundação gera material somente em memória e não o persiste
-automaticamente. Abrir link por GET nunca o consome; uma operação explícita futura o
-fará. Não há provedor SMTP/Gmail nesta fase.
+automaticamente. O consume recebe material somente em memória. Abrir link por GET
+nunca o consome; o serviço de domínio exige chamada explícita e ainda não tem transporte
+HTTP. Não há provedor SMTP/Gmail nesta fase.
 
 Verificação humana recebe conceitualmente `challenge_id` + `code`. `challenge_id` é
 UUID opaco público, não secreto e não autenticador: ele somente localiza o challenge.
@@ -50,7 +52,7 @@ u32be(8) || normalized_code ASCII
 `email_verification`; UUIDs usam exatamente 16 bytes em network byte order
 (`UUID.bytes`); e código usa exatamente 8 bytes ASCII. `user_id` é derivado do
 `UserEmail` autoritativo, não gravado no challenge. Não concatenar texto sem framing,
-nem usar JSON. A comparação futura usa a primitiva constant-time da biblioteca.
+nem usar JSON. A comparação usa a primitiva constant-time da biblioteca.
 
 O pepper tem no mínimo 256 bits, gerados por CSPRNG, e é fornecido em runtime como
 valor base64url canônico por configuração externa: uma versão ativa e um mapa JSON de
@@ -66,11 +68,13 @@ O challenge de código armazena apenas `hmac_key_version`. Nova emissão usa a c
 ativa; validação escolhe exatamente a versão gravada. Durante rotação, manter chave
 anterior para validação por pelo menos 20 minutos após a última emissão: TTL de código
 de 10 minutos mais 10 minutos de margem de relógio/operação. Versão desconhecida é
-rejeitada, sem tentar outra chave. Rotação emergencial remove/desabilita a versão,
+rejeitada com `KeyVersionUnavailable`, sem mutação, incremento ou tentativa de outra
+chave; não marca automaticamente `key_compromised`. A operação de rotação emergencial
+permanece futura: remove/desabilita a versão,
 invalida challenges ativos daquela versão com `key_compromised` e nunca tenta outra
 chave; links não dependem do pepper.
 
-## Schema conceitual para migration 0003
+## Schema implementado pela migration 0003
 
 `0003` cria os enums `email_verification_material_type` (`link`, `code`) e
 `email_verification_invalidation_reason` (`superseded`, `attempts_exhausted`,
@@ -100,7 +104,7 @@ e `(user_email_id, created_at DESC)` para emissão/resend/cleanup. Não indexar 
 código: a entrada de código sempre inclui `challenge_id` e o HMAC é recomputado após
 carregar a linha.
 
-## Serviços operacionais: issuance/resend e consumo futuro
+## Serviços operacionais: issuance/resend e consume
 
 **Issuance/resend** carrega e trava o `UserEmail` alvo com `SELECT … FOR UPDATE`. Ele é
 a âncora estável que serializa inclusive a primeira emissão, quando não há challenge
@@ -110,7 +114,7 @@ aplica cooldown, trava siblings vivos, invalida os anteriores e cria o novo chal
 **Ordem global obrigatória neste domínio:** `UserEmail` → `User` →
 `EmailVerificationChallenge`. Nunca adquirir esses locks em ordem inversa.
 
-O serviço de domínio recebe uma `Session` síncrona com transação pertencente ao caller:
+O serviço de issuance recebe uma `Session` síncrona com transação pertencente ao caller:
 usa savepoint e `flush`, mas não faz commit nem rollback da transação externa. Após os
 locks de `UserEmail` e `User`, obtém uma única vez `SELECT clock_timestamp()`; este é o
 tempo autoritativo para decisão, `created_at`, cooldown, `invalidated_at` e TTL. LINK e
@@ -123,18 +127,41 @@ como `SecretStr`, não implica commit e só pode ser entregue depois de commit e
 sucedido. A ordem futura obrigatória é `stage → caller commit → delivery`; não existe
 delivery, SMTP, fila ou outbox nesta fase.
 
-**Consume de código:** lookup inicial por `challenge_id` sem lock somente descobre
-`user_email_id`; inexistente retorna resultado interno inválido/genérico. Em seguida
+**Consume de código** (`consume_email_verification_code`): checks de tipo exigem UUID,
+string e keyring; o guard rejeita `Session.new`/`dirty`/`deleted` antes de qualquer query
+ou savepoint. Dentro de `begin_nested()`, o lookup inicial projection-only por
+`challenge_id`, sem lock, lê apenas candidate id e `user_email_id`; inexistente retorna
+`InvalidChallenge`. Em seguida
 trava `UserEmail`, deriva/trava `User` e por último trava/recarrega o challenge. Só então
 revalida integralmente id, vínculo, material, prazo, estado terminal, pertencimento de
 e-mail e estado de conta antes de verificar HMAC/código. O lookup inicial não é
 autoridade.
 
-**Consume de link:** validar formato canônico, decodificar 32 bytes e calcular
+**Consume de link** (`consume_email_verification_link`): validar formato canônico,
+decodificar 32 bytes e calcular
 `SHA-256(token_bytes)`; o lookup inicial por digest é também apenas candidato. Depois
 trava `UserEmail`, `User` e challenge nessa ordem, e revalida digest, vínculo, material,
 prazo e estados antes de consumir. Consume e resend do mesmo `UserEmail` são assim
 serializados: resend não invalida no meio de consumo, nem há inversão UserEmail/challenge.
+O locator de LINK também projeta somente candidate id e `user_email_id`; token malformado
+ou ausente retorna `InvalidChallenge`. LINK não recebe nem resolve keyring.
+
+Todos os loads autoritativos travados de `UserEmail`, `User`, target e siblings usam
+`populate_existing=True`, inclusive quando a sessão já contém objetos no identity map.
+Depois dos locks de `UserEmail → User → Challenge`, consume lê exatamente uma vez
+`SELECT clock_timestamp()`. Esse `decision_time` controla expiração, `consumed_at`,
+`invalidated_at`, `verified_at` e os `updated_at` de User/UserEmail no sucesso; estes
+últimos são atribuídos explicitamente para não usar o `onupdate=now()` dos modelos.
+Não usa relógio Python nem o início da transação PostgreSQL para decisões operacionais.
+
+A precedência pós-lock é: binding/id/material/digest incompatível → `InvalidChallenge`;
+consumido → `AlreadyConsumed`; invalidado → `Invalidated(reason)`;
+`decision_time >= expires_at` → `Expired`; e-mail verificado → `AlreadyVerified`,
+invalidando o target vivo com `email_already_verified`; conta não pendente →
+`AccountNotEligible(status)`, invalidando o target vivo com `account_state_changed`.
+Consumido, invalidado e expirado não sofrem mutação. E-mail verificado
+não modifica User. `ACTIVE` também não é elegível nesta fase: verificação de e-mail
+secundário em conta active é fase futura. `LOCKED`/`DISABLED` nunca são reativados.
 
 Para código, aceitar somente `12345678` ou `1234 5678`: remover no máximo o único
 espaço central de apresentação, depois exigir oito bytes ASCII `0`–`9`. Hífen, dígitos
@@ -142,6 +169,14 @@ Unicode e qualquer outro formato são rejeitados sem tentativa. Código normaliz
 mas incorreto incrementa `attempt_count`; ao chegar a 5, marcar `invalidated_at` com
 `attempts_exhausted` na mesma transação. Expirado, consumido ou já invalidado não muda
 contador. Link inválido não tem contador de adivinhação.
+
+Formato rejeitado retorna `MalformedCode`. Depois da normalização e antes de resolver
+chave/verificar HMAC, um CODE já com `attempt_count >= max_attempts` mas ainda não
+terminal é invalidado como `attempts_exhausted`, com `flush`, e retorna
+`AttemptsExhausted`. A versão HMAC é exatamente a persistida; versão ausente retorna
+`KeyVersionUnavailable` sem alteração. Mismatch válido incrementa uma vez e retorna
+`WrongCode(attempt_count, attempts_remaining)` ou, no quinto erro, `AttemptsExhausted`.
+Ambos são resultados normais commitáveis, nunca exceptions para forçar rollback.
 
 Resend usa a chave lógica `user_email_id` (purpose é implícito), cooldown mínimo de 60
 segundos desde a última emissão e o lock do `UserEmail`. Nunca reutiliza plaintext, não
@@ -151,11 +186,28 @@ prolonga TTL anterior e não zera futuros orçamentos globais de abuso.
 
 No mesmo commit do consumo válido: confirmar `User` pendente, o `UserEmail` vinculado
 e ainda não verificado; marcar `verified_at`, transicionar `pending_verification` para
-`active`, marcar o challenge usado como consumido e invalidar quaisquer siblings não
-terminais do mesmo `UserEmail` com `email_already_verified`. Conta `locked` ou `disabled`
+`active`, marcar o challenge usado como consumido e invalidar os siblings vivos do mesmo
+`UserEmail` com `email_already_verified`. O filtro exato é `user_email_id` igual,
+`id != target.id`, `consumed_at IS NULL`, `invalidated_at IS NULL` e
+`expires_at > decision_time`, com `FOR UPDATE` e `populate_existing=True`.
+Siblings expirados/terminais e outros e-mails permanecem inalterados. Conta `locked` ou `disabled`
 nunca é reativada; challenge é invalidado. E-mail já verificado também invalida challenge
 ativo sem alterar estado. Retry de challenge já consumido é resultado interno
 seguro/idempotente, sem nova transição. Nenhuma sessão, token ou autenticação é criada.
+
+CODE e LINK compartilham a mesma transição privada e retornam
+`ConsumedEmailVerification(challenge_id, user_email_id, consumed_at)` após `flush`.
+Os outcomes são dataclasses frozen em union explícita e não carregam plaintext, digest
+ou chave. Erros de tipo, invariantes ou banco são exceptions; falhas dentro do savepoint
+não deixam transição parcial. O serviço não faz commit/rollback externo nem transação
+autônoma. Rollback externo reverte inclusive tentativas, exaustão e invalidações.
+
+**Regra obrigatória para integração futura:** `domain operation → caller COMMIT outer
+transaction → somente DEPOIS mapear/serializar/enviar HTTP ou executar I/O externo`.
+O caller deve commitar também `WrongCode` e `AttemptsExhausted`; não converter esses
+outcomes em exceptions dentro do bloco transacional. Nenhuma resposta HTTP ou disconnect
+do cliente pode decidir se `attempt_count` persiste. Commit falho não autoriza anunciar
+sucesso nem executar I/O. Nesta fase não há endpoint nem implementação desse transporte.
 
 O domínio pode distinguir inexistente, expirado ou duplicado. Transporte HTTP futuro
 deve responder genericamente onde existência revelaria conta/challenge. Logs normais
@@ -169,7 +221,7 @@ removê-lo por job futuro. A política final exige revisão de privacidade/LGPD,
 operacional, retenção de audit e minimização de dados. Registro de challenge não substitui
 audit de longo prazo e não retém materiais secretos.
 
-## Test plan obrigatório para 2B.4B/2B.4C
+## Test plan para 2B.4B/2B.4C/2B.4D
 
 PostgreSQL real: enums/checks, tamanhos de digest, unicidade de token, token canônico
 de 43 caracteres, padding/não-canônico rejeitado, formato de código, `challenge_id` +
@@ -181,3 +233,9 @@ lookup inicial alterado antes dos locks detectado na revalidação, siblings inv
 em sucesso, corrida locked/disabled sem ativação, binding derivado via `UserEmail` sem
 `user_id` redundante, versão desconhecida, invalidação por chave comprometida, rotação,
 digest malformado, rollback e ausência de vazamento de segredo em repr/log/audit.
+
+Os testes de consume usam PostgreSQL real e incluem CODE/LINK, precedência, tentativas,
+commit/rollback externo, ativação, siblings, refresh do identity map e locator obsoleto.
+As corridas consume-vs-consume e consume-vs-resend nos dois sentidos comprovam bloqueio
+via `pg_backend_pid()`/`pg_blocking_pids()` em sessões separadas; espera temporal não é
+prova de locking. Rotação emergencial, audit e transporte operacional continuam futuros.
