@@ -1,8 +1,8 @@
 # Current State
 
-## Fase atual: 2B.4D — EMAIL VERIFICATION CONSUME + ACCOUNT ACTIVATION
+## Fase atual: 2B.4E — EMAIL VERIFICATION APPLICATION + DELIVERY FOUNDATION
 
-- Branch de trabalho: `phase/email-verification-consume`.
+- Branch de trabalho: `phase/email-verification-transport`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
 - A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
@@ -52,6 +52,12 @@
   antes de mapear/serializar HTTP ou executar I/O, inclusive para WrongCode e
   AttemptsExhausted. ACTIVE, LOCKED e DISABLED não são elegíveis. Não há schema novo,
   migration, endpoint HTTP, delivery, login ou criação de sessão/token nesta fase.
+- A Fase 2B.4E implementa `email_verification_application` e
+  `email_verification_delivery`: a application layer possui a transação externa por
+  session factory, compõe registro+issuance atomicamente e commita outcomes normais de
+  consume antes de transporte futuro. DeliveryIntent é DTO ORM/Session-free, efêmero e
+  redigido; dispatcher faz uma tentativa best-effort sem retry. Não há HTTP/provider,
+  BackgroundTasks, fila/outbox, persistence de delivery, migration ou rate-limit.
 
 ## Current implemented
 
@@ -71,6 +77,8 @@
 - Consume de CODE/LINK com precedência de estados, attempts_exhausted, verified_at,
   pending_verification → active e siblings vivos invalidados por email_already_verified.
   Retry consumido é idempotente; versão HMAC desconhecida falha fechada sem mutação.
+- Orchestration interna de registro/resend/consume e foundation de dispatch pós-commit
+  com DeliveryIntent puro; endpoints públicos continuam fora do escopo.
 
 ## Design approved
 
@@ -80,8 +88,8 @@
 
 ## Not implemented
 
-- Entrega de e-mail, endpoints HTTP de auth/registro/verificação e verificação de e-mail
-  secundário em conta ACTIVE.
+- Provider de e-mail, endpoints HTTP de auth/registro/verificação, abuse limiting,
+  contrato de respostas genéricas/timing e verificação de e-mail secundário em ACTIVE.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
   Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
@@ -128,16 +136,17 @@
   também cobre issuance/resend 2B.4C em PostgreSQL real, incluindo cooldown, rollback,
   siblings vivos e duas transações concorrentes. Não há senha de banco, URL de teste ou
   segredo operacional registrado aqui.
-- A validação corrente da Fase 2B.4D usou PostgreSQL 17.11 real no banco dedicado
-  `bots_central_test`: consume `80 passed`; suíte completa `222 passed`, `0 skipped`,
-  `0 failed`, `0 errors`. Cobertura total `93%`; consume `95%`. Os testes incluem
-  serialização consume-vs-consume/consume-vs-resend nos dois sentidos comprovada por
-  `pg_blocking_pids()`, locator obsoleto, identity map de UserEmail/User/Challenge/siblings,
-  commit/rollback de tentativas e sucesso, e rollback integral do savepoint após falha
-  no flush. `ruff check .`, `mypy app tests`, `pip check` e `git diff --check` passaram.
-  `pip-audit --vulnerability-service osv` passou sem vulnerabilidades conhecidas.
-  A consulta padrão `pip-audit` ao PyPI não concluiu por reset de conexão, inclusive
-  fora do sandbox; OSV foi a alternativa de auditoria efetivamente validada.
+- A validação corrente da Fase 2B.4E usou PostgreSQL 17.11 real no banco dedicado
+  `bots_central_test`: application `19 passed`; suíte completa `241 passed`, `0 skipped`,
+  `0 failed`, `0 errors`. Cobertura total `94%`; application `98%` e delivery `100%`.
+  Os testes incluem composição atômica registro+issuance, ausência de commit intermediário,
+  rollback/commit externo, intents pós-commit ORM/Session-free redigidos, outcomes mutáveis
+  de consume commitados e dispatch de tentativa única sanitizada. A cobertura preexistente
+  de consume mantém serialização PostgreSQL real, locator obsoleto, identity map e
+  commit/rollback de tentativas. `ruff check .`, `mypy app tests`, `pip check` e
+  `git diff --check` passaram. `pip-audit --vulnerability-service osv` passou sem
+  vulnerabilidades conhecidas; a consulta padrão ao PyPI havia falhado por reset de conexão,
+  portanto OSV foi a alternativa efetivamente validada.
 
 ## Not validated:
 

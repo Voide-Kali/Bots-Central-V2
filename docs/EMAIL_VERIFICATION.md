@@ -3,8 +3,9 @@
 Status: a Fase 2B.4B implementa a fundação de persistência e material: tabela/model,
 migration `0003`, enums, token/código, framing HMAC e keyring. A Fase 2B.4C implementa
 o staging de issuance/resend síncrono no domínio, sem delivery. A Fase 2B.4D implementa
-consume síncrono de CODE/LINK e ativação atômica da conta pendente. Nenhum endpoint HTTP,
-delivery, login, sessão ou token de autenticação é criado nesta fase.
+consume síncrono de CODE/LINK e ativação atômica da conta pendente. A Fase 2B.4E adiciona
+somente uma fundação interna de application/delivery, sem endpoint HTTP, provider,
+background task, fila, outbox, login, sessão ou token de autenticação.
 O escopo continua somente `email_verification` para `User` em `pending_verification` e
 seu `UserEmail` específico não verificado.
 
@@ -127,6 +128,39 @@ como `SecretStr`, não implica commit e só pode ser entregue depois de commit e
 sucedido. A ordem futura obrigatória é `stage → caller commit → delivery`; não existe
 delivery, SMTP, fila ou outbox nesta fase.
 
+### Fundação application/delivery 2B.4E
+
+`email_verification_application` é a autoridade da transação externa: recebe uma
+session factory, cria e fecha sua própria `Session`, e deixa o bloco `session.begin()`
+normalmente antes de devolver qualquer resultado. Registro e issuance compartilham a
+mesma transação: `register_user()` faz flush, a camada application localiza exatamente
+um `UserEmail` primário pelo `user_id`, chama issuance e só então ocorre o único commit.
+Duplicidade de registro retorna resultado application sanitizado sem resend implícito,
+challenge ou intent de delivery. Zero ou mais de um e-mail primário é invariant error.
+
+Resend localiza o e-mail canonical internamente, executa issuance na transação própria e
+retorna resultado sanitizado com zero intent para desconhecido, verificado, cooldown ou
+conta inelegível. CODE e LINK consume também são chamados dentro da transação própria;
+`WrongCode`, `AttemptsExhausted`, `AlreadyVerified` e `AccountNotEligible` saem do bloco
+normalmente para que suas mutações sejam commitadas antes de qualquer mapeamento futuro
+de transporte. Exceptions de banco/invariante/programação fazem rollback normal.
+
+Após commit bem-sucedido, issuance pode produzir `DeliveryIntent`: DTO Python puro,
+ORM-free e Session-free com destinatário, challenge ID, prazo, material type e plaintext
+em `SecretStr` redigido. O intent nunca é resultado público de transporte e não contém
+User, UserEmail, Challenge, Session ou relação lazy. Falha de commit não devolve intent.
+
+`dispatch_delivery()` faz uma única tentativa best-effort por invocation. O adapter futuro
+deve manter retries automáticos desabilitados. Falha retorna `DeliveryFailed` sanitizado,
+sem exception/provider body/destinatário/plaintext e sem retry. Não há alegação de
+exactly-once, at-least-once ou at-most-once fim-a-fim.
+
+Não há persistence de delivery, outbox ou migration. O tradeoff deliberado é:
+`COMMIT → processo morre/falha antes de delivery → challenge persiste → plaintext se perde
+→ usuário aguarda cooldown → resend cria material novo`. Provider acceptance pode ser
+ambígua; não se reutiliza automaticamente o mesmo segredo. Isso é disponibilidade, não
+alteração da integridade do challenge.
+
 **Consume de código** (`consume_email_verification_code`): checks de tipo exigem UUID,
 string e keyring; o guard rejeita `Session.new`/`dirty`/`deleted` antes de qualquer query
 ou savepoint. Dentro de `begin_nested()`, o lookup inicial projection-only por
@@ -209,6 +243,13 @@ outcomes em exceptions dentro do bloco transacional. Nenhuma resposta HTTP ou di
 do cliente pode decidir se `attempt_count` persiste. Commit falho não autoriza anunciar
 sucesso nem executar I/O. Nesta fase não há endpoint nem implementação desse transporte.
 
+Endpoints públicos continuam bloqueados até contrato de respostas genéricas, abuse
+limiting e revisão de timing. Remover provider I/O do caminho HTTP futuro reduz um sinal
+grande de timing, mas não afirma tempo constante: hash, lookup e banco continuam variando.
+O futuro link usa `PUBLIC_ORIGIN` server-side confiável e HTTPS em produção, nunca Host
+ou input do cliente. GET nunca consome; a boundary futura é página confiável, token em
+fragmento preferencialmente, ação explícita do usuário e POST de consume protegido.
+
 O domínio pode distinguir inexistente, expirado ou duplicado. Transporte HTTP futuro
 deve responder genericamente onde existência revelaria conta/challenge. Logs normais
 registram somente outcome sanitizado, purpose, timestamp e correlation ID futuro; audit
@@ -221,7 +262,7 @@ removê-lo por job futuro. A política final exige revisão de privacidade/LGPD,
 operacional, retenção de audit e minimização de dados. Registro de challenge não substitui
 audit de longo prazo e não retém materiais secretos.
 
-## Test plan para 2B.4B/2B.4C/2B.4D
+## Test plan para 2B.4B/2B.4C/2B.4D/2B.4E
 
 PostgreSQL real: enums/checks, tamanhos de digest, unicidade de token, token canônico
 de 43 caracteres, padding/não-canônico rejeitado, formato de código, `challenge_id` +
@@ -239,3 +280,9 @@ commit/rollback externo, ativação, siblings, refresh do identity map e locator
 As corridas consume-vs-consume e consume-vs-resend nos dois sentidos comprovam bloqueio
 via `pg_backend_pid()`/`pg_blocking_pids()` em sessões separadas; espera temporal não é
 prova de locking. Rotação emergencial, audit e transporte operacional continuam futuros.
+
+Os testes application usam PostgreSQL real para confirmar composição atômica de registro
+com issuance, rollback/commit externo, intenção de delivery somente após commit, DTO sem ORM
+ou Session e repr sem plaintext. Também confirmam que outcomes mutáveis de consume persistem
+antes de transporte futuro e que o dispatcher chama o adapter uma vez, sem retry, e sanitiza
+falhas. Nenhum teste implementa provider, I/O externo, endpoint HTTP, BackgroundTasks ou outbox.
