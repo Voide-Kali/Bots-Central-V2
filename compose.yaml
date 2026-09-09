@@ -71,6 +71,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # The official entrypoint starts as root to fix PGDATA ownership, then
+    # uses gosu to drop permanently to postgres before starting the server.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
     networks:
       - database
 

@@ -62,8 +62,11 @@ testes compartilhado para migrations paralelas.
 Backend e migration já executam como o usuário não privilegiado definido na imagem.
 No Compose, ambos agora usam filesystem raiz somente leitura, `/tmp` temporário com
 `noexec,nosuid,nodev`, `no-new-privileges` e todas as capabilities removidas. O banco
-usa volume persistente e também tem `no-new-privileges` e capabilities removidas. Nenhum
-serviço é privilegiado.
+usa volume persistente e `no-new-privileges`. Ele remove todas as capabilities padrão e
+readiciona somente `CHOWN`, `DAC_OVERRIDE`, `SETGID` e `SETUID` durante o bootstrap do
+entrypoint oficial: elas permitem percorrer/ajustar um `PGDATA` novo ou preexistente e
+trocar de root para `postgres`. O servidor PostgreSQL inicia após essa troca, sem
+privilégios de root. Nenhum serviço é privilegiado.
 
 A rede `database` é interna e é compartilhada apenas por backend, migration e banco.
 A rede `app` permite o tráfego de saída que o backend pode precisar para SMTP; um proxy
