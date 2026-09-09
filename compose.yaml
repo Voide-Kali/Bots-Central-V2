@@ -9,10 +9,32 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: INFO
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       migration:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json, urllib.request; health = json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=2)); assert health['status'] == 'ok' and health['database'] == 'connected'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - app
+      - database
 
   migration:
     image: *backend_image
@@ -22,11 +44,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - database
 
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: bots_central
+      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
@@ -36,12 +67,23 @@ services:
       retries: 10
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - database
 
 volumes:
   postgres-data:
 
 networks:
-  default:
+  app:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+  database:
+    internal: true
     driver: bridge
     driver_opts:
       com.docker.network.driver.mtu: "1400"

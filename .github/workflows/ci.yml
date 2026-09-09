@@ -29,6 +29,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -43,10 +45,104 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://bots_central_test:test-only-not-a-secret@localhost:5432/bots_central_test
       - run: pip-audit
 
+  frontend:
+    # The web track is not present in the foundation yet. Keep this job a no-op
+    # until it contributes a package manifest and an npm lockfile.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: frontend
+        name: Detect frontend track
+        shell: bash
+        run: |
+          if [[ ! -f frontend/package.json ]]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Frontend track is not present; skipping."
+            exit 0
+          fi
+
+          if [[ ! -f frontend/package-lock.json ]]; then
+            echo "frontend/package-lock.json is required for locked dependency installation." >&2
+            exit 1
+          fi
+
+          echo "present=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v5
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        run: npm ci
+        working-directory: frontend
+      - name: Lint
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        run: npm run lint
+        working-directory: frontend
+      - name: Typecheck
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        run: npm run typecheck
+        working-directory: frontend
+      - name: Test
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        run: npm test
+        working-directory: frontend
+      - name: Build
+        if: ${{ steps.frontend.outputs.present == 'true' }}
+        run: npm run build
+        working-directory: frontend
+
+  agent:
+    # The Go agent track is not present in the foundation yet. Keep this job a
+    # no-op until it contributes its module definition.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: agent
+        name: Detect agent track
+        shell: bash
+        run: |
+          if [[ -f agent/go.mod ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Agent track is not present; skipping."
+          fi
+      - uses: actions/setup-go@v6
+        if: ${{ steps.agent.outputs.present == 'true' }}
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - name: Check formatting
+        if: ${{ steps.agent.outputs.present == 'true' }}
+        working-directory: agent
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        if: ${{ steps.agent.outputs.present == 'true' }}
+        run: go vet ./...
+        working-directory: agent
+      - name: Test
+        if: ${{ steps.agent.outputs.present == 'true' }}
+        run: go test ./...
+        working-directory: agent
+
   secrets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@v2
