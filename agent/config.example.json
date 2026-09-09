@@ -1,0 +1,7 @@
+{
+  "state_dir": "/var/lib/bots-central-agent",
+  "heartbeat_interval": "30s",
+  "transport_timeout": "10s",
+  "backoff_initial": "1s",
+  "backoff_max": "1m"
+}
