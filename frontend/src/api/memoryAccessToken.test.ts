@@ -1,0 +1,2 @@
+import { accessTokenStore } from "./memoryAccessToken";
+describe("MemoryAccessTokenStore", () => { afterEach(() => { accessTokenStore.clear(); }); it("keeps an access token only until explicitly cleared", () => { accessTokenStore.replace("ephemeral-access-token"); expect(accessTokenStore.read()).toBe("ephemeral-access-token"); accessTokenStore.clear(); expect(accessTokenStore.read()).toBeUndefined(); }); });
