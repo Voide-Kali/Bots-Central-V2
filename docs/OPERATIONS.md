@@ -68,6 +68,26 @@ entrypoint oficial: elas permitem percorrer/ajustar um `PGDATA` novo ou preexist
 trocar de root para `postgres`. O servidor PostgreSQL inicia após essa troca, sem
 privilégios de root. Nenhum serviço é privilegiado.
 
+## Validação host-side do PostgreSQL
+
+A validação de Compose no host passou com `sudo docker compose config --no-interpolate
+--quiet`. Um smoke test isolado da imagem `postgres:17-alpine`, com volume novo e
+credenciais temporárias, também passou: `initdb`, criação do banco, reinicialização
+interna do entrypoint, `pg_isready`, healthcheck e conexões finais concluíram com
+sucesso. O projeto, volume e credenciais temporários foram removidos após o teste.
+
+O drop de privilégios foi confirmado no runtime: PID 1 e o processo PostgreSQL final
+executaram como UID 70 (`postgres`), nunca como root. A inspeção de runtime confirmou
+`CapDrop=[ALL]`, `CapAdd=[CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_SETGID, CAP_SETUID]` e
+`SecurityOpt=[no-new-privileges:true]`.
+
+Durante o bootstrap, os `chmod` de `PGDATA` e `/var/run/postgresql` podem registrar
+`Operation not permitted`, pois `CAP_FOWNER` não é concedida. Esses avisos são tolerados
+no conjunto atual: não impediram o ajuste posterior de `PGDATA` por `initdb`, o socket,
+o healthcheck, o drop de privilégios nem a operação normal. Não adicione `CAP_FOWNER`
+somente para suprimir esses avisos; reavalie apenas diante de necessidade funcional ou
+de segurança demonstrada.
+
 A rede `database` é interna e é compartilhada apenas por backend, migration e banco.
 A rede `app` permite o tráfego de saída que o backend pode precisar para SMTP; um proxy
 web futuro deve se conectar a ela, nunca à rede `database`.
