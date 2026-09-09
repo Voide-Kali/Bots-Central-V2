@@ -28,6 +28,7 @@ export interface ConsumeVerificationCodeResponse {
 
 /** Temporary mock-only shape; it is not a server contract. */
 export interface ProvisionalDevice {
+  readonly id: string;
   readonly name: string;
   readonly platform: string;
   readonly connection: "online" | "offline";

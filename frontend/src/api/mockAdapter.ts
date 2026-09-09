@@ -9,9 +9,32 @@ import type {
 } from "./contracts";
 import { UnauthenticatedError } from "./errors";
 
-const demoDevices = [
-  { name: "Oficina Sul", platform: "Windows 11", connection: "online" as const, lastSeen: "Agora", agentVersion: "0.1.0-demo" },
-  { name: "Notebook de campo", platform: "Ubuntu 24.04", connection: "offline" as const, lastSeen: "Há 2 horas", agentVersion: "0.1.0-demo" }
+/** Visual-only device fixtures, deliberately limited to the approved MVP fields. */
+export const mockDevices = [
+  {
+    id: "PC000",
+    name: "Estação de trabalho",
+    platform: "Linux",
+    connection: "online" as const,
+    lastSeen: "agora",
+    agentVersion: "0.1.0"
+  },
+  {
+    id: "MBP-07",
+    name: "Laptop de viagem",
+    platform: "macOS",
+    connection: "offline" as const,
+    lastSeen: "há 18 min",
+    agentVersion: "0.1.0"
+  },
+  {
+    id: "NODE-02",
+    name: "Servidor doméstico",
+    platform: "Ubuntu",
+    connection: "online" as const,
+    lastSeen: "há 4 min",
+    agentVersion: "0.1.0"
+  }
 ];
 
 class MockAuthApi implements AuthApi {
@@ -31,7 +54,7 @@ class MockAuthApi implements AuthApi {
 }
 
 class MockDevicesApi implements DevicesApi {
-  public async list(): Promise<DeviceListResult> { return { kind: "mock", devices: demoDevices }; }
+  public async list(): Promise<DeviceListResult> { return { kind: "mock", devices: mockDevices }; }
 }
 
 export function createMockApiClient(): ApiClient {
