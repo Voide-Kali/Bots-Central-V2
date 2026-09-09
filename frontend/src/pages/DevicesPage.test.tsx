@@ -49,6 +49,8 @@ describe("DevicesPage", () => {
     await waitForDevices();
     const items = within(screen.getByRole("navigation", { name: "Navegação do Device Center" })).getAllByRole("button");
     expect(items.map((item) => item.textContent?.replace("Soon", "").trim())).toEqual(["Devices", "Automations", "Notifications", "History", "Security", "Settings"]);
+    expect(items[0]).toHaveAttribute("aria-current", "page");
+    for (const item of items.slice(1)) expect(item).not.toHaveAttribute("aria-disabled");
     fireEvent.click(screen.getByRole("button", { name: /Automations/ }));
     expect(screen.getByText("Automations estará disponível em uma próxima versão.")).toBeVisible();
     expect(window.location.pathname).not.toBe("/automations");
@@ -61,6 +63,8 @@ describe("DevicesPage", () => {
     expect(screen.getByText("2/3")).toBeVisible();
     expect(screen.getByText("Precisa de atenção")).toBeVisible();
     expect(screen.getByText("1")).toBeVisible();
+    expect(screen.getByText("Demonstração local")).toBeVisible();
+    expect(screen.queryByText("Visão ao vivo")).not.toBeInTheDocument();
   });
 
   it("searches by device ID, name, and platform", async () => {
@@ -121,7 +125,8 @@ describe("DevicesPage", () => {
     const list = vi.fn().mockRejectedValueOnce(new ApiUnavailableError()).mockResolvedValue({ kind: "mock", devices: mockDevices });
     renderDevices(mockClient(list));
     await screen.findByRole("heading", { name: "Não foi possível atualizar seus dispositivos." });
-    expect(screen.getByText(/A conexão com o servidor foi interrompida/)).toBeVisible();
+    expect(screen.getByText("Não foi possível carregar uma atualização do servidor. Tente novamente em alguns instantes.")).toBeVisible();
+    expect(screen.queryByText(/Seus dados anteriores continuam seguros/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitForDevices();
     await waitFor(() => expect(screen.getByText("Lista de dispositivos atualizada agora.")).toBeVisible());
