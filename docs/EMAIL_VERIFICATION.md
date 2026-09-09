@@ -5,7 +5,9 @@ migration `0003`, enums, token/código, framing HMAC e keyring. A Fase 2B.4C imp
 o staging de issuance/resend síncrono no domínio, sem delivery. A Fase 2B.4D implementa
 consume síncrono de CODE/LINK e ativação atômica da conta pendente. A Fase 2B.4E adiciona
 somente uma fundação interna de application/delivery, sem endpoint HTTP, provider,
-background task, fila, outbox, login, sessão ou token de autenticação.
+background task, fila, outbox, login, sessão ou token de autenticação. A Fase 3A expõe
+somente a boundary HTTP anônima de verificação, limiter PostgreSQL e adapter SMTP
+STARTTLS; login, sessão, token, outbox e retry durável continuam fora do escopo.
 O escopo continua somente `email_verification` para `User` em `pending_verification` e
 seu `UserEmail` específico não verificado.
 
@@ -161,6 +163,86 @@ Não há persistence de delivery, outbox ou migration. O tradeoff deliberado é:
 ambígua; não se reutiliza automaticamente o mesmo segredo. Isso é disponibilidade, não
 alteração da integridade do challenge.
 
+### Boundary HTTP e delivery 3A
+
+As únicas rotas anônimas são `POST /api/v1/auth/register`,
+`POST /api/v1/auth/email-verification/resend`,
+`POST /api/v1/auth/email-verification/consume-code` e
+`POST /api/v1/auth/email-verification/consume-link`. A route faz apenas validação de
+envelope, admission de abuso, chamada à application layer, mapeamento público e eventual
+agendamento pós-resposta. Ela nunca abre a transação externa do domínio: application já
+commita antes de qualquer resposta ou I/O. `WrongCode`, `AttemptsExhausted`,
+`AlreadyVerified` e `AccountNotEligible` permanecem outcomes normais commitados antes do
+mapeamento HTTP.
+
+Registro novo e duplicado recebem exatamente `202` com corpo genérico. Resend staged,
+unknown, verified, cooldown e ineligible recebem a mesma resposta. Consume CODE/LINK
+retorna somente `200 {"verified": true}` para `ConsumedEmailVerification`,
+`AlreadyConsumed` e `AlreadyVerified`; estes dois últimos são sucesso idempotente seguro.
+Todo outro outcome normal retorna o único `400 {"verified": false}`, sem contador,
+status de conta, motivo de invalidação, versão HMAC ou existência de challenge.
+`KeyVersionUnavailable` é outcome normal e pertence a esse mesmo grupo de falha, sem
+virar oráculo de versão ou existência. Erros globais de configuração/keyring, invariante
+ou banco permanecem falha sanitizada de servidor. Erros de envelope usam resposta
+genérica sem ecoar input; respostas auth usam `Cache-Control: no-store`.
+`Retry-After` não revela cooldown ou estado de challenge.
+
+Todo POST auth aceita somente JSON e é limitado antes de validação de domínio: registro
+8 KiB, demais endpoints 1 KiB; e-mail até 320 caracteres, senha até 1024, CODE até 9
+e LINK até 43. A validação de domínio ainda é a autoridade. Não há CORS nesta topologia
+same-origin; form posts são rejeitados e Origin, quando presente, deve ser o
+`PUBLIC_ORIGIN` configurado. Clientes nativos podem omitir Origin.
+
+`auth_abuse_buckets` é limiter PostgreSQL de janela fixa, compartilhado e atômico. Ele
+persiste somente HMAC-SHA-256 pseudonimizado com segredo próprio (`ABUSE_CONTROL_HMAC_KEY`),
+separado do keyring CODE: nunca e-mail plaintext, senha ou secret de challenge. Orçamentos
+atuais são: registration 5/identificador/h, 30/rede/h e 300 global/min; resend 5/
+identificador/h, 20/rede/h e 300 global/h; CODE 10/challenge/15 min, 30/rede/15 min e
+1000 global/15 min; LINK 60/rede/15 min e 1500 global/15 min. Falha da autoridade do
+limiter nega temporariamente a operação. Cooldown de 60 segundos é defesa de domínio,
+não substituto do limiter. Endereços de cliente usam peer/socket por padrão; somente um
+`X-Forwarded-For` de valor único é aceito quando o peer coincide exatamente com
+`TRUSTED_PROXY_IP`. Se o peer for o proxy confiável, XFF ausente, vazio, inválido,
+duplicado ou com múltiplos endereços falha fechado; nunca se usa o endereço do proxy
+como fallback. Multi-hop, cadeias CIDR, trusted-hop walking e parser RFC Forwarded
+complexo estão fora da Phase 3A. O proxy deve remover/sobrescrever qualquer XFF externo
+e enviar exatamente um endereço de cliente. IPv4 é agregado em /24 e IPv6 em /64.
+
+Registro passa por admission antes de Argon2 e executa o trabalho síncrono fora do event
+loop, com limite local configurável `ARGON2_MAX_CONCURRENCY` (default 2). Esse limite
+protege um processo; o PostgreSQL é a autoridade multi-worker/multi-instância. Não há
+Redis.
+
+Após retorno pós-commit de `DeliveryIntent`, FastAPI/Starlette envia o corpo HTTP e só
+então executa `dispatch_delivery()` em `BackgroundTasks`. O dispatcher chama o adapter no
+máximo uma vez e não afeta resposta, status do provider ou transação. É in-process e não
+durável: crash após commit perde plaintext, challenge persiste e resend posterior produz
+material novo. SMTP é configurável por `EMAIL_VERIFICATION_DELIVERY_MODE=smtp`, `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_SENDER`, credenciais opcionais e timeout; ele usa STARTTLS com validação
+padrão de certificado e não possui retry automático. Em produção, delivery `smtp`, SMTP
+válido e `PUBLIC_ORIGIN` HTTPS válida são obrigatórios no startup; `disabled` só é aceito
+em development/test. Não registrar payload, destinatário completo, credenciais, CODE ou LINK.
+O adapter SMTP é síncrono e executa no threadpool do Starlette; isso é dívida operacional
+V1 aceita: há timeout e admission de delivery, e um limiter dedicado poderá ser avaliado
+após métricas. Não adicionar Redis, outbox ou fila nesta fase.
+
+`PUBLIC_ORIGIN` é a única fonte de links LINK. É origem absoluta normalizada, sem path,
+query, fragment ou userinfo; produção exige HTTPS e rejeita localhost/loopback. Em
+development/test, HTTP é permitido somente para localhost/loopback. Nunca derivar a origem
+de Host, X-Forwarded-Host, Origin ou input do cliente.
+
+`GET /email-verification` nunca consome. A página não usa recursos de terceiros e recebe
+o token em `#token=...`; captura somente o formato canônico em memória, remove o fragmento
+com `history.replaceState()` e exige clique explícito antes do POST JSON. Não usa query,
+path, cookie, localStorage ou sessionStorage. Ela responde com `no-store`,
+`Referrer-Policy: no-referrer`, `nosniff`, CSP com nonce, `base-uri 'none'`,
+`object-src 'none'`, `frame-ancestors 'none'` e `X-Frame-Options: DENY`.
+
+Respostas iguais não tornam os fluxos constant-time. Diferenças de banco, locks, locator
+e HMAC continuam riscos residuais; provider está fora do caminho crítico, mas não há
+sleep artificial nem alegação de tempo constante. Revisão/medição de timing e auditoria
+durável permanecem requisitos operacionais futuros.
+
 **Consume de código** (`consume_email_verification_code`): checks de tipo exigem UUID,
 string e keyring; o guard rejeita `Session.new`/`dirty`/`deleted` antes de qualquer query
 ou savepoint. Dentro de `begin_nested()`, o lookup inicial projection-only por
@@ -262,7 +344,7 @@ removê-lo por job futuro. A política final exige revisão de privacidade/LGPD,
 operacional, retenção de audit e minimização de dados. Registro de challenge não substitui
 audit de longo prazo e não retém materiais secretos.
 
-## Test plan para 2B.4B/2B.4C/2B.4D/2B.4E
+## Test plan para 2B.4B/2B.4C/2B.4D/2B.4E/3A
 
 PostgreSQL real: enums/checks, tamanhos de digest, unicidade de token, token canônico
 de 43 caracteres, padding/não-canônico rejeitado, formato de código, `challenge_id` +
@@ -285,4 +367,12 @@ Os testes application usam PostgreSQL real para confirmar composição atômica 
 com issuance, rollback/commit externo, intenção de delivery somente após commit, DTO sem ORM
 ou Session e repr sem plaintext. Também confirmam que outcomes mutáveis de consume persistem
 antes de transporte futuro e que o dispatcher chama o adapter uma vez, sem retry, e sanitiza
-falhas. Nenhum teste implementa provider, I/O externo, endpoint HTTP, BackgroundTasks ou outbox.
+falhas. A Fase 2B.4E não implementava provider, I/O externo, endpoint HTTP,
+BackgroundTasks ou outbox.
+
+Os testes 3A usam PostgreSQL real e ASGI para provar admission atômica concorrente,
+expiração/cleanup do limiter, rejeição antes de Argon2, chave pseudonimizada, política de
+proxy e migration. Eles também comparam respostas públicas de registration/resend/consume,
+confirmam commits das mutações normais antes do mapeamento, body caps, ausência de eco de
+input, página LINK inerte com headers, dispatch após o corpo ASGI e SMTP STARTTLS fake.
+Não há teste de provider externo, retry durável, Redis, outbox ou garantia de entrega.

@@ -30,6 +30,7 @@ def test_auth_database_migration_creates_expected_tables(
         "access_tokens",
         "refresh_tokens",
         "email_verification_challenges",
+        "auth_abuse_buckets",
     }.issubset(table_names)
 
 
@@ -148,9 +149,12 @@ def test_email_verification_migration_downgrades_and_upgrades_again(
             )
         )
     assert "email_verification_challenges" not in table_names
+    assert "auth_abuse_buckets" not in table_names
     assert "email_verification_material_type" not in enum_names
     assert "email_verification_invalidation_reason" not in enum_names
 
     command.upgrade(config, "head")
     with migrated_postgresql_engine.connect() as connection:
-        assert "email_verification_challenges" in set(inspect(connection).get_table_names())
+        table_names = set(inspect(connection).get_table_names())
+        assert "email_verification_challenges" in table_names
+        assert "auth_abuse_buckets" in table_names

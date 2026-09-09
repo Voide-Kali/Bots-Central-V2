@@ -204,6 +204,36 @@ class EmailVerificationChallenge(Base):
         )
 
 
+class AuthAbuseBucket(Base):
+    """Shared, pseudonymized fixed-window counter for anonymous auth admission."""
+
+    __tablename__ = "auth_abuse_buckets"
+    __table_args__ = (
+        CheckConstraint("operation <> ''", name="ck_auth_abuse_buckets_operation_not_empty"),
+        CheckConstraint("dimension <> ''", name="ck_auth_abuse_buckets_dimension_not_empty"),
+        CheckConstraint("octet_length(bucket_key) = 32", name="ck_auth_abuse_buckets_key_length"),
+        CheckConstraint("count >= 1", name="ck_auth_abuse_buckets_count_positive"),
+        CheckConstraint(
+            "expires_at > window_started_at", name="ck_auth_abuse_buckets_expiry_after_start"
+        ),
+        Index("ix_auth_abuse_buckets_expires_at", "expires_at"),
+    )
+
+    operation: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dimension: Mapped[str] = mapped_column(String(16), primary_key=True)
+    bucket_key: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    def __repr__(self) -> str:
+        return (
+            "AuthAbuseBucket("
+            f"operation={self.operation!r}, dimension={self.dimension!r}, "
+            f"count={self.count!r})"
+        )
+
+
 class Session(Base):
     __tablename__ = "sessions"
     __table_args__ = (

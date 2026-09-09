@@ -1,13 +1,20 @@
 """Pure in-memory delivery contract for post-commit email-verification work."""
 
+import smtplib
+import ssl
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from email.message import EmailMessage
 from typing import Protocol
 
 from pydantic import SecretStr
 
 from app.db.enums import EmailVerificationMaterialType
+
+
+class EmailVerificationDeliveryConfigurationError(ValueError):
+    """Raised when an SMTP delivery adapter cannot be configured safely."""
 
 
 @dataclass(frozen=True)
@@ -25,6 +32,95 @@ class EmailVerificationDeliveryAdapter(Protocol):
     """Future adapters must make one call with automatic retries disabled."""
 
     def deliver(self, intent: DeliveryIntent) -> None: ...
+
+
+class SmtpEmailVerificationDeliveryAdapter:
+    """Single-attempt STARTTLS SMTP adapter with no provider retry behavior."""
+
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        sender: str,
+        public_origin: str,
+        username: str | None,
+        password: SecretStr | None,
+        timeout_seconds: float,
+    ) -> None:
+        if not host or not sender or not public_origin:
+            raise EmailVerificationDeliveryConfigurationError("SMTP delivery is not configured")
+        if username is not None and password is None:
+            raise EmailVerificationDeliveryConfigurationError("SMTP credentials are incomplete")
+        self._host = host
+        self._port = port
+        self._sender = sender
+        self._public_origin = public_origin
+        self._username = username
+        self._password = password
+        self._timeout_seconds = timeout_seconds
+
+    @classmethod
+    def from_settings(cls, settings: object) -> "SmtpEmailVerificationDeliveryAdapter":
+        host = getattr(settings, "smtp_host", None)
+        port = getattr(settings, "smtp_port", None)
+        sender = getattr(settings, "smtp_sender", None)
+        public_origin = getattr(settings, "public_origin", None)
+        username = getattr(settings, "smtp_username", None)
+        password = getattr(settings, "smtp_password", None)
+        timeout_seconds = getattr(settings, "smtp_timeout_seconds", None)
+        if (
+            not isinstance(host, str)
+            or not isinstance(port, int)
+            or not isinstance(sender, str)
+            or not isinstance(public_origin, str)
+            or not isinstance(username, str | None)
+            or not isinstance(password, SecretStr | None)
+            or not isinstance(timeout_seconds, float)
+        ):
+            raise EmailVerificationDeliveryConfigurationError("SMTP delivery is not configured")
+        return cls(
+            host=host,
+            port=port,
+            sender=sender,
+            public_origin=public_origin,
+            username=username,
+            password=password,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _message(self, intent: DeliveryIntent) -> EmailMessage:
+        material = intent.material.get_secret_value()
+        message = EmailMessage()
+        message["From"] = self._sender
+        message["To"] = intent.recipient
+        message["Subject"] = "Email verification"
+        if intent.material_type is EmailVerificationMaterialType.LINK:
+            message.set_content(
+                "Open this verification page and confirm explicitly:\n\n"
+                f"{self._public_origin}/email-verification#token={material}\n"
+            )
+        else:
+            message.set_content(
+                "Enter this email verification code with its challenge in the verification "
+                "page:\n\n"
+                f"Challenge ID: {intent.challenge_id}\nCode: {material[:4]} {material[4:]}\n"
+            )
+        return message
+
+    def deliver(self, intent: DeliveryIntent) -> None:
+        message = self._message(intent)
+        context = ssl.create_default_context()
+        with smtplib.SMTP(self._host, self._port, timeout=self._timeout_seconds) as client:
+            client.ehlo()
+            client.starttls(context=context)
+            client.ehlo()
+            if self._username is not None and self._password is not None:
+                client.login(self._username, self._password.get_secret_value())
+            client.send_message(message)
+
+    def __repr__(self) -> str:
+        return "SmtpEmailVerificationDeliveryAdapter(configured=True)"
 
 
 @dataclass(frozen=True)

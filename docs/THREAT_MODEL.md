@@ -1,8 +1,9 @@
 # Threat Model — AUTH + SECURITY MODEL
 
-Status: análise de desenho da Fase 2A. As mitigações deste documento são requisitos
-futuros, não controles de autenticação já implementados ou validados. Preserva a
-Foundation e não implementa contas, sessões, dispositivos ou clients.
+Status: análise de desenho da Fase 2A com controles parciais implementados na Fase 3A:
+limiter PostgreSQL para endpoints anônimos de e-mail, limites de body, guarda Argon2,
+respostas genéricas, página LINK inerte e delivery pós-resposta. Login, sessões,
+recovery, Gate, auditoria durável e demais mitigações continuam requisitos futuros.
 
 ## Escopo, ativos e limites de confiança
 
@@ -274,6 +275,13 @@ resistência a phishing ou segurança de features ainda inexistentes.
 - **Residual risk:** segurança centralizada depende da disponibilidade do PostgreSQL.
   Limites também podem atingir usuários legítimos; capacidade e alertas precisam de
   validação de carga antes de habilitar autenticação real.
+
+Para registration/resend/consume de email verification, a Fase 3A aplica limites
+PostgreSQL compartilhados, com chave HMAC pseudonimizada por identificador quando
+disponível, rede /24 ou /64 e orçamento global. O limiter falha fechado, e registration
+entra somente após admission em guarda local de concorrência Argon2. Esses controles não
+prometem bloquear botnets, timing enumeration ou DoS de rede; proxy/edge, métricas e
+revisão de capacidade continuam necessários.
 
 ## Prioridades e evidências futuras
 

@@ -1,15 +1,21 @@
 import base64
 import json
 import secrets
+from pathlib import Path
+from typing import Any
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app.auth.email_verification_materials import (
     EmailVerificationHmacKeyring,
     InvalidEmailVerificationHmacConfiguration,
 )
 from app.core.config import Settings, get_settings
+
+
+def abuse_control_secret() -> SecretStr:
+    return SecretStr(base64.urlsafe_b64encode(b"b" * 32).decode("ascii").rstrip("="))
 
 
 def test_invalid_database_url_fails_predictably() -> None:
@@ -20,6 +26,76 @@ def test_invalid_database_url_fails_predictably() -> None:
 def test_production_debug_is_rejected() -> None:
     with pytest.raises(ValidationError, match="DEBUG cannot be enabled in production"):
         Settings(app_env="production", debug=True)
+
+
+def test_public_origin_is_normalized_and_rejects_unsafe_production_values() -> None:
+    settings = Settings(public_origin="http://localhost:8000/")
+    assert settings.public_origin == "http://localhost:8000"
+    with pytest.raises(ValidationError, match="PUBLIC_ORIGIN must be non-loopback HTTPS"):
+        Settings(app_env="production", public_origin="http://localhost:8000")
+    with pytest.raises(ValidationError, match="PUBLIC_ORIGIN must not contain path"):
+        Settings(public_origin="https://example.com/verification")
+
+
+def test_smtp_mode_requires_server_config_and_public_origin() -> None:
+    with pytest.raises(ValidationError, match="SMTP delivery requires"):
+        Settings(email_verification_delivery_mode="smtp")
+
+
+@pytest.mark.parametrize("app_env", ["development", "test"])
+def test_non_production_allows_disabled_email_delivery(app_env: str) -> None:
+    settings = Settings(app_env=app_env)
+
+    assert settings.email_verification_delivery_mode == "disabled"
+
+
+def test_production_requires_smtp_email_delivery() -> None:
+    with pytest.raises(ValidationError, match="EMAIL_VERIFICATION_DELIVERY_MODE must be smtp"):
+        Settings(app_env="production")
+
+
+def test_production_rejects_incomplete_smtp_delivery() -> None:
+    with pytest.raises(ValidationError, match="SMTP delivery requires"):
+        Settings(
+            app_env="production",
+            email_verification_delivery_mode="smtp",
+            public_origin="https://verify.example.com",
+            abuse_control_hmac_key=abuse_control_secret(),
+        )
+
+
+def test_production_requires_a_valid_separate_abuse_control_secret() -> None:
+    base_settings: dict[str, Any] = {
+        "app_env": "production",
+        "email_verification_delivery_mode": "smtp",
+        "public_origin": "https://verify.example.com",
+        "smtp_host": "smtp.example.com",
+        "smtp_sender": "verification@example.com",
+    }
+    with pytest.raises(ValidationError, match="ABUSE_CONTROL_HMAC_KEY must be a valid key"):
+        Settings(**base_settings)
+    with pytest.raises(ValidationError, match="ABUSE_CONTROL_HMAC_KEY must be a valid key"):
+        Settings(**base_settings, abuse_control_hmac_key=SecretStr("invalid"))
+
+
+def test_production_accepts_complete_smtp_delivery_with_https_public_origin() -> None:
+    settings = Settings(
+        app_env="production",
+        email_verification_delivery_mode="smtp",
+        public_origin="https://verify.example.com",
+        smtp_host="smtp.example.com",
+        smtp_sender="verification@example.com",
+        abuse_control_hmac_key=abuse_control_secret(),
+    )
+
+    assert settings.email_verification_delivery_mode == "smtp"
+    assert settings.public_origin == "https://verify.example.com"
+
+
+def test_docker_entrypoint_disables_uvicorn_proxy_header_parsing() -> None:
+    dockerfile = (Path(__file__).parents[1] / "Dockerfile").read_text(encoding="utf-8")
+
+    assert '"--no-proxy-headers"' in dockerfile
 
 
 def test_email_verification_keyring_loads_json_from_environment(

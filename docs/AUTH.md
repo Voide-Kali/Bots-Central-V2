@@ -2,9 +2,11 @@
 
 Status: desenho aprovado com implementação parcial. As primitivas Argon2id, a
 canonicalização de e-mail e o serviço interno de registro estão implementados nas
-Fases 2B.2 e 2B.3. Endpoints HTTP, login, sessões, tokens, desafios e entrega de
-e-mail permanecem planejados. Requisitos marcados como **PLANNED** não devem ser
-interpretados como funcionalidade disponível.
+Fases 2B.2 e 2B.3. A Fase 3A implementa somente endpoints HTTP anônimos de registro
+e verificação de e-mail, limiter PostgreSQL e SMTP STARTTLS configurável (obrigatório em
+produção). Login, sessões,
+tokens, recovery, Gate e auditoria durável permanecem planejados. Requisitos marcados
+como **PLANNED** não devem ser interpretados como funcionalidade disponível.
 
 ## 1. Escopo e decisões preservadas
 
@@ -95,13 +97,13 @@ regras de composição. `VerifyMismatchError` e `InvalidHashError` retornam `Fal
 ou parâmetros não são mascaradas. Rehash é apenas uma decisão da biblioteca e hash
 corrompido não é tratado como atual. Ver [PASSWORD_SECURITY.md](PASSWORD_SECURITY.md).
 
-**PLANNED — login ou integração HTTP:** bloquear senhas comuns/comprometidas sem
-enviá-las a terceiros; aplicar limites de corpo e de carga antes de hashing; executar
-hashing fora do event loop com concorrência limitada; usar verificação fictícia de
-custo comparável para conta inexistente; e medir canais de tempo e regressões. Esses
-requisitos não estão implementados e não há login ou transporte HTTP nesta fase. O
-rehash bem-sucedido poderá gravar hash novo com salt novo de modo atômico em fluxo
-futuro; isso não equivale a troca de senha nem autenticação recente.
+**CURRENT — registro HTTP:** corpo é limitado a 8 KiB, senha a 1024 caracteres e
+admission compartilhada acontece antes de Argon2. O trabalho síncrono ocorre fora do
+event loop, com concorrência local limitada. Registro novo e duplicado compartilham
+resposta `202` genérica. Bloqueio de senhas comprometidas, verificação fictícia e uma
+revisão estatística de timing continuam **PLANNED**; não há login nesta fase. O rehash
+bem-sucedido poderá gravar hash novo com salt novo de modo atômico em fluxo futuro; isso
+não equivale a troca de senha nem autenticação recente.
 
 ## 5. Desafios de e-mail e códigos de segurança
 
@@ -172,8 +174,12 @@ Uma interface interna de entrega recebe destinatário autorizado, purpose, templ
 permitido, material efêmero, prazo e referência de correlação. Retorna aceitação de
 entrega ou falha sanitizada; entrega não é evidência de posse nem autenticação.
 Não expor envio arbitrário de texto/HTML, destinatário ou template ao cliente.
-Adaptador/provedor, credenciais de envio e contratos HTTP ficam para implementação
-posterior; nenhuma integração Gmail está decidida ou implementada.
+O adaptador SMTP STARTTLS configurável é implementado na Fase 3A. Ele recebe somente
+`DeliveryIntent` pós-commit, usa timeout explícito, tentativa única e credenciais de
+ambiente; não há Gmail OAuth, outbox, fila ou retry automático. A resposta HTTP não
+espera nem revela resultado de provider. Em produção, `EMAIL_VERIFICATION_DELIVERY_MODE`
+deve ser `smtp`, com SMTP e `PUBLIC_ORIGIN` HTTPS válidos; delivery `disabled` é aceito
+somente em development/test, para não aceitar registro sem rota de entrega funcional.
 
 Baseline: persistir o digest antes de enviar, manter plaintext só em memória e apagá-lo
 ao encerrar a tentativa. Não manter link token ou código em fila, outbox ou log para
@@ -185,8 +191,10 @@ Links futuros usam origem configurada e permitida, nunca `Host` arbitrário ou
 redirecionamento do cliente. Não colocar tokens na query de API, telemetria ou logs;
 uma página dedicada poderá receber token em fragmento e enviá-lo em corpo protegido,
 com `no-store`, política de referrer e sem recursos de terceiros. Abrir um link com
-GET não consome o token: scanners de e-mail não podem executar a mudança. O contrato
-web exato precisa ser validado antes de qualquer envio real.
+GET não consome o token: scanners de e-mail não podem executar a mudança. A Fase 3A usa
+`PUBLIC_ORIGIN` tipada, token em fragmento, página própria sem recursos de terceiros e
+POST explícito após `history.replaceState()` remover o fragmento. CORS permanece
+desabilitado para same-origin.
 
 ## 6. Sessões server-side
 
@@ -481,7 +489,8 @@ mas não substituem limites globais quando houver vários workers. Definir limit
 antes de hashing, envio e locks caros; parametrização validada não permite valores
 ilimitados em produção. Nenhuma dependência Redis é necessária nesta fase.
 
-Baselines propostas para testes; aplicar dimensões em conjunto, não como alternativas:
+Baselines atuais para email verification; aplicar dimensões em conjunto, não como
+alternativas:
 
 | Fluxo | Conta/identificador | IP confiável de origem | Sessão/contexto e contenção |
 | --- | --- | --- | --- |
@@ -492,11 +501,26 @@ Baselines propostas para testes; aplicar dimensões em conjunto, não como alter
 | Refresh | 120 tentativas/min | 300 tentativas/min | 10/min por sessão conhecida; cliente serializa chamadas. |
 | Reauthentication | 10 falhas/15 min | 30 tentativas/15 min | 5 falhas/15 min por sessão; invalidar desafio esgotado. |
 
+Registration usa 5/identificador/h, 30/rede/h e 300 global/min. Resend usa 5/
+identificador/h, 20/rede/h e 300 global/h. CODE usa 10/challenge/15 min, 30/rede/15 min
+e 1000 global/15 min; LINK usa 60/rede/15 min e 1500 global/15 min. O banco guarda
+somente HMAC pseudonimizado com chave de limiter separada; endereço desconhecido usa o
+mesmo formato. `TRUSTED_PROXY_IP` permite um único `X-Forwarded-For` de valor único;
+caso contrário usa peer/socket; se o peer for o proxy confiável e XFF não for exatamente
+um IP válido, a requisição falha fechado. O proxy deve remover/sobrescrever XFF externo e
+enviar exatamente um endereço de cliente. Multi-hop não é suportado. O agregado é /24
+IPv4 ou /64 IPv6. Falha da autoridade PostgreSQL nega a operação. Redis não é requisito.
+
 Conta desconhecida usa chave de identificador pseudonimizada e mesmos limites de
 conta conhecida, sem indicar existência. Não usar `session_id` arbitrário como prova
 para revogar/penalizar vítima. IP só deriva da conexão ou de proxy explicitamente
 confiável; não confiar em `X-Forwarded-For` livre. IP compartilhado, NAT, VPN e redes
 móveis geram falsos positivos: revisar thresholds com métricas e respostas genéricas.
+
+Todo entrypoint de produção deve manter a interpretação automática de proxy headers do
+Uvicorn desabilitada (`--no-proxy-headers`). `request.client` deve representar o peer
+socket real; somente `client_network()` decide quando confiar em X-Forwarded-For. Não
+combinar parsing automático do Uvicorn com parsing da aplicação.
 
 Cooldown é prazo persistido e resposta limitada, não manter threads dormindo.
 Orçamento expirado pode informar espera sem expor estado de conta. Contadores de

@@ -1,13 +1,13 @@
 # Current State
 
-## Fase atual: 2B.4E — EMAIL VERIFICATION APPLICATION + DELIVERY FOUNDATION
+## Fase atual: 3A — AUTH HTTP FOUNDATION + EMAIL DELIVERY
 
-- Branch de trabalho: `phase/email-verification-transport`.
+- Branch de trabalho: `phase/auth-http-delivery`.
 - [AUTH.md](AUTH.md), [THREAT_MODEL.md](THREAT_MODEL.md), [ADR-006](ADR/ADR-006-authentication-session-strategy.md)
   e [ADR-007](ADR/ADR-007-reauthentication-security-gate.md) permanecem o desenho aprovado.
-- A migration `0002_auth_database_foundation` adiciona somente `users`, `user_emails`,
-  `password_credentials`, `sessions`, `access_tokens` e `refresh_tokens`; consulte
-  [DATABASE.md](DATABASE.md) para relações, índices, invariantes e dados sensíveis.
+- As migrations `0002`–`0004` adicionam a fundação auth, challenges de verificação e
+  buckets pseudonimizados de abuso; consulte [DATABASE.md](DATABASE.md) para relações,
+  índices, invariantes e dados sensíveis.
 - Foram adicionados modelos SQLAlchemy, enums controlados e repositório de lookup por ID,
   e-mail canônico e digest. Não há emissão/verificação de credencial nem endpoint de auth.
 - A validação PostgreSQL real da Fase 2B.1 foi executada no banco dedicado
@@ -58,6 +58,17 @@
   consume antes de transporte futuro. DeliveryIntent é DTO ORM/Session-free, efêmero e
   redigido; dispatcher faz uma tentativa best-effort sem retry. Não há HTTP/provider,
   BackgroundTasks, fila/outbox, persistence de delivery, migration ou rate-limit.
+- A Fase 3A expõe a foundation HTTP anônima de registration, resend e consume CODE/LINK;
+  `AuthHttpRuntime` preserva a application layer como dona da transação. Há limiter
+  PostgreSQL compartilhado e fail-closed, com chaves HMAC pseudonimizadas separadas,
+  política de IP/rede confiável e guarda local de concorrência para Argon2. A entrega
+  SMTP STARTTLS é configurável e ocorre uma vez em `BackgroundTasks` somente depois do
+  corpo da resposta; em produção SMTP e `PUBLIC_ORIGIN` HTTPS são obrigatórios no startup.
+  Em produção `ABUSE_CONTROL_HMAC_KEY` também é obrigatório e independente. O entrypoint
+  mantém Uvicorn `--no-proxy-headers`; o proxy confiável deve enviar exatamente um XFF,
+  sem suporte a cadeias multi-hop.
+  Consume expõe somente sucesso verificado ou falha genérica, após a application layer
+  commitar outcomes mutáveis. Não há Redis, outbox, retry automático ou garantia de entrega.
 
 ## Current implemented
 
@@ -78,7 +89,14 @@
   pending_verification → active e siblings vivos invalidados por email_already_verified.
   Retry consumido é idempotente; versão HMAC desconhecida falha fechada sem mutação.
 - Orchestration interna de registro/resend/consume e foundation de dispatch pós-commit
-  com DeliveryIntent puro; endpoints públicos continuam fora do escopo.
+  com DeliveryIntent puro; a Fase 3A adiciona somente as rotas anônimas de e-mail.
+- Rotas públicas JSON: `POST /api/v1/auth/register`,
+  `POST /api/v1/auth/email-verification/resend`,
+  `POST /api/v1/auth/email-verification/consume-code` e
+  `POST /api/v1/auth/email-verification/consume-link`; `GET /email-verification` é uma
+  página própria inerte que lê token somente do fragmento e exige POST explícito.
+- Limiter PostgreSQL em `auth_abuse_buckets`, `PUBLIC_ORIGIN` tipada e adapter SMTP
+  STARTTLS configurável. CORS permanece desabilitado para a topologia same-origin.
 
 ## Design approved
 
@@ -88,8 +106,9 @@
 
 ## Not implemented
 
-- Provider de e-mail, endpoints HTTP de auth/registro/verificação, abuse limiting,
-  contrato de respostas genéricas/timing e verificação de e-mail secundário em ACTIVE.
+- Login, sessões operacionais, emissão/rotação de tokens, recovery, Security Gate,
+  auditoria durável, verificação de e-mail secundário em ACTIVE e qualquer CORS
+  cross-origin aprovado.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
   Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
 
@@ -147,6 +166,17 @@
   `git diff --check` passaram. `pip-audit --vulnerability-service osv` passou sem
   vulnerabilidades conhecidas; a consulta padrão ao PyPI havia falhado por reset de conexão,
   portanto OSV foi a alternativa efetivamente validada.
+- A validação corrente da Fase 3A usou PostgreSQL 17.11 real no banco dedicado
+  `bots_central_test`: foundation HTTP/limiter `52 passed`; suíte completa `288 passed`,
+  `0 skipped`, `0 failed`, `0 errors`. Cobertura total `89%`; route auth `80%`, limiter
+  `88%` e delivery `78%`. A matriz cobre migration `0004`, concorrência PostgreSQL,
+  expiração/cleanup de buckets, admission antes de Argon2, respostas genéricas,
+  commits de consume, distinção pública entre sucesso verificado e falha genérica,
+  body caps, página LINK inerte, headers, dispatch após corpo ASGI, SMTP fake STARTTLS,
+  startup SMTP/abuse-control obrigatório em produção, peer/XFF trusted-proxy fail-closed
+  e entrypoint Uvicorn sem proxy-header parsing. `ruff check .`, `mypy app tests`, `pip check`
+  e `git diff --check` passaram. `pip-audit --vulnerability-service osv` passou sem
+  vulnerabilidades conhecidas, sem registrar segredos ou URLs de banco.
 
 ## Not validated:
 
