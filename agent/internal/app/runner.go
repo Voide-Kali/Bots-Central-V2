@@ -56,10 +56,11 @@ type HostCollector interface {
 	Collect() (hostinfo.Status, error)
 }
 
-// EnrollmentState is deliberately narrow: only a server-originated enrollment
-// may make a device active, and terminal server responses become durable locally.
+// EnrollmentState is deliberately narrow: only an accepted signed heartbeat
+// probe may promote PENDING, and terminal server responses become durable locally.
 type EnrollmentState interface {
-	ActiveDeviceID() (string, error)
+	Load() (enrollment.Record, error)
+	MarkActive() error
 	MarkStateLost() error
 	MarkRevoked() error
 }
@@ -78,9 +79,9 @@ type Dependencies struct {
 	OnStateChange func(State)
 }
 
-// Runner sends a heartbeat immediately when a persisted enrollment is ACTIVE,
-// then every 30 seconds with bounded ±5 second jitter. It never heartbeats a
-// PENDING, REVOKED, or STATE_LOST device.
+// Runner sends a heartbeat immediately for a persisted PENDING or ACTIVE device,
+// then every 30 seconds with bounded ±5 second jitter. PENDING probes are signed
+// and sequenced but do not establish presence until the backend accepts one.
 type Runner struct {
 	config     Config
 	collector  HostCollector
@@ -141,10 +142,21 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 		r.setState(StateStopped)
 	}()
 	r.setState(StateStarting)
-	deviceID, err := r.enrollment.ActiveDeviceID()
+	record, err := r.enrollment.Load()
 	if err != nil {
 		return r.waitForEnrollmentState(ctx, err)
 	}
+	if record.Status == enrollment.StatusStateLost {
+		return r.waitTerminal(ctx, StateStateLost, "local device state is lost; heartbeat is disabled")
+	}
+	if record.Status == enrollment.StatusRevoked {
+		return r.waitTerminal(ctx, StateRevoked, "device is revoked; heartbeat is disabled")
+	}
+	if record.Status != enrollment.StatusPending && record.Status != enrollment.StatusActive {
+		return fmt.Errorf("app: unsupported enrollment status")
+	}
+	deviceID := record.DeviceID
+	lifecycle := record.Status
 	backoff, err := retry.New(r.config.BackoffInitial, r.config.BackoffMax)
 	if err != nil {
 		return err
@@ -166,6 +178,12 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 			}
 		}
 		if err == nil {
+			if lifecycle == enrollment.StatusPending {
+				if markErr := r.enrollment.MarkActive(); markErr != nil {
+					return fmt.Errorf("app: persist activation: %w", markErr)
+				}
+				lifecycle = enrollment.StatusActive
+			}
 			backoff.Reset()
 			r.setState(StateOnline)
 			r.logger.Info("heartbeat accepted by transport")
@@ -191,6 +209,19 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 				return fmt.Errorf("app: persist revocation: %w", markErr)
 			}
 			return r.waitTerminal(ctx, StateRevoked, "device was revoked; normal heartbeats are stopped")
+		}
+		if errors.Is(err, transport.ErrDevicePending) {
+			if lifecycle != enrollment.StatusPending {
+				return r.waitTerminal(ctx, StateBlocked, "backend reported pending for an active device; normal retries are stopped")
+			}
+			r.setState(StatePending)
+			if err := r.wait(ctx, r.heartbeatDelay()); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("app: wait pending heartbeat interval: %w", err)
+			}
+			continue
 		}
 		var retryAfter *transport.RetryAfterError
 		if errors.As(err, &retryAfter) && retryAfter.Valid {
@@ -222,12 +253,6 @@ func (r *Runner) waitForEnrollmentState(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, enrollment.ErrNotEnrolled):
 		return r.waitTerminal(ctx, StateWaitingForEnrollment, "agent is waiting for pairing enrollment")
-	case errors.Is(err, enrollment.ErrPending):
-		return r.waitTerminal(ctx, StatePending, "device is pending activation; heartbeat is disabled")
-	case errors.Is(err, enrollment.ErrStateLost):
-		return r.waitTerminal(ctx, StateStateLost, "local device state is lost; heartbeat is disabled")
-	case errors.Is(err, enrollment.ErrRevoked):
-		return r.waitTerminal(ctx, StateRevoked, "device is revoked; heartbeat is disabled")
 	default:
 		return fmt.Errorf("app: resolve enrollment state: %w", err)
 	}

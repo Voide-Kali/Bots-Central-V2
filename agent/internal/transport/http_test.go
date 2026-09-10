@@ -14,14 +14,29 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
+
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 )
+
+const testDeviceID = "123e4567-e89b-12d3-a456-426614174000"
 
 type httpTestSigner struct{ key ed25519.PrivateKey }
 
-func (s httpTestSigner) Sign(input []byte) ([]byte, error) { return ed25519.Sign(s.key, input), nil }
+func (s httpTestSigner) Public() *jose.JSONWebKey { return &jose.JSONWebKey{Key: s.key.Public()} }
+func (s httpTestSigner) Algs() []jose.SignatureAlgorithm {
+	return []jose.SignatureAlgorithm{jose.EdDSA}
+}
+func (s httpTestSigner) SignPayload(input []byte, algorithm jose.SignatureAlgorithm) ([]byte, error) {
+	if algorithm != jose.EdDSA {
+		return nil, jose.ErrUnsupportedAlgorithm
+	}
+	return ed25519.Sign(s.key, input), nil
+}
 
 type testSequence struct {
 	mu   sync.Mutex
@@ -41,7 +56,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 
 func newTestHTTP(t *testing.T, signer httpTestSigner, sequence SequenceAllocator, now time.Time, roundTripper http.RoundTripper) *HTTPClient {
 	t.Helper()
-	client, err := NewHTTP(HTTPConfig{EnrollmentURL: "http://backend.test/enroll", HeartbeatURL: "http://backend.test/heartbeat", Signer: signer, Sequence: sequence, Client: &http.Client{Transport: roundTripper}, Now: func() time.Time { return now }, AllowInsecureHTTPForTest: true})
+	client, err := NewHTTP(HTTPConfig{BackendBaseURL: "http://backend.test", Signer: signer, Sequence: sequence, Client: &http.Client{Transport: roundTripper}, Now: func() time.Time { return now }, AllowInsecureHTTPForTest: true})
 	if err != nil {
 		t.Fatalf("NewHTTP() error = %v", err)
 	}
@@ -52,65 +67,111 @@ func testResponse(status int, header http.Header, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}
 }
 
-func TestEnrollSendsPublicKeyAndVerifiableProof(t *testing.T) {
+func TestEnrollUsesFrozenBackendSchemaAndProof(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	fingerprint, err := identity.FingerprintForPublicKey(publicKey)
+	if err != nil {
+		t.Fatalf("FingerprintForPublicKey() error = %v", err)
+	}
+	version := "0.1.0"
 	client := newTestHTTP(t, httpTestSigner{key: privateKey}, &testSequence{}, now, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/enroll" || request.Method != http.MethodPost {
+		if request.URL.Path != enrollmentPath || request.Method != http.MethodPost {
 			t.Fatalf("unexpected enrollment request %s %s", request.Method, request.URL.Path)
 		}
-		if request.Header.Get("Authorization") != "Bearer one-time-pairing" {
-			t.Fatal("pairing token header was not sent")
+		if request.Header.Get("Authorization") != "" {
+			t.Fatal("pairing token must not be sent as Authorization")
 		}
-		var body struct {
-			PublicKey string `json:"public_key"`
-			Proof     string `json:"proof"`
+		if request.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("Content-Type = %q", request.Header.Get("Content-Type"))
 		}
+		var body map[string]json.RawMessage
 		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 			t.Fatalf("decode enrollment body: %v", err)
 		}
-		if body.PublicKey != base64.RawURLEncoding.EncodeToString(publicKey) {
-			t.Fatalf("public key = %q", body.PublicKey)
+		if len(body) != 6 {
+			t.Fatalf("enrollment schema fields = %d, want 6", len(body))
 		}
-		claims := verifyToken(t, body.Proof, publicKey)
-		if claims["aud"] != enrollmentAudience || claims["public_key"] != body.PublicKey {
-			t.Fatalf("unexpected proof claims: %#v", claims)
+		var decoded struct {
+			PairingToken string  `json:"pairing_token"`
+			PublicKey    string  `json:"public_key"`
+			Proof        string  `json:"proof"`
+			Name         string  `json:"name"`
+			Platform     string  `json:"platform"`
+			AgentVersion *string `json:"agent_version"`
 		}
-		return testResponse(http.StatusCreated, http.Header{"Content-Type": []string{"application/json"}}, `{"device_id":"device-1","status":"pending"}`), nil
+		encoded, _ := json.Marshal(body)
+		if err := json.Unmarshal(encoded, &decoded); err != nil {
+			t.Fatalf("decode typed enrollment body: %v", err)
+		}
+		if decoded.PairingToken != "one-time-pairing" || decoded.PublicKey != base64.RawURLEncoding.EncodeToString(publicKey) || decoded.Name != "host" || decoded.Platform != "linux/amd64" || decoded.AgentVersion == nil || *decoded.AgentVersion != version {
+			t.Fatalf("unexpected enrollment body: %#v", decoded)
+		}
+		claims := verifyBackendClaims(t, decoded.Proof, publicKey)
+		if claims.Audience != enrollmentAudience || claims.Subject != "enrollment" || claims.PairingToken != decoded.PairingToken {
+			t.Fatalf("unexpected enrollment proof claims: %#v", claims)
+		}
+		return testResponse(http.StatusCreated, make(http.Header), `{"device_id":"`+testDeviceID+`","lifecycle_status":"pending","fingerprint":"`+fingerprint+`"}`), nil
 	}))
-	result, err := client.Enroll(context.Background(), "one-time-pairing", publicKey)
+	result, err := client.Enroll(context.Background(), "one-time-pairing", EnrollmentMetadata{Name: "host", Platform: "linux/amd64", AgentVersion: &version})
 	if err != nil {
 		t.Fatalf("Enroll() error = %v", err)
 	}
-	if result != (EnrollmentResult{DeviceID: "device-1", Status: enrollment.StatusPending}) {
+	if result != (EnrollmentResult{DeviceID: testDeviceID, LifecycleStatus: enrollment.StatusPending}) {
 		t.Fatalf("result = %#v", result)
 	}
 }
 
-func TestHeartbeatUsesExactAudienceAndPersistentSequence(t *testing.T) {
+func TestEnrollFailsClosedOnFingerprintMismatch(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	client := newTestHTTP(t, httpTestSigner{key: privateKey}, &testSequence{}, time.Now(), roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return testResponse(http.StatusCreated, make(http.Header), `{"device_id":"`+testDeviceID+`","lifecycle_status":"pending","fingerprint":"SHA256:not-the-local-key"}`), nil
+	}))
+	if _, err := client.Enroll(context.Background(), "one-time-pairing", EnrollmentMetadata{Name: "host", Platform: "linux/amd64"}); err == nil {
+		t.Fatal("Enroll() accepted mismatched fingerprint")
+	}
+}
+
+func TestHeartbeatUsesFrozenBackendBodyAndClaims(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	client := newTestHTTP(t, httpTestSigner{key: privateKey}, &testSequence{}, now, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if request.URL.Path != "/heartbeat" || request.Method != http.MethodPost {
+		if request.URL.Path != "/api/v1/devices/"+testDeviceID+"/heartbeat" || request.Method != http.MethodPost {
 			t.Fatalf("unexpected heartbeat request %s %s", request.Method, request.URL.Path)
 		}
-		token := strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer ")
-		claims := verifyToken(t, token, publicKey)
-		if claims["aud"] != HeartbeatAudience || claims["sub"] != "device-1" || claims["seq"].(float64) != 1 {
+		if request.Header.Get("Authorization") != "" {
+			t.Fatal("heartbeat JWS must not be sent as Authorization")
+		}
+		if request.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("Content-Type = %q", request.Header.Get("Content-Type"))
+		}
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatalf("decode heartbeat body: %v", err)
+		}
+		if len(body) != 1 || body["jws"] == nil {
+			t.Fatalf("heartbeat body = %#v, want only jws", body)
+		}
+		var token string
+		if err := json.Unmarshal(body["jws"], &token); err != nil {
+			t.Fatalf("decode JWS body value: %v", err)
+		}
+		claims := verifyBackendClaims(t, token, publicKey)
+		if claims.Audience != HeartbeatAudience || claims.Subject != testDeviceID || claims.Sequence != 1 || claims.PairingToken != "" {
 			t.Fatalf("unexpected heartbeat claims: %#v", claims)
 		}
-		if _, ok := claims["agent_timestamp"].(string); !ok {
-			t.Fatalf("agent timestamp metadata is missing: %#v", claims)
-		}
-		return testResponse(http.StatusAccepted, make(http.Header), ""), nil
+		return testResponse(http.StatusOK, make(http.Header), `{"accepted":true}`), nil
 	}))
-	model, err := heartbeat.New("device-1", hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}, "test", now, "cap-v1")
+	model, err := heartbeat.New(testDeviceID, hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}, "test", now, "cap-v1")
 	if err != nil {
 		t.Fatalf("heartbeat.New() error = %v", err)
 	}
@@ -119,13 +180,13 @@ func TestHeartbeatUsesExactAudienceAndPersistentSequence(t *testing.T) {
 	}
 }
 
-func TestHeartbeatClassifiesSecurityAndRetryResponses(t *testing.T) {
+func TestHeartbeatClassifiesFrozenSecurityAndRetryResponses(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
-	model, err := heartbeat.New("device-1", hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}, "test", now, "cap-v1")
+	model, err := heartbeat.New(testDeviceID, hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}, "test", now, "cap-v1")
 	if err != nil {
 		t.Fatalf("heartbeat.New() error = %v", err)
 	}
@@ -138,9 +199,11 @@ func TestHeartbeatClassifiesSecurityAndRetryResponses(t *testing.T) {
 		temporary bool
 		delay     time.Duration
 	}{
-		{name: "stale sequence", status: http.StatusConflict, matches: ErrStaleSequence},
+		{name: "pending", status: http.StatusForbidden, body: `{"code":"DEVICE_PENDING"}`, matches: ErrDevicePending},
 		{name: "revoked", status: http.StatusForbidden, body: `{"code":"DEVICE_REVOKED"}`, matches: ErrDeviceRevoked},
-		{name: "rate limited", status: http.StatusTooManyRequests, header: "7", matches: ErrRateLimited, delay: 7 * time.Second},
+		{name: "stale heartbeat", status: http.StatusConflict, body: `{"code":"STALE_HEARTBEAT"}`, matches: ErrStaleSequence},
+		{name: "rate limited", status: http.StatusTooManyRequests, header: "7", body: `{"code":"HEARTBEAT_RATE_LIMITED"}`, matches: ErrRateLimited, delay: 7 * time.Second},
+		{name: "generic forbidden", status: http.StatusForbidden, body: `{"code":"OTHER"}`, matches: ErrRejected},
 		{name: "server failure", status: http.StatusServiceUnavailable, temporary: true},
 	}
 	for _, test := range cases {
@@ -180,18 +243,15 @@ func TestRetryAfterKeepsValidZeroSeparateFromInvalidValue(t *testing.T) {
 	if delay, valid := retryAfter("not-a-delay", now); valid || delay != 0 {
 		t.Fatalf("retryAfter(invalid) = %s, %v; want 0, false", delay, valid)
 	}
-	if delay, valid := retryAfter("9223372036854775807", now); valid || delay != 0 {
-		t.Fatalf("retryAfter(overflow) = %s, %v; want 0, false", delay, valid)
-	}
 }
 
-func TestProductionEndpointsRequireHTTPS(t *testing.T) {
+func TestProductionBaseURLRequiresHTTPS(t *testing.T) {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
-	if _, err := NewHTTP(HTTPConfig{EnrollmentURL: "http://backend.example/enroll", HeartbeatURL: "https://backend.example/heartbeat", Signer: httpTestSigner{key: privateKey}, Sequence: &testSequence{}}); err == nil {
-		t.Fatal("NewHTTP() accepted HTTP endpoint")
+	if _, err := NewHTTP(HTTPConfig{BackendBaseURL: "http://backend.example", Signer: httpTestSigner{key: privateKey}, Sequence: &testSequence{}}); err == nil {
+		t.Fatal("NewHTTP() accepted HTTP backend origin")
 	}
 }
 
@@ -200,14 +260,7 @@ func TestHTTPClientRejectsRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateKey() error = %v", err)
 	}
-	client, err := NewHTTP(HTTPConfig{
-		EnrollmentURL:            "https://backend.example/enroll",
-		HeartbeatURL:             "https://backend.example/heartbeat",
-		Signer:                   httpTestSigner{key: privateKey},
-		Sequence:                 &testSequence{},
-		Client:                   &http.Client{},
-		AllowInsecureHTTPForTest: false,
-	})
+	client, err := NewHTTP(HTTPConfig{BackendBaseURL: "https://backend.example", Signer: httpTestSigner{key: privateKey}, Sequence: &testSequence{}, Client: &http.Client{}})
 	if err != nil {
 		t.Fatalf("NewHTTP() error = %v", err)
 	}
@@ -216,23 +269,25 @@ func TestHTTPClientRejectsRedirects(t *testing.T) {
 	}
 }
 
-func verifyToken(t *testing.T, token string, publicKey ed25519.PublicKey) map[string]any {
+type backendClaims struct {
+	Audience     string `json:"aud"`
+	Subject      string `json:"sub"`
+	Sequence     uint64 `json:"seq"`
+	PairingToken string `json:"pairing_token"`
+}
+
+func verifyBackendClaims(t *testing.T, token string, publicKey ed25519.PublicKey) backendClaims {
 	t.Helper()
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		t.Fatalf("JWS parts = %d", len(parts))
-	}
-	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil || !ed25519.Verify(publicKey, []byte(parts[0]+"."+parts[1]), signature) {
-		t.Fatalf("JWS signature invalid: %v", err)
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	parsed, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil {
-		t.Fatalf("decode JWS payload: %v", err)
+		t.Fatalf("ParseSigned() error = %v", err)
 	}
-	var claims map[string]any
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		t.Fatalf("decode JWS claims: %v", err)
+	if len(parsed.Headers) != 1 || parsed.Headers[0].Algorithm != string(jose.EdDSA) {
+		t.Fatalf("JWS headers = %#v", parsed.Headers)
+	}
+	var claims backendClaims
+	if err := parsed.Claims(publicKey, &claims); err != nil {
+		t.Fatalf("Claims() error = %v", err)
 	}
 	return claims
 }

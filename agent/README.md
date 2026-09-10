@@ -1,84 +1,68 @@
 # Bots Central Linux Agent — Device Online V0.1
 
-This module implements the local half of Device Online V0.1. It creates one
-local Ed25519 identity, displays a fingerprint, performs enrollment by
-proof-of-possession, and sends signed heartbeats only for an `active` device.
-It does not implement remote commands.
+This module implements the Agent side of the frozen Device Online V0.1
+contract. It creates one local Ed25519 identity, displays its canonical
+fingerprint, enrolls with proof-of-possession, and sends signed heartbeats. It
+does not implement remote commands.
 
 ## Local state and secret handling
 
-The absolute `state_dir` in the configuration is created as `0700`. Its records
-are written atomically as `0600` files:
+The absolute `state_dir` is created as `0700`; its records are atomically
+written as `0600` files. The identity record holds the local Ed25519 private
+key, enrollment state holds only a device UUID plus lifecycle status, and the
+heartbeat sequence is durable and protected by an owner-only file lock.
 
-- `device-identity-v1.json` contains the local Ed25519 private key;
-- `device-enrollment-v1.json` contains only the device ID and lifecycle status;
-- `heartbeat-sequence-v1.json` contains the last sent sequence; and
-- `heartbeat-sequence-v1.lock` serializes sequence allocation across processes.
-
-The private key has no export API and is never included in a request or log. The
-pairing token is accepted only from standard input during initial enrollment; it
-is not accepted in configuration or command arguments and is never persisted.
-Provide it from an approved ephemeral secret-input mechanism, for example by
-piping it to `-pairing-token-stdin`; do not place it in a shell history, file,
-or unit definition.
+The private key has no export API and never appears in a request or log. The
+pairing token is accepted only through `-pairing-token-stdin` during first
+enrollment; it is not accepted in config or argv and is never persisted. Supply
+it from an approved ephemeral secret-input mechanism, not shell history, a
+file, or a unit definition.
 
 ```bash
 go build ./cmd/bots-central-agent
 your-secret-input-command | ./bots-central-agent -config ./config.json -pairing-token-stdin
 ```
 
-The agent logs only the public-key fingerprint in the format
-`ed25519-sha256:<base64url digest>` so an operator can verify the local identity.
+The displayed fingerprint is byte-for-byte compatible with the Backend:
+`SHA256:<unpadded-base64url-SHA-256-of-raw-Ed25519-public-key>`.
 
-## Configuration
+## Configuration and transport
 
-Start from `config.example.json`. All fields are required. `enrollment_url` and
-`heartbeat_url` must be absolute HTTPS URLs with no embedded credentials, query,
-or fragment. TLS uses the standard Go verifier. The client does not follow HTTP
-redirects, preventing a pairing token or JWS from being forwarded to another
-endpoint.
+`backend_base_url` is one HTTPS origin with no embedded credentials, path,
+query, or fragment. The Agent builds only these frozen paths:
 
-`heartbeat_interval` is fixed at `30s`; the runtime applies a bounded random
-jitter of plus or minus five seconds after a successful heartbeat. Failed
-network and 5xx attempts use the configured bounded exponential backoff.
+- `POST /api/v1/devices/enrollments`;
+- `POST /api/v1/devices/{device_id}/heartbeat`.
 
-## Wire behavior
+TLS uses standard Go verification. Redirects are disabled, and responses are
+bounded before JSON parsing. The Agent uses `go-jose/v4` with the algorithm
+fixed to `EdDSA`; it does not negotiate algorithms or accept request-selected
+keys.
 
-Enrollment sends the configured `enrollment_url` a POST with the pairing token
-in the `Authorization: Bearer` header and a JSON body containing the base64url
-public key plus a compact Ed25519 JWS proof. The proof has audience
-`bots-central:enrollment:v1`. The response is accepted only when it contains a
-device ID and status `pending` or `active`; neither pairing data nor proof data
-is written locally.
+## Device protocol
 
-Each heartbeat is a POST to the configured `heartbeat_url` with a compact
-Ed25519 JWS in `Authorization: Bearer`. Its audience is exactly
-`bots-central:heartbeat:v1`; it includes the device ID, a durable monotonic
-`uint64` sequence, hostname/platform metadata, and an agent timestamp. The
-sequence is committed before the request is signed or sent, so a crash may skip
-a number but never reuses one.
+Enrollment sends JSON with `pairing_token`, canonical raw-32-byte `public_key`,
+`proof`, `name`, `platform`, and optional `agent_version`. The pairing token is
+not an HTTP bearer credential. The compact JWS proof is signed by the same
+local key and carries exact `aud` `bots-central:enrollment:v1`, `sub`
+`enrollment`, and the plaintext `pairing_token`. Before persisting the pending
+enrollment, the Agent compares the returned fingerprint exactly against its
+local canonical fingerprint.
 
-The local enrollment status gates delivery:
+Heartbeats send `Content-Type: application/json` and `{"jws":"..."}`. Their
+EdDSA JWS carries exact `aud` `bots-central:heartbeat:v1`, the persisted UUID as
+`sub`, and a durable monotonic `uint64` `seq`. The sequence is committed before
+the probe, so crashes may leave gaps but never reuse values. Backend time is the
+only presence authority.
 
-- `pending` sends no heartbeat;
-- `active` sends heartbeats;
-- a `409` stale sequence persists `state_lost` and fails closed; and
-- a `403` response whose JSON code is `DEVICE_REVOKED` persists `revoked` and
-  stops normal heartbeats.
-
-Neither terminal path deletes the private key. A `429` obeys a valid
-`Retry-After`; malformed or absent values use bounded backoff. Other 5xx and
-network errors use bounded backoff, while other rejected responses stop normal
-retries.
-
-## Backend integration boundary
-
-The current backend base does not yet expose or approve the enrollment,
-activation-status, or heartbeat endpoints. Consequently, a locally persisted
-`pending` device remains safely idle until a backend-approved activation-status
-contract is integrated; the agent never promotes it itself. Endpoint URLs are
-explicit configuration rather than guessed paths. This is an integration
-blocker, not a fallback to a permanent user token or API key.
+A pending device sends signed, sequenced probes every 30 seconds with ±5 seconds
+jitter. `403 DEVICE_PENDING` keeps it pending and schedules the next nominal
+probe. The first `200 {"accepted":true}` persists `active`; active restart
+continues normally. `409 STALE_HEARTBEAT` persists `state_lost` and fails closed.
+`403 DEVICE_REVOKED` persists `revoked` and stops normal traffic. Neither path
+deletes the key. Valid `Retry-After`, including zero, is honored for
+`429 HEARTBEAT_RATE_LIMITED`; network/5xx use bounded backoff and other 4xx
+responses fail closed.
 
 Run checks from this directory:
 

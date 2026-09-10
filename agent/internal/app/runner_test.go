@@ -13,18 +13,34 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
 type testEnrollment struct {
 	mu        sync.Mutex
-	deviceID  string
+	record    enrollment.Record
 	err       error
+	activated bool
 	stateLost bool
 	revoked   bool
 }
 
-func (s *testEnrollment) ActiveDeviceID() (string, error) { return s.deviceID, s.err }
+func (s *testEnrollment) Load() (enrollment.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.record, s.err
+}
+func (s *testEnrollment) MarkActive() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.record.Status != enrollment.StatusPending {
+		return errors.New("not pending")
+	}
+	s.record.Status = enrollment.StatusActive
+	s.activated = true
+	return nil
+}
 func (s *testEnrollment) MarkStateLost() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -39,6 +55,7 @@ func (s *testEnrollment) MarkRevoked() error {
 }
 func (s *testEnrollment) StateLost() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.stateLost }
 func (s *testEnrollment) Revoked() bool   { s.mu.Lock(); defer s.mu.Unlock(); return s.revoked }
+func (s *testEnrollment) Activated() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.activated }
 
 type testCollector struct {
 	status hostinfo.Status
@@ -59,7 +76,7 @@ func TestRunnerReconnectsThenReturnsOnline(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fake := &transport.Fake{Results: []error{errors.New("first failure"), errors.New("second failure"), nil}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	var sent atomic.Int32
 	fake.OnSend = func(heartbeat.Model) {
 		if sent.Add(1) == 3 {
@@ -90,13 +107,19 @@ func TestRunnerReconnectsThenReturnsOnline(t *testing.T) {
 	}
 }
 
-func TestRunnerDoesNotHeartbeatPendingDevice(t *testing.T) {
+func TestRunnerPendingProbeActivatesOnFirstAcceptedHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	fake := &transport.Fake{}
-	state := &testEnrollment{err: enrollment.ErrPending}
+	defer cancel()
+	fake := &transport.Fake{Results: []error{transport.ErrDevicePending, nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusPending}}
 	dependencies := testDependencies(fake, state)
-	dependencies.OnStateChange = func(next State) {
-		if next == StatePending {
+	var waits []time.Duration
+	dependencies.Wait = func(_ context.Context, duration time.Duration) error {
+		waits = append(waits, duration)
+		return nil
+	}
+	fake.OnSend = func(_ heartbeat.Model) {
+		if len(fake.Calls()) == 2 {
 			cancel()
 		}
 	}
@@ -107,15 +130,51 @@ func TestRunnerDoesNotHeartbeatPendingDevice(t *testing.T) {
 	if err := runner.Run(ctx); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if calls := fake.Calls(); len(calls) != 0 {
-		t.Fatalf("pending device sent %d heartbeats", len(calls))
+	if calls := fake.Calls(); len(calls) != 2 || !state.Activated() {
+		t.Fatalf("pending probes/activation = %d, %v", len(calls), state.Activated())
+	}
+	if len(waits) == 0 || waits[0] != RequiredHeartbeatInterval {
+		t.Fatalf("pending waits = %v", waits)
+	}
+}
+
+func TestRunnerPendingAcceptancePersistsActiveAcrossRestart(t *testing.T) {
+	fileStore, err := storage.NewFileStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	state, err := enrollment.New(fileStore)
+	if err != nil {
+		t.Fatalf("enrollment.New() error = %v", err)
+	}
+	if err := state.SaveEnrollment(enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusPending}); err != nil {
+		t.Fatalf("SaveEnrollment() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{nil}}
+	fake.OnSend = func(_ heartbeat.Model) { cancel() }
+	runner, err := New(testConfig(), Dependencies{Collector: testCollector{status: hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}}, Enrollment: state, Transport: fake, Logger: logging.New(io.Discard), Wait: func(context.Context, time.Duration) error { return nil }, Jitter: func() time.Duration { return 0 }})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := runner.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	restarted, err := enrollment.New(fileStore)
+	if err != nil {
+		t.Fatalf("restart enrollment.New() error = %v", err)
+	}
+	record, err := restarted.Load()
+	if err != nil || record.Status != enrollment.StatusActive {
+		t.Fatalf("restarted Load() = %#v, %v", record, err)
 	}
 }
 
 func TestRunnerStaleSequencePersistsStateLossAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &transport.Fake{Results: []error{transport.ErrStaleSequence}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	dependencies := testDependencies(fake, state)
 	dependencies.OnStateChange = func(next State) {
 		if next == StateStateLost {
@@ -137,7 +196,7 @@ func TestRunnerStaleSequencePersistsStateLossAndStops(t *testing.T) {
 func TestRunnerRevocationPersistsAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &transport.Fake{Results: []error{transport.ErrDeviceRevoked}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	dependencies := testDependencies(fake, state)
 	dependencies.OnStateChange = func(next State) {
 		if next == StateRevoked {
@@ -159,7 +218,7 @@ func TestRunnerRevocationPersistsAndStops(t *testing.T) {
 func TestRunnerHonorsRetryAfter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &transport.Fake{Results: []error{&transport.RetryAfterError{Delay: 7 * time.Second, Valid: true}, nil}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	dependencies := testDependencies(fake, state)
 	var waits []time.Duration
 	dependencies.Wait = func(_ context.Context, duration time.Duration) error {
@@ -187,7 +246,7 @@ func TestRunnerHonorsZeroRetryAfter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fake := &transport.Fake{Results: []error{&transport.RetryAfterError{Delay: 0, Valid: true}, nil}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	dependencies := testDependencies(fake, state)
 	var waits []time.Duration
 	dependencies.Wait = func(_ context.Context, duration time.Duration) error {
@@ -214,7 +273,7 @@ func TestRunnerHonorsZeroRetryAfter(t *testing.T) {
 func TestRunnerUsesBoundedBackoffForTemporaryFailures(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &transport.Fake{Results: []error{&transport.TemporaryError{Status: 503}, &transport.TemporaryError{Status: 503}, nil}}
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	dependencies := testDependencies(fake, state)
 	var waits []time.Duration
 	dependencies.Wait = func(_ context.Context, duration time.Duration) error {
@@ -239,7 +298,7 @@ func TestRunnerUsesBoundedBackoffForTemporaryFailures(t *testing.T) {
 }
 
 func TestHeartbeatJitterIsBounded(t *testing.T) {
-	state := &testEnrollment{deviceID: "device-1"}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
 	runner, err := New(testConfig(), Dependencies{Collector: testCollector{status: hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}}, Enrollment: state, Transport: &transport.Fake{}, Logger: logging.New(io.Discard), Jitter: func() time.Duration { return 99 * time.Second }})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

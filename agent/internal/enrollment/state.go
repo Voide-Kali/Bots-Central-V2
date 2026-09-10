@@ -24,8 +24,8 @@ var (
 	ErrRevoked     = errors.New("enrollment: device is revoked")
 )
 
-// Status is a server-governed lifecycle value. The agent never promotes PENDING
-// to ACTIVE on its own.
+// Status is a server-governed lifecycle value. The agent promotes PENDING only
+// after its signed heartbeat receives the backend's accepted response.
 type Status string
 
 const (
@@ -82,24 +82,20 @@ func (s *Store) SaveEnrollment(record Record) error {
 	return s.writeLocked(record)
 }
 
-// ActiveDeviceID is the runner's fail-closed gate for heartbeat delivery.
-func (s *Store) ActiveDeviceID() (string, error) {
-	record, err := s.Load()
+// MarkActive records backend activation only after the first accepted heartbeat
+// probe. It never promotes an unrelated lifecycle state.
+func (s *Store) MarkActive() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, err := s.loadLocked()
 	if err != nil {
-		return "", err
+		return err
 	}
-	switch record.Status {
-	case StatusActive:
-		return record.DeviceID, nil
-	case StatusPending:
-		return "", ErrPending
-	case StatusStateLost:
-		return "", ErrStateLost
-	case StatusRevoked:
-		return "", ErrRevoked
-	default:
-		return "", errors.New("enrollment: unsupported local status")
+	if record.Status != StatusPending {
+		return errors.New("enrollment: only pending enrollment may become active")
 	}
+	record.Status = StatusActive
+	return s.writeLocked(record)
 }
 
 // MarkStateLost prevents retries after a stale sequence response. It does not

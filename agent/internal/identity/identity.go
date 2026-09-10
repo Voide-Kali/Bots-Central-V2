@@ -13,15 +13,12 @@ import (
 	"io"
 	"os"
 
+	jose "github.com/go-jose/go-jose/v4"
+
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
 )
 
 const recordName = "device-identity-v1.json"
-
-var ErrNotEnrolled = errors.New("identity: device is not enrolled")
-
-// DeviceIdentity is the narrow view the runtime needs from a paired identity.
-type DeviceIdentity interface{ DeviceID() (string, error) }
 
 // Identity holds a local device keypair. The private key has no accessor and is never
 // supplied to heartbeat or transport code.
@@ -86,19 +83,43 @@ func (i *Identity) PublicKey() ed25519.PublicKey {
 	return append(ed25519.PublicKey(nil), publicKey...)
 }
 
-// Sign creates an Ed25519 signature without exposing private-key bytes to callers.
-func (i *Identity) Sign(message []byte) ([]byte, error) {
+// Public exposes only the public half through go-jose's opaque-signer boundary.
+// It lets the JOSE library build compact framing without exposing private-key bytes.
+func (i *Identity) Public() *jose.JSONWebKey {
+	return &jose.JSONWebKey{Key: i.PublicKey()}
+}
+
+// Algs fixes this identity to EdDSA. Callers cannot negotiate an alternate
+// signing algorithm or request an unsigned token.
+func (i *Identity) Algs() []jose.SignatureAlgorithm { return []jose.SignatureAlgorithm{jose.EdDSA} }
+
+// SignPayload implements jose.OpaqueSigner. The private key remains device-local
+// while go-jose owns compact JWS framing and protected-header serialization.
+func (i *Identity) SignPayload(message []byte, algorithm jose.SignatureAlgorithm) ([]byte, error) {
 	if i == nil || len(i.privateKey) != ed25519.PrivateKeySize {
 		return nil, errors.New("identity: private key is unavailable")
+	}
+	if algorithm != jose.EdDSA {
+		return nil, errors.New("identity: unsupported signing algorithm")
 	}
 	return ed25519.Sign(i.privateKey, message), nil
 }
 
 // Fingerprint is a stable local display value, derived only from the public key.
 func (i *Identity) Fingerprint() string {
-	digest := sha256.Sum256(i.PublicKey())
-	return "ed25519-sha256:" + base64.RawURLEncoding.EncodeToString(digest[:])
+	fingerprint, err := FingerprintForPublicKey(i.PublicKey())
+	if err != nil {
+		return ""
+	}
+	return fingerprint
 }
 
-// DeviceID confirms that this key-only local foundation is not an enrollment protocol.
-func (i *Identity) DeviceID() (string, error) { return "", ErrNotEnrolled }
+// FingerprintForPublicKey returns the exact backend-approved public display
+// format. It accepts only a raw 32-byte Ed25519 public key.
+func FingerprintForPublicKey(publicKey ed25519.PublicKey) (string, error) {
+	if len(publicKey) != ed25519.PublicKeySize {
+		return "", errors.New("identity: invalid public key")
+	}
+	digest := sha256.Sum256(publicKey)
+	return "SHA256:" + base64.RawURLEncoding.EncodeToString(digest[:]), nil
+}

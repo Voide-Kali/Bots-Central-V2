@@ -72,7 +72,7 @@ func main() {
 		logger.Error("agent startup failed", logging.ErrorField(err))
 		os.Exit(2)
 	}
-	httpTransport, err := transport.NewHTTP(transport.HTTPConfig{EnrollmentURL: fileConfig.EnrollmentURL, HeartbeatURL: fileConfig.HeartbeatURL, Signer: localIdentity, Sequence: sequences})
+	httpTransport, err := transport.NewHTTP(transport.HTTPConfig{BackendBaseURL: fileConfig.BackendBaseURL, Signer: localIdentity, Sequence: sequences})
 	if err != nil {
 		logger.Error("agent startup failed", logging.ErrorField(err))
 		os.Exit(2)
@@ -80,8 +80,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if pairingTokenStdin {
-		if _, err := enrollmentState.Load(); !errors.Is(err, enrollment.ErrNotEnrolled) {
-			logger.Error("agent startup failed", logging.ErrorField(errors.New("pairing input is allowed only before the first enrollment")))
+		record, loadErr := enrollmentState.Load()
+		if !pairingAllowed(record, loadErr) {
+			logger.Error("agent startup failed", logging.ErrorField(errors.New("pairing input is allowed only before enrollment or after state loss")))
 			os.Exit(2)
 		}
 		pairingToken, err := readPairingToken(os.Stdin)
@@ -89,17 +90,23 @@ func main() {
 			logger.Error("agent startup failed", logging.ErrorField(err))
 			os.Exit(2)
 		}
-		result, err := httpTransport.Enroll(ctx, pairingToken, localIdentity.PublicKey())
+		enrollmentHost, err := hostinfo.SystemCollector().Collect()
+		if err != nil {
+			logger.Error("agent enrollment failed", logging.ErrorField(err))
+			os.Exit(1)
+		}
+		agentVersion := version
+		result, err := httpTransport.Enroll(ctx, pairingToken, transport.EnrollmentMetadata{Name: enrollmentHost.Hostname, Platform: enrollmentHost.Platform, AgentVersion: &agentVersion})
 		pairingToken = ""
 		if err != nil {
 			logger.Error("agent enrollment failed", logging.ErrorField(err))
 			os.Exit(1)
 		}
-		if err := enrollmentState.SaveEnrollment(enrollment.Record{DeviceID: result.DeviceID, Status: result.Status}); err != nil {
+		if err := enrollmentState.SaveEnrollment(enrollment.Record{DeviceID: result.DeviceID, Status: result.LifecycleStatus}); err != nil {
 			logger.Error("agent enrollment failed", logging.ErrorField(err))
 			os.Exit(1)
 		}
-		logger.Info("enrollment state persisted", logging.Field{Key: "device_id", Value: result.DeviceID}, logging.Field{Key: "status", Value: result.Status})
+		logger.Info("enrollment state persisted", logging.Field{Key: "device_id", Value: result.DeviceID}, logging.Field{Key: "status", Value: result.LifecycleStatus})
 	}
 	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, app.Dependencies{Collector: hostinfo.SystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger})
 	if err != nil {
@@ -111,6 +118,10 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("agent stopped")
+}
+
+func pairingAllowed(record enrollment.Record, err error) bool {
+	return errors.Is(err, enrollment.ErrNotEnrolled) || (err == nil && record.Status == enrollment.StatusStateLost)
 }
 
 // readPairingToken retains the one-time token only in process memory. The CLI

@@ -1,7 +1,6 @@
 {
   "state_dir": "/var/lib/bots-central-agent",
-  "enrollment_url": "https://backend.example/api/v1/device-enrollments",
-  "heartbeat_url": "https://backend.example/api/v1/device-heartbeats",
+  "backend_base_url": "https://backend.example",
   "heartbeat_interval": "30s",
   "transport_timeout": "10s",
   "backoff_initial": "1s",
