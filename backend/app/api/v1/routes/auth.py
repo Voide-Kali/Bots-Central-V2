@@ -646,6 +646,7 @@ async def devices(request: Request) -> Response:
                     "lifecycle_status": item.lifecycle_status.value,
                     "last_seen_at": item.last_seen_at.isoformat() if item.last_seen_at else None,
                     "agent_version": item.agent_version,
+                    "fingerprint": item.public_key_fingerprint,
                 }
                 for item in rows
             ]

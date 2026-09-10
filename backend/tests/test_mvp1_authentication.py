@@ -1,6 +1,7 @@
 """PostgreSQL integration coverage for the MVP-1 session foundation."""
 
 import base64
+import hashlib
 import uuid
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -646,6 +647,13 @@ async def test_me_rejects_invalid_authority_state(
 async def test_devices_are_scoped_to_authenticated_user(migrated_postgresql_engine: Engine) -> None:
     with active_user(migrated_postgresql_engine) as (user_a, email_a, password_a):
         with active_user(migrated_postgresql_engine) as (user_b, _, _):
+            public_key = b"a" * 32
+            fingerprint = "SHA256:" + base64.urlsafe_b64encode(
+                hashlib.sha256(public_key).digest()
+            ).decode("ascii").rstrip("=")
+            revoked_fingerprint = "SHA256:" + base64.urlsafe_b64encode(
+                hashlib.sha256(b"b" * 32).digest()
+            ).decode("ascii").rstrip("=")
             with Session(migrated_postgresql_engine) as session, session.begin():
                 session.add_all(
                     [
@@ -653,13 +661,23 @@ async def test_devices_are_scoped_to_authenticated_user(migrated_postgresql_engi
                             user_id=user_a,
                             name="A1",
                             platform="linux",
-                            lifecycle_status=DeviceLifecycleStatus.ACTIVE,
+                            lifecycle_status=DeviceLifecycleStatus.PENDING,
+                            public_key=public_key,
+                            public_key_fingerprint=fingerprint,
                         ),
                         Device(
                             user_id=user_a,
                             name="A2",
                             platform="windows",
-                            lifecycle_status=DeviceLifecycleStatus.PENDING,
+                            lifecycle_status=DeviceLifecycleStatus.ACTIVE,
+                        ),
+                        Device(
+                            user_id=user_a,
+                            name="A3",
+                            platform="linux",
+                            lifecycle_status=DeviceLifecycleStatus.REVOKED,
+                            public_key=b"b" * 32,
+                            public_key_fingerprint=revoked_fingerprint,
                         ),
                         Device(
                             user_id=user_b,
@@ -682,11 +700,21 @@ async def test_devices_are_scoped_to_authenticated_user(migrated_postgresql_engi
                 )
             assert response.status_code == 200
             devices = response.json()["devices"]
-            assert {device["name"] for device in devices} == {"A1", "A2"}
+            assert {device["name"] for device in devices} == {"A1", "A2", "A3"}
             assert all(device["status"] == "offline" for device in devices)
-            assert {device["lifecycle_status"] for device in devices} == {"active", "pending"}
+            assert {device["lifecycle_status"] for device in devices} == {
+                "active",
+                "pending",
+                "revoked",
+            }
             assert all(device["last_seen_at"] is None for device in devices)
             assert all("user_id" not in device for device in devices)
+            by_name = {device["name"]: device for device in devices}
+            assert by_name["A1"]["fingerprint"] == fingerprint
+            assert by_name["A2"]["fingerprint"] is None
+            assert by_name["A3"]["fingerprint"] == revoked_fingerprint
+            for device in devices:
+                assert not {"public_key", "private_key", "pairing", "proof", "jws"} & set(device)
 
 
 @pytest.mark.anyio

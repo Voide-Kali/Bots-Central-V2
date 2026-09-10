@@ -17,6 +17,10 @@ The owner confirms or rejects a pending device by posting the displayed
 fingerprint to `/api/v1/devices/{device_id}/approve` or `/reject`. Only approval
 changes lifecycle to `active`; reject revokes the device.
 
+Authenticated owner `GET /api/v1/devices` returns `fingerprint: string | null`
+for every device. It is the persisted canonical fingerprint for human comparison
+in the Web approval flow; legacy records without an enrolled key return `null`.
+
 `POST /api/v1/devices/{device_id}/heartbeat` accepts `{ "jws": "..." }`.
 The JWS is verified only as `alg=EdDSA`, with the enrolled Ed25519 public key,
 exact `aud` `bots-central:heartbeat:v1`, matching UUID `sub`, and an integer

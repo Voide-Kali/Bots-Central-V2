@@ -16,6 +16,8 @@ Implemented on `device-online/backend-v0.1`: digest-only, one-time five-minute p
 Ed25519 proof-of-possession enrollment into `PENDING`; owner fingerprint approval/reject;
 EdDSA-only JWS heartbeat with PostgreSQL conditional uint64 anti-replay; server-authoritative
 `last_seen_at`; and derived 90-second ONLINE/OFFLINE presence. See [DEVICE_ONLINE_V01.md](DEVICE_ONLINE_V01.md).
+Authenticated owner device listing exposes the persisted fingerprint for the future
+Web human-comparison flow; frontend integration remains pending.
 This is Backend-only: Agent implementation, cross-repository integration, remote actions,
 and invasive collection remain out of scope and unimplemented.
 
