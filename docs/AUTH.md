@@ -4,9 +4,29 @@ Status: desenho aprovado com implementação parcial. As primitivas Argon2id, a
 canonicalização de e-mail e o serviço interno de registro estão implementados nas
 Fases 2B.2 e 2B.3. A Fase 3A implementa somente endpoints HTTP anônimos de registro
 e verificação de e-mail, limiter PostgreSQL e SMTP STARTTLS configurável (obrigatório em
-produção). Login, sessões,
-tokens, recovery, Gate e auditoria durável permanecem planejados. Requisitos marcados
-como **PLANNED** não devem ser interpretados como funcionalidade disponível.
+produção). O track MVP-1 em andamento acrescenta login de contas ativas, sessões
+PostgreSQL, tokens opacos com refresh rotation, logout, `/me` e a listagem
+autenticada de devices.
+Recovery, Gate, pairing de devices, ações remotas e auditoria durável permanecem
+planejados. Requisitos marcados como **PLANNED** não devem ser interpretados como
+funcionalidade disponível.
+
+### Boundary web de refresh
+
+Login, refresh e logout que emitem ou consomem o cookie de refresh pertencem à
+boundary web same-origin. Exigem `Origin` idêntico a `PUBLIC_ORIGIN`; quando
+presente, `Sec-Fetch-Site` deve ser `same-origin`. A ausência de `Origin` não é
+aceita nessa boundary. Cliente nativo/mobile precisará de contrato de refresh
+separado, em vez de enfraquecer a defesa CSRF do navegador.
+
+### Device Center foundation
+
+`devices.lifecycle_status` é lifecycle/credencial (`pending`, `active`,
+`revoked`) e não é presença. O campo público `status` do Device Center significa
+presença operacional (`online`/`offline`). Enquanto o contrato de heartbeat e
+seu threshold server-side não forem congelados, a API retorna conservadoramente
+`offline` para todos os devices e também expõe `lifecycle_status` de forma
+explícita. Presença jamais é autoridade de segurança.
 
 ## 1. Escopo e decisões preservadas
 

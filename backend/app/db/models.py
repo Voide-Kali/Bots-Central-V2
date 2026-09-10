@@ -20,11 +20,55 @@ from app.db.base import Base
 from app.db.enums import (
     AccountStatus,
     AuthenticationLevel,
+    DeviceLifecycleStatus,
     EmailVerificationInvalidationReason,
     EmailVerificationMaterialType,
     SessionRevocationReason,
     persisted_enum_values,
 )
+
+
+class Device(Base):
+    __tablename__ = "devices"
+    __table_args__ = (
+        CheckConstraint("name <> ''", name="ck_devices_name_not_empty"),
+        CheckConstraint("platform <> ''", name="ck_devices_platform_not_empty"),
+        Index("ix_devices_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    lifecycle_status: Mapped[DeviceLifecycleStatus] = mapped_column(
+        Enum(
+            DeviceLifecycleStatus,
+            name="device_lifecycle_status",
+            values_callable=persisted_enum_values,
+        ),
+        nullable=False,
+        default=DeviceLifecycleStatus.PENDING,
+        server_default=DeviceLifecycleStatus.PENDING.value,
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"Device(id={self.id!s}, user_id={self.user_id!s}, "
+            f"lifecycle_status={self.lifecycle_status.value!r})"
+        )
 
 
 class User(Base):

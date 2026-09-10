@@ -1,5 +1,20 @@
 # Current State
 
+## MVP-1 backend auth/devices
+
+Ready for final host gate — not yet integrated. The
+`mvp1/backend-auth-devices` track adds PostgreSQL-authoritative login,
+opaque access tokens, refresh rotation with family replay revocation, logout,
+`/me`, and a user-scoped read-only device listing. Access and refresh secrets
+are CSPRNG values; only SHA-256 digests are persisted. Device pairing and
+remote actions remain out of scope.
+
+Validated pre-host: migration `0004 ↔ 0005` round-trip against the dedicated
+`bots_central_test` PostgreSQL database; 38 MVP-1 authentication/HTTP/migration
+tests passed, including a leakage regression using actual persisted access and
+refresh digests. `ruff check .`, `mypy app tests`, `pip check`, `git diff --check`,
+and `pip-audit -r requirements.lock --vulnerability-service osv` passed.
+
 ## Fase atual: 3A — AUTH HTTP FOUNDATION + EMAIL DELIVERY
 
 - Branch de trabalho: `phase/auth-http-delivery`.

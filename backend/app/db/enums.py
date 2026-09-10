@@ -28,6 +28,12 @@ class SessionRevocationReason(StrEnum):
     SECURITY_CONTAINMENT = "security_containment"
 
 
+class DeviceLifecycleStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 class EmailVerificationMaterialType(StrEnum):
     LINK = "link"
     CODE = "code"

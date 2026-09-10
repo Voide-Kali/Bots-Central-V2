@@ -11,8 +11,10 @@ from fastapi import APIRouter, BackgroundTasks, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.auth import authentication
 from app.auth import email_verification_application as application
 from app.auth.abuse_control import (
     AbuseControlKey,
@@ -42,9 +44,11 @@ from app.auth.emails import EmailValidationError, validate_and_canonicalize_emai
 from app.auth.passwords import PasswordPolicyError
 from app.core.config import Settings
 from app.db.enums import EmailVerificationMaterialType
+from app.db.models import Device
 from app.db.session import get_engine
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+devices_router = APIRouter(prefix="/devices", tags=["devices"])
 verification_page_router = APIRouter()
 
 _AUTH_BODY_LIMITS = {
@@ -52,6 +56,7 @@ _AUTH_BODY_LIMITS = {
     "/api/v1/auth/email-verification/resend": 1024,
     "/api/v1/auth/email-verification/consume-code": 1024,
     "/api/v1/auth/email-verification/consume-link": 1024,
+    "/api/v1/auth/login": 8 * 1024,
 }
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _ACCEPTED_MESSAGE = "If eligible, verification instructions will be sent."
@@ -190,6 +195,18 @@ class ConsumeLinkRequest(_AuthRequest):
         return value
 
 
+class LoginRequest(_AuthRequest):
+    email: str = Field(max_length=320)
+    password: SecretStr
+
+    @field_validator("password")
+    @classmethod
+    def password_size(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) > 1024:
+            raise ValueError("password is too long")
+        return value
+
+
 def _generic_json_response(status_code: int, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status_code, content={"message": message}, headers=_NO_STORE_HEADERS
@@ -233,6 +250,20 @@ def _origin_is_acceptable(request: Request, runtime: AuthHttpRuntime) -> bool:
     return origin is None or (
         runtime.settings.public_origin is not None and origin == runtime.settings.public_origin
     )
+
+
+def _web_cookie_request_is_acceptable(request: Request, runtime: AuthHttpRuntime) -> bool:
+    """Require browser evidence for endpoints that issue or consume the refresh cookie.
+
+    Native clients need a future, separately authenticated refresh boundary; absence
+    of Origin is not accepted on this same-origin web-cookie boundary.
+    """
+    if runtime.settings.public_origin is None:
+        return False
+    if request.headers.get("origin") != runtime.settings.public_origin:
+        return False
+    fetch_site = request.headers.get("sec-fetch-site")
+    return fetch_site in {None, "same-origin"}
 
 
 async def _admit(operation: Callable[[], bool]) -> bool | None:
@@ -409,6 +440,182 @@ async def consume_link(body: ConsumeLinkRequest, request: Request) -> Response:
     except Exception:
         return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     return _consume_outcome_response(result.outcome)
+
+
+def _bearer(request: Request) -> str | None:
+    value = request.headers.get("authorization", "")
+    if not value.startswith("Bearer "):
+        return None
+    token = value[7:]
+    return token if token and len(token) <= 43 else None
+
+
+def _set_refresh_cookie(
+    response: JSONResponse, runtime: AuthHttpRuntime, refresh_token: SecretStr
+) -> None:
+    response.set_cookie(
+        "refresh_token",
+        refresh_token.get_secret_value(),
+        httponly=True,
+        secure=runtime.settings.app_env == "production",
+        samesite="strict",
+        max_age=30 * 24 * 3600,
+        path="/api/v1/auth",
+    )
+
+
+@auth_router.post("/login")
+async def login(body: LoginRequest, request: Request) -> Response:
+    runtime = _runtime(request)
+    if not _web_cookie_request_is_acceptable(request, runtime):
+        return _generic_json_response(403, _INVALID_MESSAGE)
+    if runtime.abuse_controller is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    controller = runtime.abuse_controller
+    assert controller is not None
+    try:
+        canonical = validate_and_canonicalize_email(body.email)
+        network = _network(request, runtime)
+    except EmailValidationError:
+        return _generic_json_response(422, _INVALID_MESSAGE)
+    except ClientAddressUnavailable:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    admitted = await _admit(
+        lambda: controller.admit_login(
+            canonical_email=canonical.canonical, network=network
+        )
+    )
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return _generic_json_response(429, _UNAVAILABLE_MESSAGE)
+    try:
+        result = await anyio.to_thread.run_sync(
+            lambda: authentication.login(
+                runtime.session_factory,
+                email=body.email,
+                password=body.password.get_secret_value(),
+            ),
+            limiter=runtime.password_limiter,
+        )
+    except authentication.InvalidCredentials:
+        return _generic_json_response(401, "Invalid credentials.")
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    response = JSONResponse(
+        status_code=200,
+        content={
+            "access_token": result.access_token.get_secret_value(),
+            "token_type": "Bearer",
+            "expires_in": result.access_expires_in,
+        },
+        headers=_NO_STORE_HEADERS,
+    )
+    _set_refresh_cookie(response, runtime, result.refresh_token)
+    return response
+
+
+@auth_router.post("/refresh")
+async def refresh(request: Request) -> Response:
+    runtime = _runtime(request)
+    if not _web_cookie_request_is_acceptable(request, runtime):
+        return _generic_json_response(403, _INVALID_MESSAGE)
+    token = request.cookies.get("refresh_token")
+    if token is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    try:
+        result = await _run_sync(lambda: authentication.refresh(runtime.session_factory, token))
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not result.success or result.access_token is None or result.refresh_token is None:
+        response = _generic_json_response(401, _INVALID_MESSAGE)
+        response.delete_cookie("refresh_token", path="/api/v1/auth")
+        return response
+    response = JSONResponse(
+        status_code=200,
+        content={
+            "access_token": result.access_token.get_secret_value(),
+            "token_type": "Bearer",
+            "expires_in": result.access_expires_in,
+        },
+        headers=_NO_STORE_HEADERS,
+    )
+    _set_refresh_cookie(response, runtime, result.refresh_token)
+    return response
+
+
+@auth_router.post("/logout", status_code=204)
+async def logout(request: Request) -> Response:
+    runtime = _runtime(request)
+    if not _web_cookie_request_is_acceptable(request, runtime):
+        return _generic_json_response(403, _INVALID_MESSAGE)
+    token = _bearer(request)
+    if token:
+        try:
+            await _run_sync(lambda: authentication.logout(runtime.session_factory, token))
+        except Exception:
+            return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    response = Response(status_code=204, headers=_NO_STORE_HEADERS)
+    response.delete_cookie("refresh_token", path="/api/v1/auth")
+    return response
+
+
+@auth_router.get("/me")
+async def me(request: Request) -> Response:
+    token = _bearer(request)
+    if token is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        principal = await _run_sync(
+            lambda: authentication.authenticate_access(runtime.session_factory, token)
+        )
+    except authentication.InvalidAccessToken:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(
+        status_code=200,
+        content={"id": str(principal.user_id), "email": principal.email},
+        headers=_NO_STORE_HEADERS,
+    )
+
+
+@devices_router.get("")
+async def devices(request: Request) -> Response:
+    token = _bearer(request)
+    if token is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        principal = await _run_sync(
+            lambda: authentication.authenticate_access(runtime.session_factory, token)
+        )
+        with runtime.session_factory() as session:
+            rows = session.scalars(
+                select(Device)
+                .where(Device.user_id == principal.user_id)
+                .order_by(Device.created_at, Device.id)
+            ).all()
+            payload = [
+                {
+                    "id": str(item.id),
+                    "name": item.name,
+                    "platform": item.platform,
+                    # Presence is deliberately conservative until a heartbeat contract
+                    # and server-side threshold are frozen: all devices are offline.
+                    "status": "offline",
+                    "lifecycle_status": item.lifecycle_status.value,
+                    "last_seen_at": item.last_seen_at.isoformat() if item.last_seen_at else None,
+                    "agent_version": item.agent_version,
+                }
+                for item in rows
+            ]
+    except authentication.InvalidAccessToken:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(status_code=200, content={"devices": payload}, headers=_NO_STORE_HEADERS)
 
 
 @verification_page_router.get("/email-verification", include_in_schema=False)

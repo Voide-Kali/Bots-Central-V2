@@ -59,6 +59,14 @@ REGISTRATION_POLICY = AbusePolicy(
         AbuseLimit("global", 300, 60),
     ),
 )
+LOGIN_POLICY = AbusePolicy(
+    operation="login",
+    limits=(
+        AbuseLimit("identifier", 10, 3600),
+        AbuseLimit("network", 60, 3600),
+        AbuseLimit("global", 600, 60),
+    ),
+)
 RESEND_POLICY = AbusePolicy(
     operation="email_verification_resend",
     limits=(
@@ -228,6 +236,12 @@ class AbuseController:
     def admit_registration(self, *, canonical_email: str, network: str) -> bool:
         return self._admit(
             REGISTRATION_POLICY,
+            {"identifier": canonical_email, "network": network, "global": "all"},
+        )
+
+    def admit_login(self, *, canonical_email: str, network: str) -> bool:
+        return self._admit(
+            LOGIN_POLICY,
             {"identifier": canonical_email, "network": network, "global": "all"},
         )
 
