@@ -68,6 +68,20 @@ def test_device_migration_roundtrip_0004_0005(
             assert _revision(migrated_postgresql_engine) == "0005_device_foundation"
             assert _catalog(migrated_postgresql_engine) == (True, True)
 
+            command.upgrade(config, "0006_device_online_v01")
+            assert _revision(migrated_postgresql_engine) == "0006_device_online_v01"
+            with migrated_postgresql_engine.connect() as connection:
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.device_pairing_tokens') IS NOT NULL")
+                )
+
+            command.downgrade(config, "0005_device_foundation")
+            assert _revision(migrated_postgresql_engine) == "0005_device_foundation"
+            with migrated_postgresql_engine.connect() as connection:
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.device_pairing_tokens') IS NULL")
+                )
+
             command.downgrade(config, "0004_auth_abuse_control")
             assert _revision(migrated_postgresql_engine) == "0004_auth_abuse_control"
             assert _catalog(migrated_postgresql_engine) == (False, False)

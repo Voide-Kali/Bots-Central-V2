@@ -10,6 +10,15 @@ rotation, family replay revocation, logout/revocation, `GET /api/v1/auth/me`, an
 same-origin Origin/CSRF checks. Access and refresh secrets are CSPRNG values; only
 SHA-256 digests are persisted.
 
+## Device Online V0.1 backend
+
+Implemented on `device-online/backend-v0.1`: digest-only, one-time five-minute pairing;
+Ed25519 proof-of-possession enrollment into `PENDING`; owner fingerprint approval/reject;
+EdDSA-only JWS heartbeat with PostgreSQL conditional uint64 anti-replay; server-authoritative
+`last_seen_at`; and derived 90-second ONLINE/OFFLINE presence. See [DEVICE_ONLINE_V01.md](DEVICE_ONLINE_V01.md).
+This is Backend-only: Agent implementation, cross-repository integration, remote actions,
+and invasive collection remain out of scope and unimplemented.
+
 Host validation confirmed: full backend suite `326 passed`, `0 failed`, coverage
 `89%`; targeted MVP-1 authentication/HTTP/migration suite `38/38 passed`. Migration
 `0004 ↔ 0005` round-trip passed against the dedicated `bots_central_test`

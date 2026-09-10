@@ -4,6 +4,7 @@ import secrets
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, TypeVar, cast
 
 import anyio
@@ -11,10 +12,10 @@ from fastapi import APIRouter, BackgroundTasks, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.auth import authentication
+from app.auth import authentication, device_online
 from app.auth import email_verification_application as application
 from app.auth.abuse_control import (
     AbuseControlKey,
@@ -57,6 +58,8 @@ _AUTH_BODY_LIMITS = {
     "/api/v1/auth/email-verification/consume-code": 1024,
     "/api/v1/auth/email-verification/consume-link": 1024,
     "/api/v1/auth/login": 8 * 1024,
+    "/api/v1/devices/pairings": 1024,
+    "/api/v1/devices/enrollments": 16 * 1024,
 }
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _ACCEPTED_MESSAGE = "If eligible, verification instructions will be sent."
@@ -67,6 +70,13 @@ SessionFactory = Callable[[], Session]
 T = TypeVar("T")
 
 
+def _body_limit(path: str) -> int | None:
+    """Bound all public credential-bearing JSON, including UUID heartbeat routes."""
+    if path.startswith("/api/v1/devices/") and path.endswith("/heartbeat"):
+        return 16 * 1024
+    return _AUTH_BODY_LIMITS.get(path)
+
+
 class AuthRequestSecurityMiddleware:
     """Bound and buffer tiny anonymous-auth JSON bodies before route validation."""
 
@@ -74,7 +84,8 @@ class AuthRequestSecurityMiddleware:
         self.app = app
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] != "http" or scope["path"] not in _AUTH_BODY_LIMITS:
+        limit = _body_limit(scope["path"])
+        if scope["type"] != "http" or limit is None:
             await self.app(scope, receive, send)
             return
         headers = {
@@ -88,7 +99,7 @@ class AuthRequestSecurityMiddleware:
         content_length = headers.get("content-length")
         if content_length is not None:
             try:
-                if int(content_length) > _AUTH_BODY_LIMITS[scope["path"]]:
+                if int(content_length) > limit:
                     await _generic_json_response(413, _INVALID_MESSAGE)(scope, receive, send)
                     return
             except ValueError:
@@ -104,7 +115,7 @@ class AuthRequestSecurityMiddleware:
                 continue
             body = message.get("body", b"")
             total += len(body)
-            if total > _AUTH_BODY_LIMITS[scope["path"]]:
+            if total > limit:
                 await _generic_json_response(413, _INVALID_MESSAGE)(scope, receive, send)
                 return
             body_parts.append(body)
@@ -204,6 +215,34 @@ class LoginRequest(_AuthRequest):
     def password_size(cls, value: SecretStr) -> SecretStr:
         if len(value.get_secret_value()) > 1024:
             raise ValueError("password is too long")
+        return value
+
+
+class PairingRequest(_AuthRequest):
+    pass
+
+
+class EnrollmentRequest(_AuthRequest):
+    pairing_token: SecretStr
+    public_key: str = Field(min_length=1, max_length=128)
+    proof: SecretStr
+    name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=64)
+    agent_version: str | None = Field(default=None, max_length=64)
+
+
+class FingerprintRequest(_AuthRequest):
+    fingerprint: str = Field(min_length=1, max_length=64)
+
+
+class HeartbeatRequest(_AuthRequest):
+    jws: SecretStr
+
+    @field_validator("jws")
+    @classmethod
+    def jws_size(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) > 8192:
+            raise ValueError("JWS is too long")
         return value
 
 
@@ -592,6 +631,7 @@ async def devices(request: Request) -> Response:
             lambda: authentication.authenticate_access(runtime.session_factory, token)
         )
         with runtime.session_factory() as session:
+            now = session.scalar(text("SELECT clock_timestamp()"))
             rows = session.scalars(
                 select(Device)
                 .where(Device.user_id == principal.user_id)
@@ -602,9 +642,7 @@ async def devices(request: Request) -> Response:
                     "id": str(item.id),
                     "name": item.name,
                     "platform": item.platform,
-                    # Presence is deliberately conservative until a heartbeat contract
-                    # and server-side threshold are frozen: all devices are offline.
-                    "status": "offline",
+                    "status": device_online.presence(cast(datetime, now), item),
                     "lifecycle_status": item.lifecycle_status.value,
                     "last_seen_at": item.last_seen_at.isoformat() if item.last_seen_at else None,
                     "agent_version": item.agent_version,
@@ -616,6 +654,199 @@ async def devices(request: Request) -> Response:
     except Exception:
         return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     return JSONResponse(status_code=200, content={"devices": payload}, headers=_NO_STORE_HEADERS)
+
+
+async def _device_principal(request: Request) -> authentication.AuthenticatedPrincipal | None:
+    token = _bearer(request)
+    if token is None:
+        return None
+    runtime = _runtime(request)
+    try:
+        return await _run_sync(
+            lambda: authentication.authenticate_access(runtime.session_factory, token)
+        )
+    except authentication.InvalidAccessToken:
+        return None
+
+
+@devices_router.post("/pairings")
+async def create_device_pairing(body: PairingRequest, request: Request) -> Response:
+    del body
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        pairing = await _run_sync(
+            lambda: device_online.create_pairing(
+                runtime.session_factory, user_id=principal.user_id, session_id=principal.session_id
+            )
+        )
+    except device_online.PairingUnavailable:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(
+        status_code=201,
+        content={"pairing_token": pairing.token, "expires_at": pairing.expires_at.isoformat()},
+        headers=_NO_STORE_HEADERS,
+    )
+
+
+@devices_router.post("/enrollments")
+async def enroll_device(body: EnrollmentRequest, request: Request) -> Response:
+    runtime = _runtime(request)
+    try:
+        enrolled = await _run_sync(
+            lambda: device_online.enroll(
+                runtime.session_factory,
+                pairing_token=body.pairing_token.get_secret_value(),
+                public_key_encoded=body.public_key,
+                proof=body.proof.get_secret_value(),
+                name=body.name,
+                platform=body.platform,
+                agent_version=body.agent_version,
+            )
+        )
+    except (device_online.InvalidPairing, device_online.InvalidProof):
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(
+        status_code=201,
+        content={
+            "device_id": str(enrolled.device_id),
+            "lifecycle_status": "pending",
+            "fingerprint": enrolled.fingerprint,
+        },
+        headers=_NO_STORE_HEADERS,
+    )
+
+
+@devices_router.post("/{device_id}/approve")
+async def approve_device(
+    device_id: uuid.UUID, body: FingerprintRequest, request: Request
+) -> Response:
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        await _run_sync(
+            lambda: device_online.approve(
+                runtime.session_factory,
+                user_id=principal.user_id,
+                device_id=device_id,
+                fingerprint=body.fingerprint,
+            )
+        )
+    except device_online.DeviceNotFound:
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except (device_online.DeviceNotPending, device_online.FingerprintMismatch):
+        return _generic_json_response(409, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(
+        status_code=200, content={"lifecycle_status": "active"}, headers=_NO_STORE_HEADERS
+    )
+
+
+@devices_router.post("/{device_id}/reject")
+async def reject_device(
+    device_id: uuid.UUID, body: FingerprintRequest, request: Request
+) -> Response:
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        await _run_sync(
+            lambda: device_online.reject(
+                runtime.session_factory,
+                user_id=principal.user_id,
+                device_id=device_id,
+                fingerprint=body.fingerprint,
+            )
+        )
+    except device_online.DeviceNotFound:
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except (device_online.DeviceNotPending, device_online.FingerprintMismatch):
+        return _generic_json_response(409, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(
+        status_code=200, content={"lifecycle_status": "revoked"}, headers=_NO_STORE_HEADERS
+    )
+
+
+@devices_router.post("/{device_id}/heartbeat")
+async def device_heartbeat(
+    device_id: uuid.UUID, body: HeartbeatRequest, request: Request
+) -> Response:
+    runtime = _runtime(request)
+    controller = runtime.abuse_controller
+    if controller is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    try:
+        network = _network(request, runtime)
+    except ClientAddressUnavailable:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    admitted = await _admit(lambda: controller.admit_heartbeat_preauth(network=network))
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return JSONResponse(
+            status_code=429,
+            content={"code": "HEARTBEAT_RATE_LIMITED"},
+            headers={**_NO_STORE_HEADERS, "Retry-After": "60"},
+        )
+    # Pre-auth admission deliberately precedes device lookup and Ed25519 verification.
+    try:
+        await _run_sync(
+            lambda: device_online.authenticate_heartbeat(
+                runtime.session_factory, device_id=device_id, jws=body.jws.get_secret_value()
+            )
+        )
+    except device_online.DeviceRevoked:
+        return JSONResponse(
+            status_code=403, content={"code": "DEVICE_REVOKED"}, headers=_NO_STORE_HEADERS
+        )
+    except device_online.DevicePending:
+        return JSONResponse(
+            status_code=403, content={"code": "DEVICE_PENDING"}, headers=_NO_STORE_HEADERS
+        )
+    except (device_online.DeviceNotFound, device_online.InvalidProof):
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    admitted = await _admit(lambda: controller.admit_heartbeat(device_id=device_id))
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return JSONResponse(
+            status_code=429,
+            content={"code": "HEARTBEAT_RATE_LIMITED"},
+            headers={**_NO_STORE_HEADERS, "Retry-After": "60"},
+        )
+    try:
+        await _run_sync(
+            lambda: device_online.heartbeat(
+                runtime.session_factory, device_id=device_id, jws=body.jws.get_secret_value()
+            )
+        )
+    except device_online.DeviceRevoked:
+        return JSONResponse(
+            status_code=403, content={"code": "DEVICE_REVOKED"}, headers=_NO_STORE_HEADERS
+        )
+    except device_online.StaleHeartbeat:
+        return JSONResponse(
+            status_code=409, content={"code": "STALE_HEARTBEAT"}, headers=_NO_STORE_HEADERS
+        )
+    except (device_online.DeviceNotFound, device_online.DevicePending, device_online.InvalidProof):
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(status_code=200, content={"accepted": True}, headers=_NO_STORE_HEADERS)
 
 
 @verification_page_router.get("/email-verification", include_in_schema=False)

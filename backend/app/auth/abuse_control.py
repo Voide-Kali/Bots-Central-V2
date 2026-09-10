@@ -90,6 +90,20 @@ LINK_CONSUME_POLICY = AbusePolicy(
         AbuseLimit("global", 1500, 900),
     ),
 )
+HEARTBEAT_POLICY = AbusePolicy(
+    operation="device_heartbeat",
+    limits=(
+        AbuseLimit("device", 10, 60),
+        AbuseLimit("global", 5000, 60),
+    ),
+)
+HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
+    operation="device_heartbeat_preauth",
+    limits=(
+        AbuseLimit("network", 120, 60),
+        AbuseLimit("global", 10000, 60),
+    ),
+)
 
 SessionFactory = Callable[[], Session]
 
@@ -259,6 +273,18 @@ class AbuseController:
 
     def admit_link_consume(self, *, network: str) -> bool:
         return self._admit(LINK_CONSUME_POLICY, {"network": network, "global": "all"})
+
+    def admit_heartbeat(self, *, device_id: uuid.UUID) -> bool:
+        return self._admit(
+            HEARTBEAT_POLICY,
+            {"device": str(device_id), "global": "all"},
+        )
+
+    def admit_heartbeat_preauth(self, *, network: str) -> bool:
+        return self._admit(
+            HEARTBEAT_PREAUTH_POLICY,
+            {"network": network, "global": "all"},
+        )
 
     def cleanup_expired(self) -> int:
         """Delete expired rows; callers may run this as bounded operational maintenance."""
