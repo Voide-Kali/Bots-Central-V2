@@ -5,6 +5,14 @@ export class ApiError extends Error {
   }
 }
 
+/** A valid session may be forbidden from a resource or device operation. */
+export class ForbiddenError extends ApiError {
+  public constructor(public readonly code: string | undefined = undefined) {
+    super("The API rejected this request.", 403);
+    this.name = "ForbiddenError";
+  }
+}
+
 export class ApiUnavailableError extends Error {
   public constructor() {
     super("The API is temporarily unavailable.");
@@ -16,12 +24,5 @@ export class UnauthenticatedError extends Error {
   public constructor() {
     super("Authentication is required.");
     this.name = "UnauthenticatedError";
-  }
-}
-
-export class ContractPendingError extends Error {
-  public constructor(public readonly operation: string) {
-    super(`The ${operation} response contract has not been integrated.`);
-    this.name = "ContractPendingError";
   }
 }

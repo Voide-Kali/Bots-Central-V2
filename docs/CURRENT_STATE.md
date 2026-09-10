@@ -97,6 +97,11 @@
   página própria inerte que lê token somente do fragmento e exige POST explícito.
 - Limiter PostgreSQL em `auth_abuse_buckets`, `PUBLIC_ORIGIN` tipada e adapter SMTP
   STARTTLS configurável. CORS permanece desabilitado para a topologia same-origin.
+- Frontend Device Online v0.1 usa apenas o contrato same-origin de sessão e devices:
+  access token permanece em memória, refresh depende de cookie HttpOnly e a UI renderiza
+  lifecycle/presence/last_seen somente a partir da resposta do servidor. Pairing,
+  fingerprint, aprovação e heartbeat não são simulados enquanto o Backend não expuser
+  esses contratos.
 
 ## Design approved
 

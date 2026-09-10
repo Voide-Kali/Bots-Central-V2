@@ -4,7 +4,7 @@ import type { ApiClient } from "../api";
 import { navigate } from "../app/navigation";
 import { FormField } from "../components/FormField";
 import { PageStatus } from "../components/PageStatus";
-import { AdapterNotice, apiMessage } from "./shared";
+import { apiMessage } from "./shared";
 function field(form: HTMLFormElement, name: string): string { return String(new FormData(form).get(name) ?? ""); }
 export function RegisterPage({ api }: { readonly api: ApiClient }): ReactElement {
   const [pending, setPending] = useState(false); const [message, setMessage] = useState<string>(); const [error, setError] = useState<string>();
@@ -16,7 +16,7 @@ export function RegisterPage({ api }: { readonly api: ApiClient }): ReactElement
     try { const result = await api.auth.register({ email: field(form, "email"), password }); form.reset(); setMessage(result.message); }
     catch (requestError) { setError(apiMessage(requestError)); } finally { setPending(false); }
   }
-  return <section className="auth-layout" aria-labelledby="register-title"><div className="page-intro"><p className="eyebrow">Primeiro acesso</p><h1 id="register-title">Crie sua conta</h1><p>Use um e-mail que você possa verificar. A ativação é concluída somente após a confirmação enviada pelo servidor.</p></div><form className="panel form-panel" onSubmit={submit} noValidate><AdapterNotice api={api} />
+  return <section className="auth-layout" aria-labelledby="register-title"><div className="page-intro"><p className="eyebrow">Primeiro acesso</p><h1 id="register-title">Crie sua conta</h1><p>Use um e-mail que você possa verificar. A ativação é concluída somente após a confirmação enviada pelo servidor.</p></div><form className="panel form-panel" onSubmit={submit} noValidate>
     <FormField id="register-email" name="email" type="email" label="E-mail" autoComplete="email" inputMode="email" maxLength={320} required />
     <FormField id="register-password" name="password" type="password" label="Senha" autoComplete="new-password" minLength={15} maxLength={1024} hint="Use pelo menos 15 caracteres. A validação final é feita pelo servidor." required />
     <FormField id="register-password-confirmation" name="password-confirmation" type="password" label="Confirmar senha" autoComplete="new-password" minLength={15} maxLength={1024} required />

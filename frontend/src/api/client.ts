@@ -1,10 +1,9 @@
 import type {
+  AuthenticatedUser,
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
-  DeviceListResult,
-  LoginResult,
-  MeResult,
-  ProvisionalLoginRequest,
+  Device,
+  LoginRequest,
   RegisterAcceptedResponse,
   RegisterRequest
 } from "./contracts";
@@ -12,18 +11,17 @@ import type {
 export interface AuthApi {
   register(input: RegisterRequest): Promise<RegisterAcceptedResponse>;
   consumeVerificationCode(input: ConsumeVerificationCodeRequest): Promise<ConsumeVerificationCodeResponse>;
-  login(input: ProvisionalLoginRequest): Promise<LoginResult>;
-  refresh(): Promise<MeResult>;
+  login(input: LoginRequest): Promise<void>;
+  refresh(): Promise<void>;
   logout(): Promise<void>;
-  me(): Promise<MeResult>;
+  me(): Promise<AuthenticatedUser>;
 }
 
 export interface DevicesApi {
-  list(): Promise<DeviceListResult>;
+  list(): Promise<readonly Device[]>;
 }
 
 export interface ApiClient {
-  readonly adapterName: "http" | "mock";
   readonly auth: AuthApi;
   readonly devices: DevicesApi;
 }

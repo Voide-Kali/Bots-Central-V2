@@ -11,7 +11,7 @@ import { VerifyPage } from "./pages/VerifyPage";
 function RoutedPage({ path }: { readonly path: ReturnType<typeof useAppPath> }): ReactElement {
   const api = useMemo(() => createApiClient(), []);
   return <SessionProvider api={api}>
-    {path === "/login" ? <LoginPage api={api} /> : null}
+    {path === "/login" ? <LoginPage /> : null}
     {path === "/devices" ? <DevicesPage api={api} /> : null}
     {path === "/register" || path === "/verify" ? <AppShell currentPath={path}>
       {path === "/register" ? <RegisterPage api={api} /> : null}

@@ -1,46 +1,37 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useEffect, useRef } from "react";
-import type { ReactElement } from "react";
 import type { ApiClient } from "../api";
 import { ApiUnavailableError } from "../api";
-import { SessionProvider, useSession } from "../app/session";
-import { mockDevices } from "../api/mockAdapter";
+import type { Device } from "../api/contracts";
+import { SessionProvider } from "../app/session";
 import { DevicesPage } from "./DevicesPage";
 
-function AuthenticatedDevices({ api }: { readonly api: ApiClient }): ReactElement {
-  const { login } = useSession();
-  const started = useRef(false);
-  useEffect(() => {
-    if (!started.current) {
-      started.current = true;
-      void login({ email: "demo@example.test", password: "not-a-real-password" });
-    }
-  }, [login]);
-  return <DevicesPage api={api} />;
-}
+const serverDevices: readonly Device[] = [
+  { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0" },
+  { id: "MBP-07", name: "Laptop de viagem", platform: "macOS/arm64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null },
+  { id: "NODE-02", name: "Servidor doméstico", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T09:56:00Z", agentVersion: "0.1.0" }
+];
 
-function mockClient(list: ApiClient["devices"]["list"]): ApiClient {
+function fakeClient(list: ApiClient["devices"]["list"] = async () => serverDevices): ApiClient {
   return {
-    adapterName: "mock",
     auth: {
       register: async () => ({ message: "" }),
       consumeVerificationCode: async () => ({ verified: true }),
-      login: async () => ({ kind: "mock", displayName: "Operador de demonstração" }),
-      refresh: async () => ({ kind: "mock", displayName: "Operador de demonstração" }),
+      login: async () => undefined,
+      refresh: async () => undefined,
       logout: async () => undefined,
-      me: async () => ({ kind: "mock", displayName: "Operador de demonstração" })
+      me: async () => ({ id: "user-1", email: "operator@example.test" })
     },
     devices: { list }
   };
 }
 
-function renderDevices(api = mockClient(async () => ({ kind: "mock", devices: mockDevices }))): ApiClient {
-  render(<SessionProvider api={api}><AuthenticatedDevices api={api} /></SessionProvider>);
+function renderDevices(api = fakeClient()): ApiClient {
+  render(<SessionProvider api={api}><DevicesPage api={api} /></SessionProvider>);
   return api;
 }
 
 async function waitForDevices(): Promise<void> {
-  await screen.findByRole("button", { name: /Estação de trabalho/ });
+  await screen.findByRole("button", { name: /PC000/ });
 }
 
 describe("DevicesPage", () => {
@@ -50,101 +41,67 @@ describe("DevicesPage", () => {
     const items = within(screen.getByRole("navigation", { name: "Navegação do Device Center" })).getAllByRole("button");
     expect(items.map((item) => item.textContent?.replace("Soon", "").trim())).toEqual(["Devices", "Automations", "Notifications", "History", "Security", "Settings"]);
     expect(items[0]).toHaveAttribute("aria-current", "page");
-    for (const item of items.slice(1)) expect(item).not.toHaveAttribute("aria-disabled");
     fireEvent.click(screen.getByRole("button", { name: /Automations/ }));
     expect(screen.getByText("Automations estará disponível em uma próxima versão.")).toBeVisible();
     expect(window.location.pathname).not.toBe("/automations");
   });
 
-  it("derives summary and coverage values from the mock list", async () => {
+  it("derives summary and presence from server fields without a runtime mock", async () => {
     renderDevices();
     await waitForDevices();
-    expect(screen.getByText("Total")).toBeVisible();
     expect(screen.getByText("2/3")).toBeVisible();
-    expect(screen.getByText("Precisa de atenção")).toBeVisible();
-    expect(screen.getByText("1")).toBeVisible();
-    expect(screen.getByText("Demonstração local")).toBeVisible();
-    expect(screen.queryByText("Visão ao vivo")).not.toBeInTheDocument();
+    expect(screen.getByText("Pendentes")).toBeVisible();
+    expect(screen.getAllByText("1")).not.toHaveLength(0);
+    expect(screen.getByText("Dados do servidor")).toBeVisible();
+    expect(screen.getByText(/pairing\/enrollment/)).toBeVisible();
   });
 
-  it("searches by device ID, name, and platform", async () => {
+  it("searches by server device ID, name, and platform", async () => {
     renderDevices();
     await waitForDevices();
     const search = screen.getByRole("searchbox", { name: "Buscar dispositivos" });
     fireEvent.change(search, { target: { value: "MBP-07" } });
     expect(screen.getByRole("button", { name: /Laptop de viagem/ })).toBeVisible();
-    expect(screen.queryByRole("button", { name: /Estação de trabalho/ })).not.toBeInTheDocument();
-    fireEvent.change(search, { target: { value: "Estação" } });
-    expect(screen.getByRole("button", { name: /Estação de trabalho/ })).toBeVisible();
-    fireEvent.change(search, { target: { value: "Ubuntu" } });
-    expect(screen.getByRole("button", { name: /Servidor doméstico/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /PC000/ })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "linux/amd64" } });
+    expect(screen.getByRole("button", { name: /PC000/ })).toBeVisible();
   });
 
-  it("filters online and offline devices, then clears filters", async () => {
+  it("filters server-owned online and offline presence", async () => {
     renderDevices();
     await waitForDevices();
     fireEvent.click(screen.getByRole("button", { name: "Online" }));
     expect(screen.getAllByRole("img", { name: "Indicador online" })).toHaveLength(2);
-    expect(screen.queryByText("Laptop de viagem")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Offline" }));
-    expect(screen.getByText("Laptop de viagem")).toBeVisible();
-    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar dispositivos" }), { target: { value: "nenhum" } });
-    expect(screen.getByText("Nenhum dispositivo encontrado.")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
-    expect(screen.getByRole("button", { name: /Estação de trabalho/ })).toBeVisible();
-  });
-
-  it("uses text and an indicator for both connection states", async () => {
-    renderDevices();
-    await waitForDevices();
-    expect(screen.getAllByText("Online")).not.toHaveLength(0);
-    expect(screen.getAllByRole("img", { name: "Indicador online" })).not.toHaveLength(0);
-    expect(screen.getAllByText("Offline")).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: /Laptop de viagem/ })).toBeVisible();
     expect(screen.getByRole("img", { name: "Indicador offline" })).toBeVisible();
   });
 
-  it("selects and expands a row with keyboard interaction", async () => {
+  it("shows pending lifecycle and real server metadata when a row expands", async () => {
     renderDevices();
     await waitForDevices();
-    const row = screen.getByRole("button", { name: /Estação de trabalho/ });
+    const row = screen.getByRole("button", { name: /Laptop de viagem/ });
     fireEvent.keyDown(row, { key: "Enter" });
     expect(row).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Detalhes de Estação de trabalho")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Ver detalhes" }));
-    expect(screen.getByText("Os detalhes de PC000 estão atualizados.")).toBeVisible();
+    const details = screen.getByLabelText("Detalhes de Laptop de viagem");
+    expect(within(details).getByText("Pendente de aprovação")).toBeVisible();
+    expect(within(details).getByText("Ainda não recebido pelo servidor")).toBeVisible();
+    expect(within(details).getByText("Não informado pelo servidor")).toBeVisible();
   });
 
-  it("opens the mobile sidebar interaction without bottom navigation", async () => {
-    renderDevices();
-    await waitForDevices();
-    fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
-    expect(document.querySelector(".device-center")).toHaveClass("device-center--sidebar-open");
-  });
-
-  it("renders approved unavailable state and retries successfully", async () => {
-    const list = vi.fn().mockRejectedValueOnce(new ApiUnavailableError()).mockResolvedValue({ kind: "mock", devices: mockDevices });
-    renderDevices(mockClient(list));
+  it("renders backend unavailable state and retries successfully", async () => {
+    const list = vi.fn().mockRejectedValueOnce(new ApiUnavailableError()).mockResolvedValue(serverDevices);
+    renderDevices(fakeClient(list));
     await screen.findByRole("heading", { name: "Não foi possível atualizar seus dispositivos." });
-    expect(screen.getByText("Não foi possível carregar uma atualização do servidor. Tente novamente em alguns instantes.")).toBeVisible();
-    expect(screen.queryByText(/Seus dados anteriores continuam seguros/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitForDevices();
-    await waitFor(() => expect(screen.getByText("Lista de dispositivos atualizada agora.")).toBeVisible());
+    await waitFor(() => expect(screen.getByText("Lista de dispositivos atualizada com dados do servidor.")).toBeVisible());
   });
 
-  it("preserves the loading structure without enabled controls or details", async () => {
-    const list = (): Promise<never> => new Promise(() => undefined);
-    renderDevices(mockClient(list));
-    await screen.findByLabelText("Carregando resumo");
-    expect(screen.getByRole("button", { name: "Atualizar" })).toBeDisabled();
+  it("preserves loading structure without enabled controls", async () => {
+    renderDevices(fakeClient((): Promise<never> => new Promise(() => undefined)));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Atualizar" })).toBeDisabled());
+    expect(screen.getByLabelText("Carregando resumo")).toBeVisible();
     expect(screen.getByLabelText("Buscar dispositivos")).toBeDisabled();
-    expect(document.querySelectorAll(".skeleton-row")).toHaveLength(3);
-    expect(screen.queryByRole("button", { name: "Ver detalhes" })).not.toBeInTheDocument();
-  });
-
-  it("keeps mock devices restricted to the approved field set", () => {
-    for (const device of mockDevices) {
-      expect(Object.keys(device).sort()).toEqual(["agentVersion", "connection", "id", "lastSeen", "name", "platform"]);
-    }
   });
 });

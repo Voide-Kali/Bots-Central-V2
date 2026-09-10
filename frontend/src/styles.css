@@ -142,6 +142,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .device-row__device strong { color: inherit; font-size: .9rem; font-weight: 600; }
 .technical-label, .technical-value { color: var(--text-muted); font-family: var(--font-mono); font-size: .68rem; }
 .selected-label { width: fit-content; color: var(--accent-selected); font-family: var(--font-mono); font-size: .62rem; text-transform: uppercase; }
+.lifecycle-badge { width: fit-content; padding: .18rem .36rem; border: 1px solid var(--border-control); border-radius: 999px; color: var(--text-muted); font-family: var(--font-mono); font-size: .58rem; letter-spacing: .035em; text-transform: uppercase; }
+.lifecycle-badge--active { border-color: var(--border-success); color: var(--accent-online); }
+.lifecycle-badge--pending { border-color: var(--border-warning); color: var(--accent-offline); }
+.lifecycle-badge--revoked { color: var(--text-disabled); }
 .connection-status { display: inline-flex; gap: .4rem; align-items: center; font-size: .8rem; }
 .connection-status__icon { width: 1rem; height: 1rem; }
 .connection-status--online { color: var(--accent-online); }
@@ -158,6 +162,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .state-panel--unavailable { border-color: var(--border-warning); background: var(--unavailable-background); }
 .state-panel--unavailable h2 { color: var(--unavailable-button); }
 .state-panel--unavailable button { border-color: var(--unavailable-button); color: #191914; background: var(--unavailable-button); }
+.pairing-notice { display: grid; gap: .45rem; margin-top: 1.25rem; padding: 1rem 1.25rem; border: 1px solid var(--border-warning); border-radius: var(--radius); background: var(--unavailable-background); }
+.pairing-notice h2 { margin: 0; color: var(--text-primary); font-family: var(--font-heading); font-size: 1rem; font-weight: 500; }
+.pairing-notice p { max-width: 75ch; margin: 0; color: var(--text-muted); font-size: .84rem; line-height: 1.5; }
 .skeleton-card, .skeleton-row, .skeleton-line { display: block; opacity: .72; background: #27312b; }
 .skeleton-card { min-height: 128px; border: 1px solid var(--border-panel); border-radius: var(--radius); }
 .skeleton-line { width: 200px; height: .65rem; margin: .45rem 0; }.skeleton-line--title { width: 130px; height: 1.1rem; }

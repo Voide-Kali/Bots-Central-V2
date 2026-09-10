@@ -10,12 +10,12 @@ npm install
 npm run dev
 ```
 
-Por padrão, desenvolvimento usa `VITE_API_ADAPTER=mock` para permitir avaliação visual
-antes do contrato de login/dispositivos. Para falar com a API same-origin, defina
-`VITE_API_ADAPTER=http`. Builds de produção usam `http` como padrão.
+O runtime sempre usa a API HTTP real. Login e refresh obtêm um access token opaco que
+fica exclusivamente em memória; o refresh permanece no cookie `HttpOnly` do backend.
+Nenhum token é gravado em `localStorage` ou `sessionStorage`.
 
-O mock é somente uma demonstração de interface: não emite credenciais e não representa
-uma sessão autorizada pelo servidor.
+Execute o frontend atrás da mesma origem do backend. Como CORS é desabilitado, o servidor
+Vite isolado não é um substituto para essa topologia de desenvolvimento.
 
 ```sh
 npm run lint
