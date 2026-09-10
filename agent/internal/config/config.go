@@ -7,17 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 const maxConfigSize = 64 * 1024
 
-// Config contains only local runtime controls. Device credentials and pairing data are
-// intentionally absent until their backend contract is defined.
+const RequiredHeartbeatInterval = 30 * time.Second
+
+// Config contains local runtime controls and explicit backend endpoints. Device
+// credentials and pairing data are intentionally absent.
 type Config struct {
 	StateDir          string
+	EnrollmentURL     string
+	HeartbeatURL      string
 	HeartbeatInterval time.Duration
 	TransportTimeout  time.Duration
 	BackoffInitial    time.Duration
@@ -26,6 +32,8 @@ type Config struct {
 
 type diskConfig struct {
 	StateDir          string `json:"state_dir"`
+	EnrollmentURL     string `json:"enrollment_url"`
+	HeartbeatURL      string `json:"heartbeat_url"`
 	HeartbeatInterval string `json:"heartbeat_interval"`
 	TransportTimeout  string `json:"transport_timeout"`
 	BackoffInitial    string `json:"backoff_initial"`
@@ -71,6 +79,17 @@ func Parse(data []byte) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if heartbeatInterval != RequiredHeartbeatInterval {
+		return Config{}, errors.New("config: heartbeat_interval must be 30s")
+	}
+	enrollmentURL, err := httpsEndpoint("enrollment_url", raw.EnrollmentURL)
+	if err != nil {
+		return Config{}, err
+	}
+	heartbeatURL, err := httpsEndpoint("heartbeat_url", raw.HeartbeatURL)
+	if err != nil {
+		return Config{}, err
+	}
 	transportTimeout, err := positiveDuration("transport_timeout", raw.TransportTimeout)
 	if err != nil {
 		return Config{}, err
@@ -86,7 +105,7 @@ func Parse(data []byte) (Config, error) {
 	if backoffMax < backoffInitial {
 		return Config{}, errors.New("config: backoff_max must be greater than or equal to backoff_initial")
 	}
-	return Config{StateDir: filepath.Clean(raw.StateDir), HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax}, nil
+	return Config{StateDir: filepath.Clean(raw.StateDir), EnrollmentURL: enrollmentURL, HeartbeatURL: heartbeatURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax}, nil
 }
 
 func positiveDuration(name, raw string) (time.Duration, error) {
@@ -95,4 +114,12 @@ func positiveDuration(name, raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("config: %s must be a positive duration", name)
 	}
 	return value, nil
+}
+
+func httpsEndpoint(name, raw string) (string, error) {
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("config: %s must be an HTTPS URL without credentials, query, or fragment", name)
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
 }

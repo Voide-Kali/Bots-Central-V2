@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 var (
@@ -21,6 +22,13 @@ type Store interface {
 	WriteAtomic(name string, data []byte) error
 }
 
+// LockingStore serializes a small critical section across processes sharing a
+// state directory. Sequence allocation uses it before committing a new value.
+type LockingStore interface {
+	Store
+	WithExclusiveLock(name string, action func() error) error
+}
+
 // FileStore persists records in one local state directory, restricted to its owner.
 type FileStore struct{ root string }
 
@@ -32,6 +40,41 @@ func NewFileStore(root string) (*FileStore, error) {
 }
 
 func (s *FileStore) Prepare() error { return s.ensureRoot() }
+
+// WithExclusiveLock obtains an owner-only advisory lock backed by a state file.
+// It is intentionally narrow: callers must still use WriteAtomic for durability.
+func (s *FileStore) WithExclusiveLock(name string, action func() error) error {
+	if action == nil {
+		return errors.New("storage: lock action is required")
+	}
+	path, err := s.recordPath(name)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureRoot(); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(path); err == nil {
+		if err := validateExistingRecord(path); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer func() { _ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN) }()
+	return action()
+}
 
 // Read returns a record only if it is a regular owner-only file.
 func (s *FileStore) Read(name string) ([]byte, error) {

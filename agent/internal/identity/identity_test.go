@@ -2,6 +2,7 @@ package identity
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"errors"
 	"os"
 	"path/filepath"
@@ -34,6 +35,13 @@ func TestIdentityPersistsWithOwnerOnlyPermissions(t *testing.T) {
 	}
 	if !bytes.Equal(first.PublicKey(), second.PublicKey()) {
 		t.Fatal("identity keypair was not persisted")
+	}
+	if first.Fingerprint() != second.Fingerprint() || first.Fingerprint() == "" {
+		t.Fatal("identity fingerprint was not stable")
+	}
+	signature, err := first.Sign([]byte("proof-of-possession"))
+	if err != nil || !ed25519.Verify(first.PublicKey(), []byte("proof-of-possession"), signature) {
+		t.Fatalf("Sign() did not create a verifiable proof: %v", err)
 	}
 	if err := os.Chmod(recordPath, 0o644); err != nil {
 		t.Fatalf("Chmod() error = %v", err)

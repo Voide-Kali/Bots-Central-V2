@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -83,6 +84,20 @@ func decode(data []byte) (*Identity, error) {
 func (i *Identity) PublicKey() ed25519.PublicKey {
 	publicKey := i.privateKey.Public().(ed25519.PublicKey)
 	return append(ed25519.PublicKey(nil), publicKey...)
+}
+
+// Sign creates an Ed25519 signature without exposing private-key bytes to callers.
+func (i *Identity) Sign(message []byte) ([]byte, error) {
+	if i == nil || len(i.privateKey) != ed25519.PrivateKeySize {
+		return nil, errors.New("identity: private key is unavailable")
+	}
+	return ed25519.Sign(i.privateKey, message), nil
+}
+
+// Fingerprint is a stable local display value, derived only from the public key.
+func (i *Identity) Fingerprint() string {
+	digest := sha256.Sum256(i.PublicKey())
+	return "ed25519-sha256:" + base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 // DeviceID confirms that this key-only local foundation is not an enrollment protocol.

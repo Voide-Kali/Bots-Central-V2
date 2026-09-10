@@ -1,22 +1,27 @@
-// Package app coordinates local collection, heartbeat delivery, and shutdown.
+// Package app coordinates local enrollment state, heartbeat delivery, and shutdown.
 package app
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
-	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/retry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
-const DefaultCapabilityVersion = "mvp1-heartbeat-model-v1"
+const (
+	DefaultCapabilityVersion  = "mvp1-heartbeat-model-v1"
+	RequiredHeartbeatInterval = 30 * time.Second
+	maxHeartbeatJitter        = 5 * time.Second
+)
 
 // State describes the runtime reconnect state machine.
 type State string
@@ -24,15 +29,20 @@ type State string
 const (
 	StateStarting             State = "starting"
 	StateWaitingForEnrollment State = "waiting_for_enrollment"
+	StatePending              State = "pending"
 	StateCollecting           State = "collecting"
 	StateConnecting           State = "connecting"
 	StateOnline               State = "online"
+	StateRateLimited          State = "rate_limited"
 	StateBackingOff           State = "backing_off"
+	StateStateLost            State = "state_lost"
+	StateRevoked              State = "revoked"
+	StateBlocked              State = "blocked"
 	StateStopping             State = "stopping"
 	StateStopped              State = "stopped"
 )
 
-// Config controls the runtime only; backend endpoints and credentials are deliberately excluded.
+// Config controls the local heartbeat runtime.
 type Config struct {
 	HeartbeatInterval time.Duration
 	TransportTimeout  time.Duration
@@ -41,43 +51,56 @@ type Config struct {
 	AgentVersion      string
 	CapabilityVersion string
 }
+
 type HostCollector interface {
 	Collect() (hostinfo.Status, error)
 }
+
+// EnrollmentState is deliberately narrow: only a server-originated enrollment
+// may make a device active, and terminal server responses become durable locally.
+type EnrollmentState interface {
+	ActiveDeviceID() (string, error)
+	MarkStateLost() error
+	MarkRevoked() error
+}
+
 type waitFunc func(context.Context, time.Duration) error
 
-// Dependencies make side effects explicit and enable a fake transport in tests.
+// Dependencies make side effects explicit and enable deterministic tests.
 type Dependencies struct {
 	Collector     HostCollector
-	Identity      identity.DeviceIdentity
+	Enrollment    EnrollmentState
 	Transport     transport.HeartbeatTransport
 	Logger        *logging.Logger
 	Now           func() time.Time
 	Wait          waitFunc
+	Jitter        func() time.Duration
 	OnStateChange func(State)
 }
 
-// Runner sends a heartbeat immediately after successful enrollment, then on its regular
-// interval. Failures transition to capped exponential reconnect backoff.
+// Runner sends a heartbeat immediately when a persisted enrollment is ACTIVE,
+// then every 30 seconds with bounded ±5 second jitter. It never heartbeats a
+// PENDING, REVOKED, or STATE_LOST device.
 type Runner struct {
-	config    Config
-	collector HostCollector
-	identity  identity.DeviceIdentity
-	transport transport.HeartbeatTransport
-	logger    *logging.Logger
-	now       func() time.Time
-	wait      waitFunc
-	onState   func(State)
-	mu        sync.RWMutex
-	state     State
+	config     Config
+	collector  HostCollector
+	enrollment EnrollmentState
+	transport  transport.HeartbeatTransport
+	logger     *logging.Logger
+	now        func() time.Time
+	wait       waitFunc
+	jitter     func() time.Duration
+	onState    func(State)
+	mu         sync.RWMutex
+	state      State
 }
 
 func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	if dependencies.Collector == nil || dependencies.Identity == nil || dependencies.Transport == nil || dependencies.Logger == nil {
-		return nil, errors.New("app: collector, identity, transport, and logger are required")
+	if dependencies.Collector == nil || dependencies.Enrollment == nil || dependencies.Transport == nil || dependencies.Logger == nil {
+		return nil, errors.New("app: collector, enrollment, transport, and logger are required")
 	}
 	if dependencies.Now == nil {
 		dependencies.Now = time.Now
@@ -85,20 +108,27 @@ func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if dependencies.Wait == nil {
 		dependencies.Wait = waitFor
 	}
-	return &Runner{config: config, collector: dependencies.Collector, identity: dependencies.Identity, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, onState: dependencies.OnStateChange, state: StateStarting}, nil
+	if dependencies.Jitter == nil {
+		dependencies.Jitter = defaultJitter
+	}
+	return &Runner{config: config, collector: dependencies.Collector, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
 }
 
 func validateConfig(config Config) error {
-	if config.HeartbeatInterval <= 0 || config.TransportTimeout <= 0 || config.BackoffInitial <= 0 || config.BackoffMax < config.BackoffInitial || config.AgentVersion == "" || config.CapabilityVersion == "" {
+	if config.HeartbeatInterval != RequiredHeartbeatInterval || config.TransportTimeout <= 0 || config.BackoffInitial <= 0 || config.BackoffMax < config.BackoffInitial || config.AgentVersion == "" || config.CapabilityVersion == "" {
 		return errors.New("app: invalid runtime configuration")
 	}
 	return nil
 }
 
-func (r *Runner) State() State { r.mu.RLock(); defer r.mu.RUnlock(); return r.state }
+func (r *Runner) State() State {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.state
+}
 
-// Run blocks until cancellation. Context cancellation is a clean shutdown; local
-// collection and transport-close errors are returned to the caller.
+// Run blocks until cancellation. Terminal security states remain idle rather
+// than retrying; their persisted state prevents a restart from resuming traffic.
 func (r *Runner) Run(ctx context.Context) (runErr error) {
 	if ctx == nil {
 		return errors.New("app: context is required")
@@ -111,15 +141,9 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 		r.setState(StateStopped)
 	}()
 	r.setState(StateStarting)
-	deviceID, err := r.identity.DeviceID()
-	if errors.Is(err, identity.ErrNotEnrolled) {
-		r.setState(StateWaitingForEnrollment)
-		r.logger.Info("agent is waiting for backend-governed enrollment")
-		<-ctx.Done()
-		return nil
-	}
+	deviceID, err := r.enrollment.ActiveDeviceID()
 	if err != nil {
-		return fmt.Errorf("app: resolve device identity: %w", err)
+		return r.waitForEnrollmentState(ctx, err)
 	}
 	backoff, err := retry.New(r.config.BackoffInitial, r.config.BackoffMax)
 	if err != nil {
@@ -145,7 +169,7 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 			backoff.Reset()
 			r.setState(StateOnline)
 			r.logger.Info("heartbeat accepted by transport")
-			if err := r.wait(ctx, r.config.HeartbeatInterval); err != nil {
+			if err := r.wait(ctx, r.heartbeatDelay()); err != nil {
 				if ctx.Err() != nil {
 					return nil
 				}
@@ -155,6 +179,33 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 		}
 		if ctx.Err() != nil {
 			return nil
+		}
+		if errors.Is(err, transport.ErrStaleSequence) {
+			if markErr := r.enrollment.MarkStateLost(); markErr != nil {
+				return fmt.Errorf("app: persist state loss: %w", markErr)
+			}
+			return r.waitTerminal(ctx, StateStateLost, "heartbeat sequence is stale; recovery requires explicit re-enrollment")
+		}
+		if errors.Is(err, transport.ErrDeviceRevoked) {
+			if markErr := r.enrollment.MarkRevoked(); markErr != nil {
+				return fmt.Errorf("app: persist revocation: %w", markErr)
+			}
+			return r.waitTerminal(ctx, StateRevoked, "device was revoked; normal heartbeats are stopped")
+		}
+		var retryAfter *transport.RetryAfterError
+		if errors.As(err, &retryAfter) && retryAfter.Valid {
+			r.setState(StateRateLimited)
+			r.logger.Warn("heartbeat rate limited; honoring Retry-After")
+			if err := r.wait(ctx, retryAfter.Delay); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("app: wait Retry-After: %w", err)
+			}
+			continue
+		}
+		if errors.Is(err, transport.ErrRejected) {
+			return r.waitTerminal(ctx, StateBlocked, "heartbeat rejected; normal retries are stopped")
 		}
 		r.setState(StateBackingOff)
 		r.logger.Warn("heartbeat attempt failed", logging.ErrorField(err))
@@ -167,6 +218,43 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 	}
 }
 
+func (r *Runner) waitForEnrollmentState(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(err, enrollment.ErrNotEnrolled):
+		return r.waitTerminal(ctx, StateWaitingForEnrollment, "agent is waiting for pairing enrollment")
+	case errors.Is(err, enrollment.ErrPending):
+		return r.waitTerminal(ctx, StatePending, "device is pending activation; heartbeat is disabled")
+	case errors.Is(err, enrollment.ErrStateLost):
+		return r.waitTerminal(ctx, StateStateLost, "local device state is lost; heartbeat is disabled")
+	case errors.Is(err, enrollment.ErrRevoked):
+		return r.waitTerminal(ctx, StateRevoked, "device is revoked; heartbeat is disabled")
+	default:
+		return fmt.Errorf("app: resolve enrollment state: %w", err)
+	}
+}
+
+func (r *Runner) waitTerminal(ctx context.Context, state State, message string) error {
+	r.setState(state)
+	r.logger.Warn(message)
+	<-ctx.Done()
+	return nil
+}
+
+func (r *Runner) heartbeatDelay() time.Duration {
+	jitter := r.jitter()
+	if jitter > maxHeartbeatJitter {
+		jitter = maxHeartbeatJitter
+	}
+	if jitter < -maxHeartbeatJitter {
+		jitter = -maxHeartbeatJitter
+	}
+	return r.config.HeartbeatInterval + jitter
+}
+
+func defaultJitter() time.Duration {
+	return time.Duration(rand.Intn(11)-5) * time.Second
+}
+
 func (r *Runner) setState(next State) {
 	r.mu.Lock()
 	r.state = next
@@ -175,6 +263,7 @@ func (r *Runner) setState(next State) {
 		r.onState(next)
 	}
 }
+
 func waitFor(ctx context.Context, duration time.Duration) error {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()

@@ -97,6 +97,12 @@
   página própria inerte que lê token somente do fragmento e exige POST explícito.
 - Limiter PostgreSQL em `auth_abuse_buckets`, `PUBLIC_ORIGIN` tipada e adapter SMTP
   STARTTLS configurável. CORS permanece desabilitado para a topologia same-origin.
+- O Agent Linux possui a implementação local isolada de Device Online V0.1: identidade
+  Ed25519 local, estado de enrollment owner-only, JWS de heartbeat com sequência `uint64`
+  durável/monotônica, tratamento fail-closed de sequência stale e revogação, e transporte
+  HTTPS sem redirects. O agente não implementa remote commands, token permanente de usuário
+  ou API key estática; a integração com os endpoints de dispositivo do backend ainda não foi
+  aprovada nesta base.
 
 ## Design approved
 
@@ -110,7 +116,9 @@
   auditoria durável, verificação de e-mail secundário em ACTIVE e qualquer CORS
   cross-origin aprovado.
 - Login, sessões operacionais, emissão/rotação de access/refresh, recuperação,
-  Security Gate, identidade de dispositivo, agents, mobile e demais produto-domínios.
+  Security Gate, endpoints/ativação server-side de identidade de dispositivo, mobile e demais
+  produto-domínios. O Agent local não faz polling ou promoção autônoma de `pending` para
+  `active` enquanto esse contrato backend não existir.
 
 ## Validated locally:
 
@@ -187,6 +195,8 @@
 ## Known blockers:
 
 - Gitleaks local continua pendente de instalação/execução.
+- O contrato backend de enrollment, consulta de ativação e heartbeat do Device Online ainda
+  precisa ser aprovado e implementado antes da validação end-to-end do Agent.
 - Antes de implementar/ativar auth: decidir bibliotecas e operação das chaves,
   validar parâmetros/limites, retenção e critérios de recuperação sem e-mail.
 - Prova reforçada e consentimento para poderes remotos permanecem indefinidos;
