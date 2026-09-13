@@ -17,8 +17,10 @@ Ed25519 proof-of-possession enrollment into `PENDING`; owner fingerprint approva
 EdDSA-only JWS heartbeat with PostgreSQL conditional uint64 anti-replay; server-authoritative
 `last_seen_at`; and derived 90-second ONLINE/OFFLINE presence. See [DEVICE_ONLINE_V01.md](DEVICE_ONLINE_V01.md).
 Authenticated owner `GET /api/v1/devices` exposes `fingerprint: string | null`.
-Agent checkpoint `e00bc7a` integrado com o contrato Backend congelado; Frontend ainda
-aguarda merge. Infra permanece inalterada. Remote actions e coleta invasiva estão fora do escopo.
+Agent checkpoint `e00bc7a` reconciliado com o contrato Backend congelado e Frontend
+checkpoint `44c3ea7` com pairing/aprovação integrados em `mvp1/integration`.
+Live E2E permanece pendente; MVP-1 não está completo. Infra permanece inalterada.
+Remote actions e coleta invasiva estão fora do escopo.
 
 Validação histórica do track auth/devices (anterior a Device Online): full backend suite `326 passed`, `0 failed`, coverage
 `89%`; targeted MVP-1 authentication/HTTP/migration suite `38/38 passed`. Migration
@@ -144,6 +146,30 @@ auth/sessões/tokens é o MVP-1 validado acima.
   enrollment JSON/PoP, JWS `EdDSA` via `go-jose/v4`, sequência `uint64` durável/monotônica,
   probes PENDING, tratamento fail-closed de stale/revogação e transporte HTTPS sem redirects.
   O agente não implementa remote commands, token permanente de usuário ou API key estática.
+- Frontend Device Online v0.1 integrado do track `device-online/frontend-v0.1`,
+  com contrato Backend congelado
+  em `d1e97cd` e Agent em `e00bc7a`. Não houve mudança de arquitetura.
+- O cliente HTTP same-origin implementa list/createPairing/approve/reject; `fingerprint`
+  é obrigatório e aceita `null` para dispositivos sem chave Device Online. A UI exibe
+  o fingerprint completo e exige comparação exata com o Agent; fingerprint nulo em
+  dispositivo pendente bloqueia decisões. Rejeição exige confirmação explícita.
+- Pairing token existe somente em estado React, com cópia explícita e validade exibida;
+  cancelamento, expiração, decisão concluída e saída da sessão removem o estado. Respostas
+  de criação recebidas após logout/unmount são descartadas. Não há persistência, URL,
+  log de segredo ou mock no runtime.
+- Consultas de dispositivos são serializadas; polling de cinco segundos existe somente
+  enquanto o pairing está aberto, pula consultas em andamento e limpa timers ao terminar
+  ou desmontar. Decisões sempre provocam nova consulta após a resposta, inclusive se uma
+  consulta anterior ainda estiver em andamento. Lifecycle/presença/last_seen continuam
+  exclusivamente derivados do Backend, sem transições otimistas ou heartbeat simulado.
+- Access token continua em memória e refresh usa cookie HttpOnly: 401 limpa token/sessão;
+  403 preserva token/sessão e mantém `ForbiddenError` tipado. Visual, navegação e estilos
+  responsivos existentes foram reutilizados.
+- Validação frontend desta conclusão: `npm test` (47 testes), `npm run lint`,
+  `npm run typecheck`, `npm run build` e `git diff --check`. Auditoria de runtime exclui
+  testes e não encontra mocks nem armazenamento de segredos. Integração HTTP validada
+  com fetch controlado em testes e inspeção do contrato congelado; fluxo real com
+  Backend/Agent em execução não foi exercitado nesta etapa.
 
 ## Design approved
 
