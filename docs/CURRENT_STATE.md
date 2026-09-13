@@ -1,5 +1,52 @@
 # Current State
 
+## MVP-1 E2E LIVE PASS (2026-09-13)
+
+Local end-to-end validation passed using the dedicated PostgreSQL test container, Mailpit with
+STARTTLS and verified local CA, loopback Caddy, and the Linux Agent `PC000`. The recorded public
+outcomes were: register `202`; email verification `200`; login `200`; `auth/me` `200`; pairing
+`201`; enrollment `201`; heartbeat while `PENDING` `403` (expected); explicit human approval
+`200`; and heartbeat after approval `200`. The local Agent fingerprint matched the fingerprint displayed in Device
+Center. Final Device Center state: `TOTAL 1`, `ONLINE 1`, `PENDENTES 0`, `PC000 ACTIVE / Online`.
+
+No password, pairing or verification token, access/refresh token, private key, database URL, or
+HMAC key was recorded. This supersedes earlier entries that marked the live E2E proof as pending.
+
+## MVP-1 SMTP trust harness preparation (2026-09-12)
+
+- O host tinha validado previamente o gate Backend PostgreSQL integrado em
+  `334 passed`, `0 failed`, `0 skipped`, cobertura `86%`; esta execução não o
+  repetiu porque não recebeu `TEST_DATABASE_URL` nem acesso não interativo ao
+  `sudo docker` do host. A execução completa não-PostgreSQL neste ambiente
+  excedeu a janela de comando antes de produzir resultado final, portanto não
+  é registrada como aprovada.
+- Backend recebeu `SMTP_CA_FILE` opcional. Ausente, mantém exatamente
+  `ssl.create_default_context()` e as raízes do sistema. Presente, valida o
+  PEM no startup e o adiciona com `load_verify_locations`, sem desativar
+  hostname, `CERT_REQUIRED` ou STARTTLS. Testes focados de SMTP/configuração:
+  `20 passed`; `ruff`, `mypy` e `pip check` passaram.
+- O harness local em `scripts/e2e/` usa Mailpit `axllent/mailpit:v1.30.6`,
+  gera CA/certificado temporários ignorados sob `.local/e2e-mailpit`, exige
+  STARTTLS e publica SMTP/UI somente em `127.0.0.1`. A geração local confirmou
+  CA → certificado e SAN `localhost`/`127.0.0.1`, com chaves `0600`; o script
+  e helper também foram validados estaticamente. Pull/execução Docker requer
+  `sudo` interativo e permanece **HOST PENDING**. Nenhuma raiz foi instalada
+  no trust store do SO.
+- Agent: `go test ./...`, `go test -race ./...` e `go vet ./...` passaram.
+  Frontend: `npm test` passou em `47 tests`; lint, typecheck e build passaram.
+  Uma primeira execução teve uma falha intermitente no teste Device Center de
+  adapter de pairing (`46 passed, 1 failed`), mas a repetição isolada e a
+  repetição completa passaram. Nenhum código Frontend foi alterado.
+- O live E2E ainda não foi executado. Além do `sudo` necessário para Mailpit,
+  o runbook agora inclui proxy Caddy local-only: Browser em
+  `http://127.0.0.1:8080` para Vite/FastAPI same-origin e Agent em
+  `https://localhost:8443` para FastAPI. O certificado HTTPS separado usa a
+  CA local, com SAN `localhost`/`127.0.0.1`; teste Go 1.26 confirmou que ele
+  falha sem CA e passa com `SSL_CERT_FILE` somente no processo, preservando
+  hostname. Nenhum bypass CORS/TLS ou mudança de Agent foi adicionada. A prova
+  Docker do proxy permanece **HOST PENDING**. Consulte [LOCAL_E2E.md](LOCAL_E2E.md).
+  Sem commit, push, tag, deploy ou alteração de volume PostgreSQL.
+
 ## MVP-1 Device Online — integração controlada (2026-09-12)
 
 - Base `41aa90d` em `mvp1/integration`; backup local

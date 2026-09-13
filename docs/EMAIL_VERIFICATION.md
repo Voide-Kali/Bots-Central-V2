@@ -222,6 +222,10 @@ material novo. SMTP é configurável por `EMAIL_VERIFICATION_DELIVERY_MODE=smtp`
 padrão de certificado e não possui retry automático. Em produção, delivery `smtp`, SMTP
 válido e `PUBLIC_ORIGIN` HTTPS válida são obrigatórios no startup; `disabled` só é aceito
 em development/test. Não registrar payload, destinatário completo, credenciais, CODE ou LINK.
+`SMTP_CA_FILE` é opcional e permite adicionar um bundle PEM de uma CA interna ao contexto
+verificado normal do sistema. O arquivo é validado no startup; suas raízes são adicionadas,
+nunca substituem as raízes do sistema, e não há modo que desative validação de certificado ou
+hostname.
 O adapter SMTP é síncrono e executa no threadpool do Starlette; isso é dívida operacional
 V1 aceita: há timeout e admission de delivery, e um limiter dedicado poderá ser avaliado
 após métricas. Não adicionar Redis, outbox ou fila nesta fase.
