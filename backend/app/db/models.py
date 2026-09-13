@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     text,
 )
@@ -20,11 +21,98 @@ from app.db.base import Base
 from app.db.enums import (
     AccountStatus,
     AuthenticationLevel,
+    DeviceLifecycleStatus,
     EmailVerificationInvalidationReason,
     EmailVerificationMaterialType,
     SessionRevocationReason,
     persisted_enum_values,
 )
+
+
+class Device(Base):
+    __tablename__ = "devices"
+    __table_args__ = (
+        CheckConstraint("name <> ''", name="ck_devices_name_not_empty"),
+        CheckConstraint("platform <> ''", name="ck_devices_platform_not_empty"),
+        CheckConstraint(
+            "public_key IS NULL OR octet_length(public_key) = 32",
+            name="ck_devices_public_key_length",
+        ),
+        CheckConstraint(
+            "last_heartbeat_seq IS NULL OR (last_heartbeat_seq >= 0 "
+            "AND last_heartbeat_seq <= 18446744073709551615)",
+            name="ck_devices_heartbeat_sequence_uint64",
+        ),
+        Index("ix_devices_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    lifecycle_status: Mapped[DeviceLifecycleStatus] = mapped_column(
+        Enum(
+            DeviceLifecycleStatus,
+            name="device_lifecycle_status",
+            values_callable=persisted_enum_values,
+        ),
+        nullable=False,
+        default=DeviceLifecycleStatus.PENDING,
+        server_default=DeviceLifecycleStatus.PENDING.value,
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    public_key: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
+    public_key_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_heartbeat_seq: Mapped[int | None] = mapped_column(Numeric(20, 0), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"Device(id={self.id!s}, user_id={self.user_id!s}, "
+            f"lifecycle_status={self.lifecycle_status.value!r})"
+        )
+
+
+class DevicePairingToken(Base):
+    __tablename__ = "device_pairing_tokens"
+    __table_args__ = (
+        CheckConstraint("octet_length(token_digest) = 32", name="ck_device_pairing_token_digest"),
+        CheckConstraint("expires_at > created_at", name="ck_device_pairing_expires_after_created"),
+        CheckConstraint(
+            "(consumed_at IS NULL AND device_id IS NULL) OR "
+            "(consumed_at IS NOT NULL AND device_id IS NOT NULL)",
+            name="ck_device_pairing_consumption_state",
+        ),
+        Index("ix_device_pairing_tokens_expires_at", "expires_at"),
+        Index("ix_device_pairing_tokens_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    initiating_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="RESTRICT"), nullable=False
+    )
+    token_digest: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="RESTRICT"), nullable=True
+    )
 
 
 class User(Base):

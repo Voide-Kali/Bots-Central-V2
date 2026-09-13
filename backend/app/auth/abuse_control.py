@@ -59,6 +59,14 @@ REGISTRATION_POLICY = AbusePolicy(
         AbuseLimit("global", 300, 60),
     ),
 )
+LOGIN_POLICY = AbusePolicy(
+    operation="login",
+    limits=(
+        AbuseLimit("identifier", 10, 3600),
+        AbuseLimit("network", 60, 3600),
+        AbuseLimit("global", 600, 60),
+    ),
+)
 RESEND_POLICY = AbusePolicy(
     operation="email_verification_resend",
     limits=(
@@ -80,6 +88,20 @@ LINK_CONSUME_POLICY = AbusePolicy(
     limits=(
         AbuseLimit("network", 60, 900),
         AbuseLimit("global", 1500, 900),
+    ),
+)
+HEARTBEAT_POLICY = AbusePolicy(
+    operation="device_heartbeat",
+    limits=(
+        AbuseLimit("device", 10, 60),
+        AbuseLimit("global", 5000, 60),
+    ),
+)
+HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
+    operation="device_heartbeat_preauth",
+    limits=(
+        AbuseLimit("network", 120, 60),
+        AbuseLimit("global", 10000, 60),
     ),
 )
 
@@ -231,6 +253,12 @@ class AbuseController:
             {"identifier": canonical_email, "network": network, "global": "all"},
         )
 
+    def admit_login(self, *, canonical_email: str, network: str) -> bool:
+        return self._admit(
+            LOGIN_POLICY,
+            {"identifier": canonical_email, "network": network, "global": "all"},
+        )
+
     def admit_resend(self, *, canonical_email: str, network: str) -> bool:
         return self._admit(
             RESEND_POLICY,
@@ -245,6 +273,18 @@ class AbuseController:
 
     def admit_link_consume(self, *, network: str) -> bool:
         return self._admit(LINK_CONSUME_POLICY, {"network": network, "global": "all"})
+
+    def admit_heartbeat(self, *, device_id: uuid.UUID) -> bool:
+        return self._admit(
+            HEARTBEAT_POLICY,
+            {"device": str(device_id), "global": "all"},
+        )
+
+    def admit_heartbeat_preauth(self, *, network: str) -> bool:
+        return self._admit(
+            HEARTBEAT_PREAUTH_POLICY,
+            {"network": network, "global": "all"},
+        )
 
     def cleanup_expired(self) -> int:
         """Delete expired rows; callers may run this as bounded operational maintenance."""
