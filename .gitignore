@@ -16,3 +16,4 @@ venv/
 
 *.log
 postgres-data/
+.local/
