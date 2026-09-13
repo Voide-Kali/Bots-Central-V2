@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -128,15 +129,20 @@ func pairingAllowed(record enrollment.Record, err error) bool {
 // deliberately has no token-valued flag or config field, avoiding argv/config
 // persistence and accidental logging.
 func readPairingToken(reader io.Reader) (string, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, maxPairingTokenSize+1))
-	if err != nil {
+	// ReadString returns as soon as the interactive user presses Enter. Limit the
+	// reader so an unterminated oversized line cannot consume unbounded memory.
+	data, err := bufio.NewReader(io.LimitReader(reader, maxPairingTokenSize+2)).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", errors.New("pairing token input could not be read")
+	}
+	if len(data) > 0 && data[len(data)-1] == '\n' {
+		data = data[:len(data)-1]
+	}
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+		data = data[:len(data)-1]
 	}
 	if len(data) > maxPairingTokenSize {
 		return "", errors.New("pairing token input exceeds maximum size")
-	}
-	for len(data) > 0 && (data[len(data)-1] == '\n' || data[len(data)-1] == '\r') {
-		data = data[:len(data)-1]
 	}
 	if len(data) == 0 {
 		return "", errors.New("pairing token input is empty")
