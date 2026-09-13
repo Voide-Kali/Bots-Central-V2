@@ -1,5 +1,42 @@
 # Current State
 
+## MVP-1 Device Online — integração controlada (2026-09-12)
+
+- Base `41aa90d` em `mvp1/integration`; backup local
+  `backup/mvp1-integration-pre-device-online` preserva essa base.
+- Merges não fast-forward, na ordem Backend `d1e97cd` (`3d19aec`), Agent
+  `e00bc7a` (`6edc50d`) e Frontend `44c3ea7` (`091b768`), sem squash.
+- Somente `docs/CURRENT_STATE.md` conflitou nos merges Agent e Frontend; resolução
+  manual preservou os três estados e corrigiu afirmações históricas obsoletas.
+  Nenhum conflito de código. Diretórios Backend/Agent/Frontend permanecem idênticos
+  aos respectivos checkpoints congelados; Infra e referências dos tracks inalteradas.
+- Backend, usando a venv existente e `PYTHONPATH=.` a partir de `backend/`:
+  gates direcionados `12 passed, 34 skipped`; suíte completa `119 passed,
+  215 skipped, 0 failed`; cobertura parcial `58%`. `TEST_DATABASE_URL` ausente:
+  gate PostgreSQL completo e cobertura com PostgreSQL são **HOST PENDING**.
+  Nenhum limiar de cobertura encontrado na configuração versionada/CI.
+  Ruff passou; mypy estrito passou em 52 arquivos com a configuração Backend.
+  A execução ASGI sem progresso na sandbox foi interrompida; a repetição no host
+  concluiu normalmente, sem alteração de código.
+- Agent: `go test ./...`, `go test -race ./...` e `go vet ./...` passaram.
+- Frontend: `npm ci` com lock existente; `npm test` passou em 47 testes;
+  `npm run lint`, `npm run typecheck` e `npm run build` passaram.
+- Auditoria estática: enrollment JSON em `POST /api/v1/devices/enrollments` com
+  `pairing_token/public_key/proof/name/platform/agent_version`; heartbeat em
+  `POST /api/v1/devices/{device_id}/heartbeat` com `{"jws":"..."}`; respostas
+  `403 DEVICE_PENDING`, `403 DEVICE_REVOKED` e `409 STALE_HEARTBEAT` preservadas.
+  `GET /api/v1/devices` mantém filtro pelo proprietário e `fingerprint: string | null`.
+- Sem Telegram, Nmap, execução arbitrária de shell ou instalação remota de software;
+  sem adapter mock no runtime Frontend, persistência de tokens em localStorage/
+  sessionStorage ou persistência de pairing em texto puro (Backend guarda digest).
+  Sem logging de chave privada e sem bearer no enrollment/heartbeat do Agent;
+  assinatura continua EdDSA via `go-jose/v4`.
+- Verificação de marcadores não encontrou conflitos pendentes; `git diff --check`
+  passou. Live E2E Backend ↔ Agent ↔ Frontend permanece pendente e não foi executado.
+  **READY FOR LIVE E2E: NO**, até fechar o gate PostgreSQL no host.
+  Sem push, tags novas ou deployment; MVP-1 ainda não está completo.
+
+
 ## MVP-1 backend auth/devices
 
 Backend integrado em `mvp1/integration` a partir do checkpoint `d1e97cd`.
