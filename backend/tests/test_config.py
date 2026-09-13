@@ -42,6 +42,28 @@ def test_smtp_mode_requires_server_config_and_public_origin() -> None:
         Settings(email_verification_delivery_mode="smtp")
 
 
+def test_smtp_ca_file_rejects_empty_or_unloadable_value(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="SMTP_CA_FILE must not be empty"):
+        Settings(smtp_ca_file="  ")
+
+    sentinel = tmp_path / "CA-MATERIAL-MUST-NOT-LEAK"
+    with pytest.raises(
+        ValidationError, match="SMTP_CA_FILE must name a readable regular file"
+    ) as raised:
+        Settings(smtp_ca_file=sentinel)
+
+    assert "CA-MATERIAL-MUST-NOT-LEAK" not in str(raised.value)
+    assert "CA-MATERIAL-MUST-NOT-LEAK" not in repr(raised.value)
+
+    invalid_pem = tmp_path / "invalid.pem"
+    invalid_pem.write_text("CA-MATERIAL-MUST-NOT-LEAK", encoding="ascii")
+    with pytest.raises(ValidationError, match="SMTP_CA_FILE could not be loaded") as raised:
+        Settings(smtp_ca_file=invalid_pem)
+
+    assert "CA-MATERIAL-MUST-NOT-LEAK" not in str(raised.value)
+    assert "CA-MATERIAL-MUST-NOT-LEAK" not in repr(raised.value)
+
+
 @pytest.mark.parametrize("app_env", ["development", "test"])
 def test_non_production_allows_disabled_email_delivery(app_env: str) -> None:
     settings = Settings(app_env=app_env)

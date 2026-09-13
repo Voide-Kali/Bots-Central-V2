@@ -1,5 +1,7 @@
 import ipaddress
+import ssl
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
@@ -39,6 +41,7 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_sender: str | None = None
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    smtp_ca_file: Path | None = None
 
     @field_validator("database_url")
     @classmethod
@@ -65,6 +68,13 @@ class Settings(BaseSettings):
         except ValueError as error:
             raise ValueError("TRUSTED_PROXY_IP must be an IP address") from error
 
+    @field_validator("smtp_ca_file", mode="before")
+    @classmethod
+    def validate_smtp_ca_file_value(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("SMTP_CA_FILE must not be empty")
+        return value
+
     @model_validator(mode="after")
     def validate_security_configuration(self) -> "Settings":
         if self.public_origin is not None:
@@ -78,12 +88,23 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "ABUSE_CONTROL_HMAC_KEY must be a valid key in production"
                 ) from error
+        if self.smtp_ca_file is not None:
+            self._validate_smtp_ca_file(self.smtp_ca_file)
         if self.email_verification_delivery_mode == "smtp":
             if not self.smtp_host or not self.smtp_sender or self.public_origin is None:
                 raise ValueError("SMTP delivery requires SMTP_HOST, SMTP_SENDER, and PUBLIC_ORIGIN")
             if self.smtp_username is not None and self.smtp_password is None:
                 raise ValueError("SMTP_PASSWORD is required when SMTP_USERNAME is configured")
         return self
+
+    @staticmethod
+    def _validate_smtp_ca_file(ca_file: Path) -> None:
+        if not ca_file.is_file():
+            raise ValueError("SMTP_CA_FILE must name a readable regular file")
+        try:
+            ssl.create_default_context().load_verify_locations(cafile=str(ca_file))
+        except (OSError, ssl.SSLError) as error:
+            raise ValueError("SMTP_CA_FILE could not be loaded") from error
 
     def _normalize_public_origin(self, value: str) -> str:
         parsed = urlsplit(value)

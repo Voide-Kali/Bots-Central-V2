@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.message import EmailMessage
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import SecretStr
@@ -47,6 +48,7 @@ class SmtpEmailVerificationDeliveryAdapter:
         username: str | None,
         password: SecretStr | None,
         timeout_seconds: float,
+        ca_file: Path | None = None,
     ) -> None:
         if not host or not sender or not public_origin:
             raise EmailVerificationDeliveryConfigurationError("SMTP delivery is not configured")
@@ -59,6 +61,7 @@ class SmtpEmailVerificationDeliveryAdapter:
         self._username = username
         self._password = password
         self._timeout_seconds = timeout_seconds
+        self._ca_file = ca_file
 
     @classmethod
     def from_settings(cls, settings: object) -> "SmtpEmailVerificationDeliveryAdapter":
@@ -69,6 +72,7 @@ class SmtpEmailVerificationDeliveryAdapter:
         username = getattr(settings, "smtp_username", None)
         password = getattr(settings, "smtp_password", None)
         timeout_seconds = getattr(settings, "smtp_timeout_seconds", None)
+        ca_file = getattr(settings, "smtp_ca_file", None)
         if (
             not isinstance(host, str)
             or not isinstance(port, int)
@@ -77,6 +81,7 @@ class SmtpEmailVerificationDeliveryAdapter:
             or not isinstance(username, str | None)
             or not isinstance(password, SecretStr | None)
             or not isinstance(timeout_seconds, float)
+            or not isinstance(ca_file, Path | None)
         ):
             raise EmailVerificationDeliveryConfigurationError("SMTP delivery is not configured")
         return cls(
@@ -87,6 +92,7 @@ class SmtpEmailVerificationDeliveryAdapter:
             username=username,
             password=password,
             timeout_seconds=timeout_seconds,
+            ca_file=ca_file,
         )
 
     def _message(self, intent: DeliveryIntent) -> EmailMessage:
@@ -111,6 +117,13 @@ class SmtpEmailVerificationDeliveryAdapter:
     def deliver(self, intent: DeliveryIntent) -> None:
         message = self._message(intent)
         context = ssl.create_default_context()
+        if self._ca_file is not None:
+            try:
+                context.load_verify_locations(cafile=str(self._ca_file))
+            except (OSError, ssl.SSLError) as error:
+                raise EmailVerificationDeliveryConfigurationError(
+                    "SMTP CA file could not be loaded"
+                ) from error
         with smtplib.SMTP(self._host, self._port, timeout=self._timeout_seconds) as client:
             client.ehlo()
             client.starttls(context=context)
