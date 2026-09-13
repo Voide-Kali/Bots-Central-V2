@@ -2,8 +2,8 @@
 
 ## MVP-1 backend auth/devices
 
-Final host gate passed — ready for checkpoint. Integration into `mvp1/integration`
-remains pending. The `mvp1/backend-auth-devices` track implements ACTIVE-account
+Backend integrado em `mvp1/integration` a partir do checkpoint `d1e97cd`.
+The `mvp1/backend-auth-devices` track implements ACTIVE-account
 login, PostgreSQL server-side sessions, opaque access and refresh tokens, refresh
 rotation, family replay revocation, logout/revocation, `GET /api/v1/auth/me`, and
 `GET /api/v1/devices` with ownership enforcement. The web-cookie endpoints enforce
@@ -16,15 +16,15 @@ Implemented on `device-online/backend-v0.1`: digest-only, one-time five-minute p
 Ed25519 proof-of-possession enrollment into `PENDING`; owner fingerprint approval/reject;
 EdDSA-only JWS heartbeat with PostgreSQL conditional uint64 anti-replay; server-authoritative
 `last_seen_at`; and derived 90-second ONLINE/OFFLINE presence. See [DEVICE_ONLINE_V01.md](DEVICE_ONLINE_V01.md).
-Authenticated owner device listing exposes the persisted fingerprint for the future
-Web human-comparison flow; frontend integration remains pending.
-This is Backend-only: Agent implementation, cross-repository integration, remote actions,
-and invasive collection remain out of scope and unimplemented.
+Authenticated owner `GET /api/v1/devices` exposes `fingerprint: string | null`.
+Agent checkpoint `e00bc7a` integrado com o contrato Backend congelado; Frontend ainda
+aguarda merge. Infra permanece inalterada. Remote actions e coleta invasiva estão fora do escopo.
 
-Host validation confirmed: full backend suite `326 passed`, `0 failed`, coverage
+Validação histórica do track auth/devices (anterior a Device Online): full backend suite `326 passed`, `0 failed`, coverage
 `89%`; targeted MVP-1 authentication/HTTP/migration suite `38/38 passed`. Migration
 `0004 ↔ 0005` round-trip passed against the dedicated `bots_central_test`
-PostgreSQL database; Alembic head is `0005_device_foundation`. Validation includes
+PostgreSQL database; Alembic head naquela validação era `0005_device_foundation`.
+O head integrado atual é `0006_device_online_v01`. Validation includes
 refresh concurrency and leakage regression using actual persisted access and
 refresh digests. `ruff check .`, `mypy app tests`, `pip check`, `git diff --check`,
 and `pip-audit -r requirements.lock --vulnerability-service osv` passed.
@@ -138,7 +138,12 @@ auth/sessões/tokens é o MVP-1 validado acima.
   `POST /api/v1/auth/logout` com Origin/CSRF na boundary web same-origin;
   `GET /api/v1/auth/me` autenticado e `GET /api/v1/devices` restrito ao proprietário.
 - Migration `0005_device_foundation` e lifecycle de devices separados de presence.
-  A listagem retorna `offline` conservadoramente; presence real ainda não existe.
+  A migration `0006_device_online_v01` adiciona pairing, identidade e presence real.
+- O Agent Linux possui a implementação local de Device Online V0.1 reconciliada com o
+  contrato congelado de Backend: identidade Ed25519 local, fingerprint canônico `SHA256:`,
+  enrollment JSON/PoP, JWS `EdDSA` via `go-jose/v4`, sequência `uint64` durável/monotônica,
+  probes PENDING, tratamento fail-closed de stale/revogação e transporte HTTPS sem redirects.
+  O agente não implementa remote commands, token permanente de usuário ou API key estática.
 
 ## Design approved
 
@@ -148,15 +153,12 @@ auth/sessões/tokens é o MVP-1 validado acima.
 
 ## Pending integration / Not implemented
 
-- Integração do Backend MVP-1 na branch `mvp1/integration` permanece pendente.
-- Device Online: pairing/enrollment, credenciais/autenticação de Agent, heartbeat
-  e presence real ainda não estão implementados no Backend.
-- Remote actions, Security Gate completo e Task Engine futuro permanecem fora
-  deste MVP-1.
+- Live E2E Backend ↔ Agent ↔ Frontend permanece pendente; MVP-1 não está completo.
+- Remote actions, Security Gate completo e Task Engine futuro permanecem fora deste MVP-1.
 - Recovery, auditoria durável, verificação de e-mail secundário em ACTIVE e
   suporte CORS cross-origin aprovado permanecem pendentes.
-- Integração operacional com Agent/mobile e contrato de refresh para clientes
-  nativos permanecem futuros.
+- Mobile e contrato de refresh para clientes nativos permanecem futuros.
+- O Agent somente persiste `active` após um probe heartbeat assinado ser aceito pelo Backend.
 
 ## Validated locally:
 
@@ -227,7 +229,7 @@ auth/sessões/tokens é o MVP-1 validado acima.
 ## Not validated:
 
 - Gitleaks local permanece pendente; o scanner continua configurado no CI.
-- Recovery, Security Gate completo, Task Engine, Device Online e ações remotas
+- Recovery, Security Gate completo, Task Engine e ações remotas
   ainda não têm implementação operacional para validar. Emissão/rotação de tokens,
   revogação por replay e logout/revogação já foram validados no MVP-1.
 
@@ -237,6 +239,8 @@ auth/sessões/tokens é o MVP-1 validado acima.
 - Operação das chaves HMAC, retenção e critérios de recuperação sem e-mail
   permanecem pendentes para os respectivos fluxos futuros; login, sessões,
   tokens e revogação do MVP-1 já estão implementados e validados.
+- A validação HTTP end-to-end do Agent contra uma instância Backend com PostgreSQL permanece
+  pendente; os testes locais cobrem o contrato congelado com transporte hermético.
 - Prova reforçada e consentimento para poderes remotos permanecem indefinidos;
   a política proposta mantém essas ações negadas até decisão específica.
 
