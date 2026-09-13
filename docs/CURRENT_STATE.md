@@ -97,11 +97,30 @@
   página própria inerte que lê token somente do fragmento e exige POST explícito.
 - Limiter PostgreSQL em `auth_abuse_buckets`, `PUBLIC_ORIGIN` tipada e adapter SMTP
   STARTTLS configurável. CORS permanece desabilitado para a topologia same-origin.
-- Frontend Device Online v0.1 usa apenas o contrato same-origin de sessão e devices:
-  access token permanece em memória, refresh depende de cookie HttpOnly e a UI renderiza
-  lifecycle/presence/last_seen somente a partir da resposta do servidor. Pairing,
-  fingerprint, aprovação e heartbeat não são simulados enquanto o Backend não expuser
-  esses contratos.
+- Frontend Device Online v0.1 concluído no worktree `device-online/frontend-v0.1`,
+  preservando a implementação parcial sobre `3d96a4e`, com contrato Backend congelado
+  em `d1e97cd` e Agent em `e00bc7a`. Não houve mudança de arquitetura.
+- O cliente HTTP same-origin implementa list/createPairing/approve/reject; `fingerprint`
+  é obrigatório e aceita `null` para dispositivos sem chave Device Online. A UI exibe
+  o fingerprint completo e exige comparação exata com o Agent; fingerprint nulo em
+  dispositivo pendente bloqueia decisões. Rejeição exige confirmação explícita.
+- Pairing token existe somente em estado React, com cópia explícita e validade exibida;
+  cancelamento, expiração, decisão concluída e saída da sessão removem o estado. Respostas
+  de criação recebidas após logout/unmount são descartadas. Não há persistência, URL,
+  log de segredo ou mock no runtime.
+- Consultas de dispositivos são serializadas; polling de cinco segundos existe somente
+  enquanto o pairing está aberto, pula consultas em andamento e limpa timers ao terminar
+  ou desmontar. Decisões sempre provocam nova consulta após a resposta, inclusive se uma
+  consulta anterior ainda estiver em andamento. Lifecycle/presença/last_seen continuam
+  exclusivamente derivados do Backend, sem transições otimistas ou heartbeat simulado.
+- Access token continua em memória e refresh usa cookie HttpOnly: 401 limpa token/sessão;
+  403 preserva token/sessão e mantém `ForbiddenError` tipado. Visual, navegação e estilos
+  responsivos existentes foram reutilizados.
+- Validação frontend desta conclusão: `npm test` (47 testes), `npm run lint`,
+  `npm run typecheck`, `npm run build` e `git diff --check`. Auditoria de runtime exclui
+  testes e não encontra mocks nem armazenamento de segredos. Integração HTTP validada
+  com fetch controlado em testes e inspeção do contrato congelado; fluxo real com
+  Backend/Agent em execução não foi exercitado nesta etapa.
 
 ## Design approved
 

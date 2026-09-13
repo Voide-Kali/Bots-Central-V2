@@ -4,6 +4,7 @@ import type {
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
   Device,
+  PairingResponse,
   LoginRequest,
   RegisterAcceptedResponse,
   RegisterRequest
@@ -64,7 +65,8 @@ function assertDevice(value: unknown, status: number): Device {
     || (value.status !== "online" && value.status !== "offline")
     || (value.lifecycle_status !== "pending" && value.lifecycle_status !== "active" && value.lifecycle_status !== "revoked")
     || (value.last_seen_at !== null && typeof value.last_seen_at !== "string")
-    || (value.agent_version !== null && typeof value.agent_version !== "string")) {
+    || (value.agent_version !== null && typeof value.agent_version !== "string")
+    || (value.fingerprint !== null && typeof value.fingerprint !== "string")) {
     throw new ApiError("The API returned an invalid response.", status);
   }
   return {
@@ -74,8 +76,16 @@ function assertDevice(value: unknown, status: number): Device {
     status: value.status,
     lifecycleStatus: value.lifecycle_status,
     lastSeenAt: value.last_seen_at,
-    agentVersion: value.agent_version
+    agentVersion: value.agent_version,
+    fingerprint: value.fingerprint
   };
+}
+
+function assertPairing(value: unknown, status: number): PairingResponse {
+  if (!isRecord(value) || typeof value.pairing_token !== "string" || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at)) || value.pairing_token.length === 0) {
+    throw new ApiError("The API returned an invalid response.", status);
+  }
+  return { pairingToken: value.pairing_token, expiresAt: value.expires_at };
 }
 
 function assertDevices(value: unknown, status: number): readonly Device[] {
@@ -139,6 +149,19 @@ class HttpDevicesApi implements DevicesApi {
   public async list(): Promise<readonly Device[]> {
     const response = await this.http.get(paths.devices, { acceptedStatuses: [200] });
     return assertDevices(await readKnownJson<unknown>(response), response.status);
+  }
+
+  public async createPairing(): Promise<PairingResponse> {
+    const response = await this.http.postJson(`${paths.devices}/pairings`, {}, { acceptedStatuses: [201] });
+    return assertPairing(await readKnownJson<unknown>(response), response.status);
+  }
+
+  public async approve(id: string, fingerprint: string): Promise<void> {
+    await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/approve`, { fingerprint });
+  }
+
+  public async reject(id: string, fingerprint: string): Promise<void> {
+    await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/reject`, { fingerprint });
   }
 }
 

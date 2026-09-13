@@ -4,6 +4,7 @@ import type {
   ConsumeVerificationCodeResponse,
   Device,
   LoginRequest,
+  PairingResponse,
   RegisterAcceptedResponse,
   RegisterRequest
 } from "./contracts";
@@ -19,6 +20,9 @@ export interface AuthApi {
 
 export interface DevicesApi {
   list(): Promise<readonly Device[]>;
+  createPairing(): Promise<PairingResponse>;
+  approve(id: string, fingerprint: string): Promise<void>;
+  reject(id: string, fingerprint: string): Promise<void>;
 }
 
 export interface ApiClient {

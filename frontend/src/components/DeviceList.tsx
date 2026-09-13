@@ -13,7 +13,7 @@ function selectWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, select: () 
 }
 
 function lifecycleLabel(status: DeviceLifecycleStatus): string {
-  if (status === "pending") return "Pendente de aprovação";
+  if (status === "pending") return "Aguardando aprovação";
   if (status === "active") return "Ativo";
   return "Revogado";
 }

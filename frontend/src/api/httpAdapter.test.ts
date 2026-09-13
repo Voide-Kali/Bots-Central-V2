@@ -65,12 +65,12 @@ describe("HTTP API adapter", () => {
 
   it("parses only the real server device contract", async () => {
     accessTokenStore.replace("access-token");
-    const fetchMock = vi.fn().mockResolvedValue(json({ devices: [{ id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0" }, { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycle_status: "pending", last_seen_at: null, agent_version: null }] }));
+    const fetchMock = vi.fn().mockResolvedValue(json({ devices: [{ id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0", fingerprint: null }, { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycle_status: "pending", last_seen_at: null, agent_version: null, fingerprint: "SHA256:exact=" }] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createHttpApiClient().devices.list()).resolves.toEqual([
-      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0" },
-      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null }
+      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null },
+      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:exact=" }
     ]);
   });
 
@@ -112,4 +112,44 @@ describe("HTTP API adapter", () => {
     expect(headersFor(fetchMock).get("Authorization")).toBe("Bearer access-to-revoke");
     expect(accessTokenStore.read()).toBeUndefined();
   });
+  it("uses real pairing and decision endpoints without persisting the pairing secret", async () => {
+    const persist = vi.spyOn(Storage.prototype, "setItem");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ pairing_token: "ephemeral-pairing", expires_at: "2026-09-12T12:00:00Z" }, 201))
+      .mockResolvedValue(json({}));
+    vi.stubGlobal("fetch", fetchMock);
+    accessTokenStore.replace("authenticated-access");
+    const api = createHttpApiClient();
+    await expect(api.devices.createPairing()).resolves.toEqual({ pairingToken: "ephemeral-pairing", expiresAt: "2026-09-12T12:00:00Z" });
+    await api.devices.approve("device/id", "SHA256:AbC+/exact=");
+    await api.devices.reject("device/id", "SHA256:AbC+/exact=");
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/v1/devices/pairings", "/api/v1/devices/device%2Fid/approve", "/api/v1/devices/device%2Fid/reject"]);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(["POST", "POST", "POST"]);
+    expect(fetchMock.mock.calls.map((call) => JSON.parse((call[1] as RequestInit).body as string))).toEqual([{}, { fingerprint: "SHA256:AbC+/exact=" }, { fingerprint: "SHA256:AbC+/exact=" }]);
+    expect(headersFor(fetchMock).get("Authorization")).toBe("Bearer authenticated-access");
+    expect(persist).not.toHaveBeenCalled();
+    expect(accessTokenStore.read()).toBe("authenticated-access");
+  });
+
+  it("rejects a device fixture missing the required fingerprint", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ devices: [{ id: "legacy", name: "Legacy", platform: "linux", status: "offline", lifecycle_status: "active", last_seen_at: null, agent_version: null }] })));
+    await expect(createHttpApiClient().devices.list()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it.each(["createPairing", "approve", "reject"] as const)("keeps typed auth errors for %s", async (method) => {
+    const api = createHttpApiClient();
+    const call = (): Promise<unknown> => method === "createPairing" ? api.devices.createPairing() : api.devices[method]("device", "SHA256:exact");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json({}, 403)).mockResolvedValueOnce(json({}, 401)));
+    accessTokenStore.replace("valid-access");
+    await expect(call()).rejects.toBeInstanceOf(ForbiddenError);
+    expect(accessTokenStore.read()).toBe("valid-access");
+    await expect(call()).rejects.toBeInstanceOf(UnauthenticatedError);
+    expect(accessTokenStore.read()).toBeUndefined();
+  });
+
+  it("rejects an invalid pairing expiry", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ pairing_token: "ephemeral", expires_at: "invalid" }, 201)));
+    await expect(createHttpApiClient().devices.createPairing()).rejects.toBeInstanceOf(ApiError);
+  });
+
 });

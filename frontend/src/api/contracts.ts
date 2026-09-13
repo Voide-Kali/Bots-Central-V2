@@ -39,4 +39,16 @@ export interface Device {
   readonly lifecycleStatus: DeviceLifecycleStatus;
   readonly lastSeenAt: string | null;
   readonly agentVersion: string | null;
+  readonly fingerprint: string | null;
+}
+
+export interface PairingResponse {
+  readonly pairingToken: string;
+  readonly expiresAt: string;
+}
+
+export interface EnrollmentResponse {
+  readonly deviceId: string;
+  readonly lifecycleStatus: "pending";
+  readonly fingerprint: string;
 }
