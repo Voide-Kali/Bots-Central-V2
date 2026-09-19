@@ -37,7 +37,7 @@ func TestReadPairingTokenReadsOneInteractiveLineWithoutEOF(t *testing.T) {
 	}
 	defer reader.Close()
 	defer writer.Close()
-	if _, err := io.WriteString(writer, "token-from-terminal\\ntrailing-input"); err != nil {
+	if _, err := io.WriteString(writer, "token-from-terminal\ntrailing-input"); err != nil {
 		t.Fatalf("write pairing input: %v", err)
 	}
 	token, err := readPairingToken(reader)
