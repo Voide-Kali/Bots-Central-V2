@@ -43,6 +43,7 @@ export interface Device {
 }
 
 export interface PairingResponse {
+  readonly pairingId: string;
   readonly pairingToken: string;
   readonly expiresAt: string;
 }

@@ -23,7 +23,7 @@ function fakeClient(list: ApiClient["devices"]["list"] = async () => serverDevic
       logout: async () => undefined,
       me: async () => ({ id: "user-1", email: "operator@example.test" })
     },
-    devices: { list, createPairing: vi.fn(async () => ({ pairingToken: "test-only-pairing", expiresAt: new Date(Date.now() + 60_000).toISOString() })), approve: vi.fn(async () => undefined), reject: vi.fn(async () => undefined) }
+    devices: { list, createPairing: vi.fn(async () => ({ pairingId: "pairing-id", pairingToken: "test-only-pairing", expiresAt: new Date(Date.now() + 60_000).toISOString() })), revokePairing: vi.fn(async () => undefined), approve: vi.fn(async () => undefined), reject: vi.fn(async () => undefined) }
   };
 }
 
@@ -137,7 +137,7 @@ describe("Device Online pairing and decisions", () => {
     await waitFor(() => expect(copy).toHaveBeenCalledWith("test-only-pairing"));
     expect(persist).not.toHaveBeenCalled();
     expect(window.location.href).toBe(location);
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
     await screen.findByText("test-only-pairing");
@@ -147,11 +147,22 @@ describe("Device Online pairing and decisions", () => {
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
   });
 
+  it("keeps pairing visible when server-side cancellation fails", async () => {
+    const api = renderDevices();
+    await waitForDevices();
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    await screen.findByText("test-only-pairing");
+    api.devices.revokePairing = vi.fn(async () => { throw new Error("network"); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
+    expect(await screen.findByText("Não foi possível cancelar o pairing no servidor.")).toBeVisible();
+    expect(screen.getByText("test-only-pairing")).toBeVisible();
+  });
+
   it("starts pairing through the production HTTP adapter", async () => {
     const fetchMock = vi.fn(async (path: string) => {
       const body = path.endsWith("/refresh") ? { access_token: "test-access", token_type: "Bearer", expires_in: 600 }
         : path.endsWith("/me") ? { id: "user", email: "operator@example.test" }
-        : path.endsWith("/pairings") ? { pairing_token: "http-pairing-token", expires_at: new Date(Date.now() + 60_000).toISOString() }
+        : path.endsWith("/pairings") ? { pairing_id: "pairing-id", pairing_token: "http-pairing-token", expires_at: new Date(Date.now() + 60_000).toISOString() }
         : { devices: [] };
       return new Response(JSON.stringify(body), { status: path.endsWith("/pairings") ? 201 : 200, headers: { "Content-Type": "application/json" } });
     });
@@ -164,7 +175,7 @@ describe("Device Online pairing and decisions", () => {
 
   it("discards a late pairing response after logout", async () => {
     const api = fakeClient();
-    const pending = deferred<{ pairingToken: string; expiresAt: string }>();
+    const pending = deferred<{ pairingId: string; pairingToken: string; expiresAt: string }>();
     api.devices.createPairing = vi.fn(() => pending.promise);
     renderDevices(api); await waitForDevices();
     fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
@@ -172,14 +183,14 @@ describe("Device Online pairing and decisions", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Sair" }));
     await screen.findByText("Acesso necessário");
     vi.useFakeTimers();
-    await act(async () => pending.resolve({ pairingToken: "late-secret", expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+    await act(async () => pending.resolve({ pairingId: "pairing-id", pairingToken: "late-secret", expiresAt: new Date(Date.now() + 60_000).toISOString() }));
     expect(screen.queryByText("late-secret")).not.toBeInTheDocument();
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it("blocks duplicate pairing creation while the request is pending", async () => {
     const api = fakeClient();
-    const pending = deferred<{ pairingToken: string; expiresAt: string }>();
+    const pending = deferred<{ pairingId: string; pairingToken: string; expiresAt: string }>();
     api.devices.createPairing = vi.fn(() => pending.promise);
     renderDevices(api);
     await waitForDevices();
@@ -187,7 +198,7 @@ describe("Device Online pairing and decisions", () => {
     fireEvent.click(button); fireEvent.click(button);
     expect(button).toBeDisabled();
     expect(api.devices.createPairing).toHaveBeenCalledTimes(1);
-    await act(async () => pending.resolve({ pairingToken: "delayed", expiresAt: new Date(Date.now() + 60_000).toISOString() }));
+    await act(async () => pending.resolve({ pairingId: "pairing-id", pairingToken: "delayed", expiresAt: new Date(Date.now() + 60_000).toISOString() }));
   });
 
   it("displays the exact fingerprint and requires exact Agent comparison", async () => {
@@ -255,7 +266,7 @@ describe("Device Online pairing and decisions", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(list).toHaveBeenCalledTimes(2);
-    if (ending === "cancel") fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" }));
+    if (ending === "cancel") await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
     if (ending === "unmount") cleanup();
     if (ending === "expiry") await act(async () => { await vi.advanceTimersByTimeAsync(55_000); });
     if (ending === "completion") {

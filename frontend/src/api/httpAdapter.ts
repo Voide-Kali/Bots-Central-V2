@@ -82,10 +82,10 @@ function assertDevice(value: unknown, status: number): Device {
 }
 
 function assertPairing(value: unknown, status: number): PairingResponse {
-  if (!isRecord(value) || typeof value.pairing_token !== "string" || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at)) || value.pairing_token.length === 0) {
+  if (!isRecord(value) || typeof value.pairing_id !== "string" || typeof value.pairing_token !== "string" || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at)) || value.pairing_id.length === 0 || value.pairing_token.length === 0) {
     throw new ApiError("The API returned an invalid response.", status);
   }
-  return { pairingToken: value.pairing_token, expiresAt: value.expires_at };
+  return { pairingId: value.pairing_id, pairingToken: value.pairing_token, expiresAt: value.expires_at };
 }
 
 function assertDevices(value: unknown, status: number): readonly Device[] {
@@ -96,7 +96,7 @@ function assertDevices(value: unknown, status: number): readonly Device[] {
 }
 
 class HttpAuthApi implements AuthApi {
-  private readonly http = new SameOriginHttpClient();
+  public constructor(private readonly http: SameOriginHttpClient) {}
 
   public async register(input: RegisterRequest): Promise<RegisterAcceptedResponse> {
     const response = await this.http.postJson(paths.register, input, { acceptedStatuses: [202], includeAccessToken: false });
@@ -144,7 +144,7 @@ class HttpAuthApi implements AuthApi {
 }
 
 class HttpDevicesApi implements DevicesApi {
-  private readonly http = new SameOriginHttpClient();
+  public constructor(private readonly http: SameOriginHttpClient) {}
 
   public async list(): Promise<readonly Device[]> {
     const response = await this.http.get(paths.devices, { acceptedStatuses: [200] });
@@ -154,6 +154,10 @@ class HttpDevicesApi implements DevicesApi {
   public async createPairing(): Promise<PairingResponse> {
     const response = await this.http.postJson(`${paths.devices}/pairings`, {}, { acceptedStatuses: [201] });
     return assertPairing(await readKnownJson<unknown>(response), response.status);
+  }
+
+  public async revokePairing(pairingId: string): Promise<void> {
+    await this.http.delete(`${paths.devices}/pairings/${encodeURIComponent(pairingId)}`, { acceptedStatuses: [204] });
   }
 
   public async approve(id: string, fingerprint: string): Promise<void> {
@@ -166,5 +170,8 @@ class HttpDevicesApi implements DevicesApi {
 }
 
 export function createHttpApiClient(): ApiClient {
-  return { auth: new HttpAuthApi(), devices: new HttpDevicesApi() };
+  const http = new SameOriginHttpClient();
+  const auth = new HttpAuthApi(http);
+  http.setRefreshHandler(() => auth.refresh());
+  return { auth, devices: new HttpDevicesApi(http) };
 }

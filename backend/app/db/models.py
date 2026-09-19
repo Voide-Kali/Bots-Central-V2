@@ -95,6 +95,10 @@ class DevicePairingToken(Base):
             "(consumed_at IS NOT NULL AND device_id IS NOT NULL)",
             name="ck_device_pairing_consumption_state",
         ),
+        CheckConstraint(
+            "revoked_at IS NULL OR consumed_at IS NULL",
+            name="ck_device_pairing_not_revoked_and_consumed",
+        ),
         Index("ix_device_pairing_tokens_expires_at", "expires_at"),
         Index("ix_device_pairing_tokens_user_id", "user_id"),
     )
@@ -110,6 +114,7 @@ class DevicePairingToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     device_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("devices.id", ondelete="RESTRICT"), nullable=True
     )

@@ -389,3 +389,33 @@ def logout(session_factory: SessionFactory, token: str) -> None:
         _revoke_session_and_tokens(
             session, db_session, _clock(session), SessionRevocationReason.LOGOUT
         )
+
+
+def logout_refresh(session_factory: SessionFactory, token: str) -> bool:
+    """Idempotently revoke the owning session from a refresh-cookie digest.
+
+    Unknown material deliberately has no effect.  A consumed refresh is still a
+    known member of its family and therefore safely identifies only that session.
+    """
+    try:
+        digest = _digest_token(token)
+    except ValueError:
+        return False
+    with session_factory() as session, session.begin():
+        locator = session.execute(
+            select(RefreshToken.session_id, DbSession.user_id)
+            .join(DbSession, DbSession.id == RefreshToken.session_id)
+            .where(RefreshToken.token_digest == digest)
+        ).one_or_none()
+        if locator is None:
+            return False
+        context = _load_locked_session_context(
+            session, user_id=locator.user_id, session_id=locator.session_id
+        )
+        if context is None:
+            return False
+        _, db_session = context
+        _revoke_session_and_tokens(
+            session, db_session, _clock(session), SessionRevocationReason.LOGOUT
+        )
+        return True

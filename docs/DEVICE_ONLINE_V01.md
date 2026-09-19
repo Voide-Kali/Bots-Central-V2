@@ -1,11 +1,14 @@
 # Device Online V0.1 (Backend contract)
 
 `POST /api/v1/devices/pairings` requires a current user access token and returns a
-one-time, 256-bit base64url pairing token. The Backend persists only its SHA-256
-digest, binds it to that user and initiating server session, and expires it after
-five minutes. Pairing responses are `no-store`.
+server-generated `pairing_id`, a one-time, 256-bit base64url pairing token, and expiry.
+The Backend persists only the token SHA-256 digest, binds it to that user and initiating
+server session, and expires it after five minutes. The initiating session can cancel an
+unconsumed live pairing with `DELETE /api/v1/devices/pairings/{pairing_id}`; the opaque ID
+alone grants nothing. Pairing responses are `no-store`.
 
-`POST /api/v1/devices/enrollments` accepts the pairing token, a raw 32-byte
+`POST /api/v1/devices/enrollments` is admitted by PostgreSQL-backed pre-auth network and
+global limits before signature verification or pairing lookup. It accepts the pairing token, a raw 32-byte
 Ed25519 public key encoded as canonical unpadded base64url, a compact EdDSA JWS
 proof, and only `name`, `platform`, and optional `agent_version`. The proof has
 `aud` `bots-central:enrollment:v1`, a string `sub`, and the exact
