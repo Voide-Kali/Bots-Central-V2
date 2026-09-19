@@ -1,24 +1,18 @@
-# Bots Central V2 — Web
+# Bots Central V2 Web
 
-Cliente web React/TypeScript/Vite. A API é sempre same-origin (`/api/v1`), sem proxy
-de desenvolvimento, CORS ou credenciais embutidas.
+The MVP-1 web client uses React, TypeScript and Vite. It provides account flows and Device Center. Runtime API calls are same-origin under `/api/v1`; access tokens stay in memory and refresh uses the backend `HttpOnly` cookie. No token is stored in `localStorage` or `sessionStorage`.
 
-## Desenvolvimento
+## Development
 
-```sh
-npm install
+Use a Node/npm version compatible with the committed lockfile, then run:
+
+```bash
+npm ci
 npm run dev
-```
-
-O runtime sempre usa a API HTTP real. Login e refresh obtêm um access token opaco que
-fica exclusivamente em memória; o refresh permanece no cookie `HttpOnly` do backend.
-Nenhum token é gravado em `localStorage` ou `sessionStorage`.
-
-Execute o frontend atrás da mesma origem do backend. Como CORS é desabilitado, o servidor
-Vite isolado não é um substituto para essa topologia de desenvolvimento.
-
-```sh
-npm run lint
 npm test
+npm run lint
+npm run typecheck
 npm run build
 ```
+
+A standalone Vite server is not the functional browser topology because backend CORS is intentionally disabled. For MVP-1 local operation, run Vite on loopback behind the versioned Caddy harness in [LOCAL_E2E](../docs/LOCAL_E2E.md). Do not add a client-side API token, CORS workaround or persistent token storage.

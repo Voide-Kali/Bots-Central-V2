@@ -1,6 +1,8 @@
 # ADR-008: Email Verification Challenge Security
 
-Status: aprovado para implementação futura na Fase 2B.4B.
+Status da decisão: aceita.
+
+Status de implementação: migration `0003`, materiais, emissão/consume e boundary HTTP de verificação de e-mail foram implementados no MVP-1. Rotação operacional e outros domínios de challenge permanecem futuros.
 
 ## Decisão
 
@@ -18,6 +20,5 @@ transação. O contrato completo está em [EMAIL_VERIFICATION.md](../EMAIL_VERIF
 
 ## Consequências
 
-A migration futura `0003` terá enums, tabela, constraints e índices específicos, mas
-nenhum schema é criado nesta decisão. Fluxos futuros podem criar tabelas próprias ou
+A migration `0003` criou enums, tabela, constraints e índices específicos. Fluxos futuros podem criar tabelas próprias ou
 uma abstração comum somente após requisitos concretos e nova decisão arquitetural.

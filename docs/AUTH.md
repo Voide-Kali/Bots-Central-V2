@@ -1,15 +1,16 @@
 # AUTH + SECURITY MODEL — Fase 2A
 
-Status: desenho aprovado com implementação parcial. As primitivas Argon2id, a
-canonicalização de e-mail e o serviço interno de registro estão implementados nas
-Fases 2B.2 e 2B.3. A Fase 3A implementa somente endpoints HTTP anônimos de registro
-e verificação de e-mail, limiter PostgreSQL e SMTP STARTTLS configurável (obrigatório em
-produção). O track MVP-1 em andamento acrescenta login de contas ativas, sessões
-PostgreSQL, tokens opacos com refresh rotation, logout, `/me` e a listagem
-autenticada de devices.
-Recovery, Gate, pairing de devices, ações remotas e auditoria durável permanecem
-planejados. Requisitos marcados como **PLANNED** não devem ser interpretados como
-funcionalidade disponível.
+Status: decisão de desenho com implementação MVP-1 parcial. Argon2id,
+canonicalização de e-mail, registro/verificação HTTP, limiter PostgreSQL, SMTP
+STARTTLS configurável, login de contas ativas, sessões PostgreSQL, tokens opacos
+com refresh rotation, logout, `/me` e listagem autenticada de devices estão
+implementados neste snapshot. Device Online também implementa pairing, enrollment,
+aprovação por fingerprint e presença por heartbeat.
+
+Recovery completo, Security Gate executável, ações remotas e auditoria durável
+permanecem planejados. Requisitos marcados como **PLANNED** não devem ser
+interpretados como funcionalidade disponível. As descrições de fases abaixo
+preservam contexto histórico; o status atual prevalece quando houver diferença.
 
 ### Boundary web de refresh
 
@@ -19,14 +20,13 @@ presente, `Sec-Fetch-Site` deve ser `same-origin`. A ausência de `Origin` não 
 aceita nessa boundary. Cliente nativo/mobile precisará de contrato de refresh
 separado, em vez de enfraquecer a defesa CSRF do navegador.
 
-### Device Center foundation
+### Device Center and Device Online
 
 `devices.lifecycle_status` é lifecycle/credencial (`pending`, `active`,
 `revoked`) e não é presença. O campo público `status` do Device Center significa
-presença operacional (`online`/`offline`). Enquanto o contrato de heartbeat e
-seu threshold server-side não forem congelados, a API retorna conservadoramente
-`offline` para todos os devices e também expõe `lifecycle_status` de forma
-explícita. Presença jamais é autoridade de segurança.
+presença operacional (`online`/`offline`), derivada pelo Backend de heartbeat
+Ed25519 aceito dentro da janela de 90 segundos. A API também expõe
+`lifecycle_status`; presença jamais é autoridade de segurança.
 
 ## 1. Escopo e decisões preservadas
 
@@ -121,7 +121,7 @@ corrompido não é tratado como atual. Ver [PASSWORD_SECURITY.md](PASSWORD_SECUR
 admission compartilhada acontece antes de Argon2. O trabalho síncrono ocorre fora do
 event loop, com concorrência local limitada. Registro novo e duplicado compartilham
 resposta `202` genérica. Bloqueio de senhas comprometidas, verificação fictícia e uma
-revisão estatística de timing continuam **PLANNED**; não há login nesta fase. O rehash
+revisão estatística de timing continuam **PLANNED**. Login MVP-1 já existe; o rehash
 bem-sucedido poderá gravar hash novo com salt novo de modo atômico em fluxo futuro; isso
 não equivale a troca de senha nem autenticação recente.
 
@@ -355,15 +355,15 @@ válido para recuperação de uma conta ainda vinculada ao anterior.
 
 Mobile futuro: refresh no armazenamento protegido do SO, access preferencialmente
 em memória; excluir de backups/telemetria quando suportado. Não prometer proteção
-contra SO comprometido. Agents terão identidade/protocolo próprios em fase futura:
-credenciais de conta não serão instaladas em cada PC como identidade do agent.
+contra SO comprometido. O Agent MVP-1 já possui identidade/protocolo próprio;
+credenciais de conta não são instaladas em cada PC como identidade do agent.
 
-Web futuro: refresh em cookie `Secure`, `HttpOnly`, `SameSite` restritivo, sem Domain
-amplo e com escopo definido na revisão do cliente. Access em memória, sem persistência
-em localStorage. Requisições que usam cookies, inclusive login/refresh/logout,
-exigem defesa CSRF (token apropriado e validação de origem); não alterar estado via
-GET. CORS não substitui CSRF. Essa combinação é condicionada à futura topologia web,
-seguindo [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
+Web MVP-1: refresh fica em cookie `HttpOnly`, `SameSite=Strict`, com path restrito;
+o atributo `Secure` é aplicado em produção. Access fica em memória, sem persistência
+em localStorage. Login/refresh/logout exigem `Origin` igual a `PUBLIC_ORIGIN` e,
+quando fornecido, `Sec-Fetch-Site=same-origin`; não alteram estado via GET. CORS não
+substitui CSRF. Cliente mobile/nativo requer boundary própria futura, seguindo
+[OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
 
 ## 10. Recuperação de conta
 

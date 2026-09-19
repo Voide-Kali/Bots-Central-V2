@@ -1,13 +1,17 @@
-# ADR-003: Go para agents futuros
+# ADR-003: Go para agents
+
+Status da decisão: aceita.
+
+Status de implementação: o Linux Agent MVP-1 implementa identidade Ed25519, enrollment e heartbeat para o contrato Device Online V0.1. Outros agents e poderes remotos não estão implementados.
 
 ## Contexto
 
-Agents futuros precisarão de distribuição e execução eficientes em dispositivos.
+Agents precisam de distribuição e execução eficientes em dispositivos.
 
 ## Decisão
 
-Reservar Go para agents futuros.
+Usar Go para agents.
 
 ## Consequências
 
-Nenhum agent ou protocolo de agent é implementado nesta etapa.
+O MVP-1 valida a escolha com um Agent Linux restrito. Windows, atualização assinada completa e ações remotas exigem decisões posteriores.

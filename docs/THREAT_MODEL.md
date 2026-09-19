@@ -1,9 +1,8 @@
 # Threat Model — AUTH + SECURITY MODEL
 
-Status: análise de desenho da Fase 2A com controles parciais implementados na Fase 3A:
-limiter PostgreSQL para endpoints anônimos de e-mail, limites de body, guarda Argon2,
-respostas genéricas, página LINK inerte e delivery pós-resposta. Login, sessões,
-recovery, Gate, auditoria durável e demais mitigações continuam requisitos futuros.
+Status: snapshot MVP-1. Login, sessões, tokens, logout, Device Center e o Agent Linux
+estão implementados. Recovery completo, Security Gate executor, ações remotas e
+auditoria de segurança durável continuam requisitos futuros.
 
 ## Escopo, ativos e limites de confiança
 
@@ -23,7 +22,7 @@ confiável para agir sobre outros recursos. Metadados do cliente não são prova
 | Backend → PostgreSQL | Permissões, disponibilidade, integridade transacional e cópias de dados exigem controle. |
 | Backend → entrega de e-mail | Entrega pode falhar, atrasar, vazar ou cair em caixa postal comprometida. |
 | App futuro → SO/armazenamento local | Flags biométricas e metadados não equivalem a prova verificada pelo servidor. |
-| Backend → agent futuro | Autenticação da conta não resolve identidade, consentimento nem integridade do executor remoto. |
+| Backend → Agent MVP-1 | Autenticação da conta não resolve identidade do device, consentimento nem integridade do SO; a chave Ed25519 prova somente posse da chave. |
 | Operação → logs/backups/admin | Acesso operacional não deve conceder poder irrestrito sobre identidade ou apagar evidências. |
 
 Atacantes considerados: visitante anônimo automatizado, usuário malicioso autenticado,
@@ -135,19 +134,21 @@ resistência a phishing ou segurança de features ainda inexistentes.
 - **Threat:** site malicioso induz navegador a enviar cookies autenticados em uma mudança
   de estado, inclusive login CSRF, refresh ou logout.
 - **Impact:** ações não intencionais, vínculo da vítima à conta do atacante ou interrupção.
-- **Mitigation:** futuro cliente web precisa de token CSRF apropriado, verificação de
+- **Mitigation:** o cliente web MVP-1 aplica Origin/Sec-Fetch-Site na boundary de cookie; evolução futura precisa preservar
   origem, cookies Secure/HttpOnly/SameSite com escopo restrito e nenhum efeito em GET.
   Autenticação bearer em header não é automaticamente enviada como cookie.
 - **Residual risk:** SameSite e CORS não bastam isoladamente; topologia cross-site,
   subdomínios e fluxos de login precisam de teste antes de habilitar o cliente web.
 
-## T11 — XSS considerations para futuro web client
+## T11 — XSS considerations para cliente web
 
-- **Threat:** código malicioso executa na origem do futuro cliente web.
+- **Threat:** código malicioso executa na origem do cliente web.
 - **Impact:** leitura de access token em memória, ações como vítima, phishing local.
-- **Mitigation:** codificação contextual, saneamento quando necessário, CSP e redução de
-  scripts de terceiros; refresh HttpOnly, nenhum token persistido em localStorage,
-  reautenticação vinculada à intenção e auditoria de ações críticas.
+- **Mitigation:** React escaping e os controles web atuais, refresh HttpOnly e nenhum
+  token persistido em localStorage reduzem exposição; codificação contextual e
+  saneamento são necessários onde houver conteúdo não confiável. CSP não está
+  implementada nem garantida neste snapshot: é hardening futuro, assim como redução
+  adicional de scripts de terceiros e auditoria de ações críticas.
 - **Residual risk:** HttpOnly não impede XSS de fazer chamadas com cookies. Step-up na
   mesma origem comprometida pode ser enganado; prevenir XSS continua necessário.
 
@@ -164,14 +165,17 @@ resistência a phishing ou segurança de features ainda inexistentes.
 
 ## T13 — Compromised PC agent
 
-- **Threat:** um futuro agent ou o SO do PC é controlado pelo atacante.
+- **Threat:** um Agent ou o SO do PC é controlado pelo atacante.
 - **Impact:** execução local não autorizada, dados adulterados, vigilância e pivot para
   recursos acessíveis ao PC.
-- **Mitigation:** futura identidade própria de agent, escopo por dispositivo, revogação,
-  menor privilégio e verificação de destinatário/consentimento. Não distribuir refresh
-  da conta aos agents; API autenticada da conta não autentica automaticamente um PC.
-- **Residual risk:** o backend não pode garantir integridade de execução em SO comprometido.
-  Protocolo, instalação, atualização e atestação de agent permanecem fora desta fase.
+- **Mitigation:** o Agent MVP-1 já tem identidade Ed25519 própria e prova posse da chave
+  no enrollment; o servidor associa a chave ao device, exige aprovação humana por
+  fingerprint e valida heartbeats assinados. Não distribuir refresh da conta aos
+  Agents; API autenticada da conta não autentica automaticamente um PC. Escopo mais
+  amplo de comandos remotos e revogação operacional correspondente continuam futuros.
+- **Residual risk:** a identidade Ed25519 prova posse da chave, não integridade ou
+  honestidade do SO. O backend não pode garantir execução íntegra em SO comprometido;
+  atestação e o modelo de execução remota permanecem fora deste snapshot.
 
 ## T14 — Malicious registered device
 

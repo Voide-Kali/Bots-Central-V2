@@ -9,7 +9,9 @@ and impact.
 ## Repository hygiene
 
 Never commit `.env` files, credentials, tokens, private keys, or production
-connection strings. Use `backend/.env.example` only as a non-secret template.
+connection strings. Use the root `.env.example` for the health-only Compose stack
+and `backend/.env.example` for direct Backend development; both are non-secret
+templates, not deployment configuration.
 
 Security controls and future trust boundaries are documented in
-`docs/SECURITY_MODEL.md`.
+`docs/SECURITY_MODEL.md` and `docs/SECURITY_LIMITATIONS.md`.

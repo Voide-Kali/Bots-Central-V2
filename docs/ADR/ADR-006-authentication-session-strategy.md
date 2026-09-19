@@ -1,6 +1,8 @@
 # ADR-006: Authentication and Session Strategy
 
-Status: decisão de desenho da Fase 2A; implementação pendente.
+Status da decisão: aceita.
+
+Status de implementação: MVP-1 implementa login de contas ativas, sessões PostgreSQL, access/refresh tokens opacos, rotação, revogação por replay, logout e `auth/me`. Recovery, métodos fortes e políticas futuras permanecem pendentes.
 
 ## Contexto
 

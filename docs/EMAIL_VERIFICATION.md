@@ -1,13 +1,10 @@
 # Email Verification Security Contract
 
-Status: a Fase 2B.4B implementa a fundação de persistência e material: tabela/model,
-migration `0003`, enums, token/código, framing HMAC e keyring. A Fase 2B.4C implementa
-o staging de issuance/resend síncrono no domínio, sem delivery. A Fase 2B.4D implementa
-consume síncrono de CODE/LINK e ativação atômica da conta pendente. A Fase 2B.4E adiciona
-somente uma fundação interna de application/delivery, sem endpoint HTTP, provider,
-background task, fila, outbox, login, sessão ou token de autenticação. A Fase 3A expõe
-somente a boundary HTTP anônima de verificação, limiter PostgreSQL e adapter SMTP
-STARTTLS; login, sessão, token, outbox e retry durável continuam fora do escopo.
+Status: MVP-1 implementa persistência/material (`0003`), issuance/resend, consume
+CODE/LINK, ativação atômica da conta pendente, boundary HTTP anônima, limiter PostgreSQL
+e adapter SMTP STARTTLS em BackgroundTasks. Login, sessões e tokens também existem no
+MVP-1, mas não são parte deste fluxo de verificação. Outbox, fila, retry durável e
+rotação operacional continuam fora do escopo.
 O escopo continua somente `email_verification` para `User` em `pending_verification` e
 seu `UserEmail` específico não verificado.
 
@@ -327,14 +324,15 @@ transaction → somente DEPOIS mapear/serializar/enviar HTTP ou executar I/O ext
 O caller deve commitar também `WrongCode` e `AttemptsExhausted`; não converter esses
 outcomes em exceptions dentro do bloco transacional. Nenhuma resposta HTTP ou disconnect
 do cliente pode decidir se `attempt_count` persiste. Commit falho não autoriza anunciar
-sucesso nem executar I/O. Nesta fase não há endpoint nem implementação desse transporte.
+sucesso nem executar I/O. A implementação MVP-1 faz commit antes de mapear a resposta
+HTTP e agenda uma única tentativa de delivery pós-resposta; não há outbox, fila ou retry.
 
-Endpoints públicos continuam bloqueados até contrato de respostas genéricas, abuse
-limiting e revisão de timing. Remover provider I/O do caminho HTTP futuro reduz um sinal
+Endpoints públicos usam respostas genéricas e abuse limiting. Manter provider I/O fora
+do caminho de decisão HTTP reduz um sinal
 grande de timing, mas não afirma tempo constante: hash, lookup e banco continuam variando.
-O futuro link usa `PUBLIC_ORIGIN` server-side confiável e HTTPS em produção, nunca Host
-ou input do cliente. GET nunca consome; a boundary futura é página confiável, token em
-fragmento preferencialmente, ação explícita do usuário e POST de consume protegido.
+O link usa `PUBLIC_ORIGIN` server-side confiável e HTTPS em produção, nunca Host
+ou input do cliente. GET nunca consome; a página confiável lê token no fragmento,
+exige ação explícita do usuário e faz POST de consume protegido.
 
 O domínio pode distinguir inexistente, expirado ou duplicado. Transporte HTTP futuro
 deve responder genericamente onde existência revelaria conta/challenge. Logs normais
