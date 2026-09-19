@@ -43,6 +43,39 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://bots_central_test:test-only-not-a-secret@localhost:5432/bots_central_test
       - run: pip-audit
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go vet ./...
+
   secrets:
     runs-on: ubuntu-latest
     steps:
