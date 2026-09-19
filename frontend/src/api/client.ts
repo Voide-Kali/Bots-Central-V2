@@ -21,6 +21,7 @@ export interface AuthApi {
 export interface DevicesApi {
   list(): Promise<readonly Device[]>;
   createPairing(): Promise<PairingResponse>;
+  revokePairing(pairingId: string): Promise<void>;
   approve(id: string, fingerprint: string): Promise<void>;
   reject(id: string, fingerprint: string): Promise<void>;
 }
