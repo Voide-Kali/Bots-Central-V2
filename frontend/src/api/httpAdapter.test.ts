@@ -1,5 +1,5 @@
 import { createHttpApiClient } from "./httpAdapter";
-import { ApiError, ForbiddenError, UnauthenticatedError } from "./errors";
+import { ApiError, ApiUnavailableError, ForbiddenError, UnauthenticatedError } from "./errors";
 import { accessTokenStore } from "./memoryAccessToken";
 
 function json(body: unknown, status = 200): Response {
@@ -82,6 +82,69 @@ describe("HTTP API adapter", () => {
     expect(accessTokenStore.read()).toBeUndefined();
   });
 
+  it("refreshes once after an authenticated 401 and retries with the rotated bearer", async () => {
+    accessTokenStore.replace("expired-access");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({}, 401))
+      .mockResolvedValueOnce(json({ access_token: "rotated-access", token_type: "Bearer", expires_in: 600 }))
+      .mockResolvedValueOnce(json({ devices: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createHttpApiClient().devices.list()).resolves.toEqual([]);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/v1/devices", "/api/v1/auth/refresh", "/api/v1/devices"
+    ]);
+    expect(headersFor(fetchMock, 0).get("Authorization")).toBe("Bearer expired-access");
+    expect(headersFor(fetchMock, 1).get("Authorization")).toBeNull();
+    expect(headersFor(fetchMock, 2).get("Authorization")).toBe("Bearer rotated-access");
+  });
+
+  it("does not refresh recursively when refresh itself is rejected", async () => {
+    accessTokenStore.replace("expired-access");
+    const fetchMock = vi.fn().mockResolvedValue(json({}, 401));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createHttpApiClient().devices.list()).rejects.toBeInstanceOf(UnauthenticatedError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/v1/devices", "/api/v1/auth/refresh"]);
+    expect(accessTokenStore.read()).toBeUndefined();
+  });
+
+  it.each([
+    ["503", () => json({}, 503)],
+    ["network failure", () => Promise.reject(new TypeError("network down"))]
+  ])("preserves refresh %s as unavailable without clearing access", async (_name, refreshResponse) => {
+    accessTokenStore.replace("expired-access");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({}, 401))
+      .mockImplementationOnce(refreshResponse);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpApiClient().devices.list()).rejects.toBeInstanceOf(ApiUnavailableError);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/v1/devices", "/api/v1/auth/refresh"]);
+    expect(accessTokenStore.read()).toBe("expired-access");
+  });
+
+  it("shares one automatic refresh across concurrent expired authenticated requests", async () => {
+    accessTokenStore.replace("expired-access");
+    let resolveRefresh: (response: Response) => void = () => undefined;
+    const refresh = new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+    let deviceCalls = 0;
+    const fetchMock = vi.fn((path: string) => {
+      if (path === "/api/v1/auth/refresh") return refresh;
+      deviceCalls += 1;
+      return Promise.resolve(deviceCalls <= 2 ? json({}, 401) : json({ devices: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const api = createHttpApiClient();
+    const first = api.devices.list();
+    const second = api.devices.list();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock.mock.calls.filter((call) => call[0] === "/api/v1/auth/refresh")).toHaveLength(1);
+    resolveRefresh(json({ access_token: "rotated-access", token_type: "Bearer", expires_in: 600 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+  });
+
   it("preserves the access token and a typed forbidden error on a 403", async () => {
     accessTokenStore.replace("still-valid-access");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ code: "DEVICE_REVOKED" }, 403)));
@@ -115,12 +178,12 @@ describe("HTTP API adapter", () => {
   it("uses real pairing and decision endpoints without persisting the pairing secret", async () => {
     const persist = vi.spyOn(Storage.prototype, "setItem");
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json({ pairing_token: "ephemeral-pairing", expires_at: "2026-09-12T12:00:00Z" }, 201))
+      .mockResolvedValueOnce(json({ pairing_id: "pairing-id", pairing_token: "ephemeral-pairing", expires_at: "2026-09-12T12:00:00Z" }, 201))
       .mockResolvedValue(json({}));
     vi.stubGlobal("fetch", fetchMock);
     accessTokenStore.replace("authenticated-access");
     const api = createHttpApiClient();
-    await expect(api.devices.createPairing()).resolves.toEqual({ pairingToken: "ephemeral-pairing", expiresAt: "2026-09-12T12:00:00Z" });
+    await expect(api.devices.createPairing()).resolves.toEqual({ pairingId: "pairing-id", pairingToken: "ephemeral-pairing", expiresAt: "2026-09-12T12:00:00Z" });
     await api.devices.approve("device/id", "SHA256:AbC+/exact=");
     await api.devices.reject("device/id", "SHA256:AbC+/exact=");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/v1/devices/pairings", "/api/v1/devices/device%2Fid/approve", "/api/v1/devices/device%2Fid/reject"]);
@@ -139,7 +202,10 @@ describe("HTTP API adapter", () => {
   it.each(["createPairing", "approve", "reject"] as const)("keeps typed auth errors for %s", async (method) => {
     const api = createHttpApiClient();
     const call = (): Promise<unknown> => method === "createPairing" ? api.devices.createPairing() : api.devices[method]("device", "SHA256:exact");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json({}, 403)).mockResolvedValueOnce(json({}, 401)));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({}, 403))
+      .mockResolvedValueOnce(json({}, 401))
+      .mockResolvedValueOnce(json({}, 401)));
     accessTokenStore.replace("valid-access");
     await expect(call()).rejects.toBeInstanceOf(ForbiddenError);
     expect(accessTokenStore.read()).toBe("valid-access");
@@ -148,7 +214,7 @@ describe("HTTP API adapter", () => {
   });
 
   it("rejects an invalid pairing expiry", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ pairing_token: "ephemeral", expires_at: "invalid" }, 201)));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ pairing_id: "pairing-id", pairing_token: "ephemeral", expires_at: "invalid" }, 201)));
     await expect(createHttpApiClient().devices.createPairing()).rejects.toBeInstanceOf(ApiError);
   });
 
