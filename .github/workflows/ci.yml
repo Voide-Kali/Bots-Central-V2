@@ -9,6 +9,7 @@ permissions:
   pull-requests: read
   pull-requests: read
   pull-requests: read
+  pull-requests: read
 
 jobs:
   backend:
