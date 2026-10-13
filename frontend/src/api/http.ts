@@ -7,6 +7,11 @@ interface RequestOptions {
 }
 
 export class SameOriginHttpClient {
+  private refreshHandler: (() => Promise<void>) | undefined;
+
+  public setRefreshHandler(handler: () => Promise<void>): void {
+    this.refreshHandler = handler;
+  }
   public async postJson(path: string, body?: unknown, options: RequestOptions = {}): Promise<Response> {
     return this.request(
       path,
@@ -19,21 +24,37 @@ export class SameOriginHttpClient {
     return this.request(path, { method: "GET" }, options);
   }
 
+  public async delete(path: string, options: RequestOptions = {}): Promise<Response> {
+    return this.request(path, { method: "DELETE" }, options);
+  }
+
   private async request(path: string, init: RequestInit, options: RequestOptions): Promise<Response> {
     if (!path.startsWith("/api/")) {
       throw new Error("The web client only permits same-origin API paths.");
     }
-    const headers = new Headers(init.headers);
-    if (init.body !== undefined) headers.set("Content-Type", "application/json");
-    headers.set("Accept", "application/json");
-    const accessToken = options.includeAccessToken === false ? undefined : accessTokenStore.read();
-    if (accessToken !== undefined) headers.set("Authorization", `Bearer ${accessToken}`);
+    const send = async (): Promise<Response> => {
+      const headers = new Headers(init.headers);
+      if (init.body !== undefined) headers.set("Content-Type", "application/json");
+      headers.set("Accept", "application/json");
+      const accessToken = options.includeAccessToken === false ? undefined : accessTokenStore.read();
+      if (accessToken !== undefined) headers.set("Authorization", `Bearer ${accessToken}`);
+      try {
+        return await fetch(path, { ...init, headers, credentials: "same-origin" });
+      } catch {
+        throw new ApiUnavailableError();
+      }
+    };
 
-    let response: Response;
-    try {
-      response = await fetch(path, { ...init, headers, credentials: "same-origin" });
-    } catch {
-      throw new ApiUnavailableError();
+    let response = await send();
+    if (response.status === 401 && options.includeAccessToken !== false && this.refreshHandler !== undefined) {
+      try {
+        await this.refreshHandler();
+      } catch (error) {
+        if (!(error instanceof UnauthenticatedError)) throw error;
+        accessTokenStore.clear();
+        throw error;
+      }
+      response = await send();
     }
     if (response.status === 401) {
       accessTokenStore.clear();
