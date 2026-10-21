@@ -51,6 +51,17 @@ describe("DevicesPage", () => {
     expect(await screen.findByText(/Sem telemetria ainda/)).toBeVisible();
   });
 
+  it("opens the History view when the audit API is available and returns to devices", async () => {
+    const api: ApiClient = { ...fakeClient(), audit: { list: vi.fn(async () => [{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "auth.login", outcome: "success", name: null }]) } };
+    renderDevices(api);
+    await waitForDevices();
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(await screen.findByText("Login no painel")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /PC000/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Devices" }));
+    await waitForDevices();
+  });
+
   it("keeps the sidebar in the approved order and Soon items do not navigate", async () => {
     renderDevices();
     await waitForDevices();
