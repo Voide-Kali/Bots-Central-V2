@@ -14,6 +14,7 @@ from sqlalchemy import (
     LargeBinary,
     Numeric,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -508,3 +509,61 @@ class DeviceTelemetrySample(Base):
     disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class TelegramLink(Base):
+    """One private Telegram chat bound to one platform user (ADR-011)."""
+
+    __tablename__ = "telegram_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_telegram_links_user_id"),
+        UniqueConstraint("chat_id", name="uq_telegram_links_chat_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TelegramLinkCode(Base):
+    """Short-lived one-time code; only its SHA-256 digest is stored."""
+
+    __tablename__ = "telegram_link_codes"
+    __table_args__ = (
+        CheckConstraint(
+            "octet_length(code_digest) = 32", name="ck_telegram_link_codes_digest_length"
+        ),
+        CheckConstraint("expires_at > created_at", name="ck_telegram_link_codes_expiry"),
+        Index("ix_telegram_link_codes_user_id", "user_id"),
+        UniqueConstraint("code_digest", name="uq_telegram_link_codes_digest"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    code_digest: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DevicePresenceAlert(Base):
+    """Last presence value already announced to the owner, to alert only on changes."""
+
+    __tablename__ = "device_presence_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "last_presence IN ('online', 'offline')", name="ck_device_presence_alerts_value"
+        ),
+    )
+
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_presence: Mapped[str] = mapped_column(String(16), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
