@@ -7,7 +7,7 @@ Caddy escuta só no IP do Tailscale e pega o certificado `*.ts.net` do `tailscal
 ```
 iPhone / Mac / Kali ──(Tailscale)──► Caddy :443 ──► backend :8000 ──► PostgreSQL
                                         └─ painel (arquivos estáticos)
-Telegram ◄──(long polling, saída)── bot      backup ──► HD 10 TB
+Telegram ◄──(long polling, saída)── bot      backup ──► HD 1 TB
 ```
 
 ## 0. Pré-requisitos (uma vez)
@@ -22,10 +22,10 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker "$USER"   # depois saia e entre de novo no SSH
 ```
 
-Monte o HD de 10 TB (exemplo em `/mnt/hd`) e crie a pasta de backup:
+O HD de 1 TB já está montado em `/mnt/storage`. Crie a pasta de backup:
 
 ```bash
-sudo mkdir -p /mnt/hd/bots-central-backups && sudo chmod 700 /mnt/hd/bots-central-backups
+sudo mkdir -p /mnt/storage/bots-central-backups && sudo chmod 700 /mnt/storage/bots-central-backups
 ```
 
 ## 1. Código e segredos
@@ -67,7 +67,7 @@ Nos dois aparelhos, com Tailscale ligado, compile e configure o agente apontando
 | Tarefa | Comando |
 |---|---|
 | Atualizar para a `main` | `git pull && docker compose --env-file .env up -d --build` |
-| Ver backups | `ls -lh /mnt/hd/bots-central-backups` |
+| Ver backups | `ls -lh /mnt/storage/bots-central-backups` |
 | Restaurar backup | `docker compose exec -T db pg_restore -U bots_central -d bots_central --clean < ARQUIVO.dump` |
 | Parar tudo | `docker compose down` (os dados ficam no volume) |
 
