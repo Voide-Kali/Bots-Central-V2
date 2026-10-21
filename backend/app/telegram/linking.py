@@ -11,6 +11,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit import events as audit
 from app.db.enums import AccountStatus
 from app.db.models import TelegramLink, TelegramLinkCode, User
 
@@ -113,6 +114,7 @@ def consume_link_code(
                     created_at=now,
                 )
             )
+            audit.record(session, user_id=row.user_id, action="telegram.linked", actor="telegram")
             return row.user_id
     except IntegrityError as error:
         raise AlreadyLinked from error
@@ -130,13 +132,21 @@ def linked_user_id(session: Session, *, chat_id: int, telegram_user_id: int) -> 
 
 def unlink_chat(session_factory: SessionFactory, *, chat_id: int) -> bool:
     with session_factory() as session, session.begin():
+        user_id = session.scalar(
+            select(TelegramLink.user_id).where(TelegramLink.chat_id == chat_id)
+        )
         result = session.execute(delete(TelegramLink).where(TelegramLink.chat_id == chat_id))
-        return bool(getattr(result, "rowcount", 0))
+        removed = bool(getattr(result, "rowcount", 0))
+        if removed:
+            audit.record(session, user_id=user_id, action="telegram.unlinked", actor="telegram")
+        return removed
 
 
 def unlink_user(session_factory: SessionFactory, *, user_id: uuid.UUID) -> None:
     with session_factory() as session, session.begin():
-        session.execute(delete(TelegramLink).where(TelegramLink.user_id == user_id))
+        result = session.execute(delete(TelegramLink).where(TelegramLink.user_id == user_id))
+        if getattr(result, "rowcount", 0):
+            audit.record(session, user_id=user_id, action="telegram.unlinked", actor="user")
         session.execute(
             delete(TelegramLinkCode).where(
                 TelegramLinkCode.user_id == user_id, TelegramLinkCode.consumed_at.is_(None)
