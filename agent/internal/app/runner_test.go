@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
@@ -362,5 +363,55 @@ func TestRunnerAttachesTelemetryOnlyAfterActivation(t *testing.T) {
 	}
 	if collector.calls.Load() != 1 {
 		t.Fatalf("collector calls = %d", collector.calls.Load())
+	}
+}
+
+type fakeChannel struct {
+	polls     int
+	submitted []commands.Result
+}
+
+func (f *fakeChannel) PollCommand(context.Context, string) (*commands.Command, error) {
+	f.polls++
+	if f.polls == 1 {
+		return &commands.Command{ID: "11111111-1111-4111-8111-111111111111", Type: "send_file", FileName: "a.txt"}, nil
+	}
+	return nil, nil
+}
+
+func (f *fakeChannel) SubmitResult(_ context.Context, _ string, _ commands.Command, result commands.Result) error {
+	f.submitted = append(f.submitted, result)
+	return nil
+}
+
+type fakeExecutor struct{}
+
+func (fakeExecutor) Execute(commands.Command) commands.Result {
+	return commands.Result{OK: true, Content: []byte("x"), SHA256: "00"}
+}
+
+func TestRunnerPollsCommandsOnlyAfterActiveHeartbeats(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{transport.ErrDevicePending, nil, nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusPending}}
+	dependencies := testDependencies(fake, state)
+	channel := &fakeChannel{}
+	dependencies.Commands = channel
+	dependencies.Executor = fakeExecutor{}
+	fake.OnSend = func(_ heartbeat.Model) {
+		if len(fake.Calls()) == 3 {
+			cancel()
+		}
+	}
+	runner, err := New(testConfig(), dependencies)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := runner.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if channel.polls != 2 || len(channel.submitted) != 1 || !channel.submitted[0].OK {
+		t.Fatalf("polls=%d submitted=%+v", channel.polls, channel.submitted)
 	}
 }

@@ -18,6 +18,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
@@ -417,4 +418,98 @@ func isCanonicalUUID(value string) bool {
 		}
 	}
 	return true
+}
+
+const (
+	commandsAudience      = "bots-central:commands:v1"
+	commandResultAudience = "bots-central:command-result:v1"
+	maxUploadBytes        = commands.MaxFileBytes
+)
+
+// PollCommand asks for one approved command. The request is signed and
+// consumes a sequence number like a heartbeat, so it cannot be replayed.
+func (c *HTTPClient) PollCommand(ctx context.Context, deviceID string) (*commands.Command, error) {
+	if !isCanonicalUUID(deviceID) {
+		return nil, errors.New("transport: invalid device ID")
+	}
+	token, err := c.signNext(map[string]any{"aud": commandsAudience, "sub": deviceID})
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.postJSON(ctx, "/api/v1/devices/"+deviceID+"/commands/next", map[string]any{"jws": token})
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, responseError(response, c.now())
+	}
+	var result struct {
+		Command *commands.Command `json:"command"`
+	}
+	if err := decodeJSON(response.Body, &result); err != nil {
+		return nil, errors.New("transport: invalid command response")
+	}
+	if result.Command != nil && (!isCanonicalUUID(result.Command.ID) || result.Command.Type == "") {
+		return nil, errors.New("transport: invalid command response")
+	}
+	return result.Command, nil
+}
+
+// SubmitResult reports a command outcome. File bytes travel next to the JWS;
+// their size and SHA-256 are inside the signed claims.
+func (c *HTTPClient) SubmitResult(ctx context.Context, deviceID string, command commands.Command, result commands.Result) error {
+	if !isCanonicalUUID(deviceID) || !isCanonicalUUID(command.ID) {
+		return errors.New("transport: invalid IDs")
+	}
+	claims := map[string]any{"aud": commandResultAudience, "sub": deviceID, "cid": command.ID}
+	body := map[string]any{}
+	if result.OK {
+		if len(result.Content) > maxUploadBytes {
+			return errors.New("transport: file too large")
+		}
+		claims["status"] = "ok"
+		claims["size"] = len(result.Content)
+		claims["sha256"] = result.SHA256
+		body["content_b64"] = base64.StdEncoding.EncodeToString(result.Content)
+	} else {
+		claims["status"] = "error"
+		claims["error"] = result.Error
+	}
+	token, err := c.signNext(claims)
+	if err != nil {
+		return err
+	}
+	body["jws"] = token
+	response, err := c.postJSON(ctx, "/api/v1/devices/"+deviceID+"/commands/"+command.ID+"/result", body)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return responseError(response, c.now())
+	}
+	return nil
+}
+
+func (c *HTTPClient) signNext(claims map[string]any) (string, error) {
+	sequence, err := c.sequence.Next()
+	if err != nil {
+		return "", err
+	}
+	claims["seq"] = sequence
+	return jws.SignClaims(c.signer, claims)
+}
+
+func (c *HTTPClient) postJSON(ctx context.Context, path string, payload any) (*http.Response, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("transport: encode request: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(path), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("transport: create request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	return c.do(request)
 }

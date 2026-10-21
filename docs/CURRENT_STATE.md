@@ -1,5 +1,9 @@
 # Current State
 
+## Envio de arquivo aprovado por e-mail v0.1 (2026-10-21, em revisão — exige aprovação)
+
+- ADR-015: `/enviar` → código no e-mail vinculado à ação → `/aprovar` → agente busca o comando com JWS (sequência compartilhada com o heartbeat), lê só da pasta compartilhada (sem symlink, ≤ 10 MB) e devolve bytes com tamanho e SHA-256 assinados → bot entrega e apaga. Migration `0012_device_commands`. Instaladores criam a pasta compartilhada. Validação: backend PostgreSQL 16 completo verde; agente `go test -race` e `go vet` (linux e darwin); **teste ponta a ponta local com o agente Go real e o backend real via HTTP** (pareamento, heartbeat com telemetria, arquivo de 65 KB com hash conferido, erro `not_found`).
+
 ## Recuperação de senha v0.1 (2026-10-21, em revisão — exige aprovação)
 
 - ADR-014: código de 8 dígitos por e-mail (15 min, uso único, só HMAC guardado, 5 tentativas), respostas genéricas, limites fail-closed, troca invalida todas as sessões (`security_version`). Migration `0011_password_reset`; tela `/recover` no painel. Validação local: backend PostgreSQL 16 `410 passed`; frontend 63 testes, lint, typecheck, build.
