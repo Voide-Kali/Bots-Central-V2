@@ -29,6 +29,10 @@
   vulnerabilities); frontend tests (56 passed), lint, typecheck, and build; and
   `git diff --check`. No commit or push was made.
 
+## Repositório: remoção de `nvpn/` (2026-10-21)
+
+- A pasta `nvpn/` (binário de ~78 MB commitado por engano) foi removida e adicionada ao `.gitignore`; o blob permanece no histórico Git.
+
 ## Dependências: correção do pip-audit (2026-10-21)
 
 - PyJWT 2.15.1 (ambos os locks), urllib3 2.8.0 e certifi 2026.10.19 (`requirements.lock`); local em Python 3.13 sem PostgreSQL: ruff, mypy, `pip check` e pip-audit dos dois locks passaram; pytest `123 passed, 215 skipped`.
