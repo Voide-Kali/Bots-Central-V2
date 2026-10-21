@@ -1,5 +1,5 @@
 #!/bin/sh
-# Daily PostgreSQL dump into the mounted backup folder (the 10 TB disk).
+# Daily PostgreSQL dump into the mounted backup folder (the 1 TB data disk).
 set -eu
 umask 077
 keep="${BACKUP_KEEP_DAYS:-14}"

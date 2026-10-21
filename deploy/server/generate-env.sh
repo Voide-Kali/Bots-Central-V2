@@ -11,8 +11,8 @@ cat > .env <<ENV
 SERVER_HOSTNAME=REPLACE_ME
 # Tailscale IPv4 of this server (tailscale ip -4)
 TAILSCALE_IP=REPLACE_ME
-# Folder on the 10 TB disk for daily database dumps
-BACKUP_DIR=/mnt/hd/bots-central-backups
+# Folder on the 1 TB data disk (already mounted at /mnt/storage) for daily database dumps
+BACKUP_DIR=/mnt/storage/bots-central-backups
 BACKUP_KEEP_DAYS=14
 
 # --- Database (generated) ------------------------------------------------
