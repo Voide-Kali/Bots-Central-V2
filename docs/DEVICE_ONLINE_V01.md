@@ -40,5 +40,8 @@ they are admitted at 10 per device per 60 seconds (plus a shared 5000/minute cei
 Both PostgreSQL-backed limiters fail closed; denial is `429 HEARTBEAT_RATE_LIMITED`
 with `Retry-After: 60` and never updates heartbeat state.
 
+An optional signed `tel` claim carries bounded system telemetry (ADR-012); malformed
+telemetry rejects the heartbeat without mutation, and accepted samples are kept for 7 days.
+
 There is no permanent Agent bearer token, static API key, mTLS decision, remote
 action, or invasive collection in this version.

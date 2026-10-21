@@ -8,9 +8,9 @@ import { accessTokenStore } from "../api/memoryAccessToken";
 import { DevicesPage } from "./DevicesPage";
 
 const serverDevices: readonly Device[] = [
-  { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null },
-  { id: "MBP-07", name: "Laptop de viagem", platform: "macOS/arm64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:AbC+/exact-fingerprint=" },
-  { id: "NODE-02", name: "Servidor doméstico", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T09:56:00Z", agentVersion: "0.1.0", fingerprint: null }
+  { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: { recordedAt: "2026-09-10T10:00:00Z", cpuPercent: 37.5, load1: 0.8, cpuCount: 8, memoryTotalBytes: 16 * 1024 ** 3, memoryUsedBytes: 4 * 1024 ** 3, diskTotalBytes: 512 * 1024 ** 3, diskUsedBytes: 128 * 1024 ** 3, temperatureC: 51.5, uptimeSeconds: 90_061 } },
+  { id: "MBP-07", name: "Laptop de viagem", platform: "macOS/arm64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:AbC+/exact-fingerprint=", telemetry: null },
+  { id: "NODE-02", name: "Servidor doméstico", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T09:56:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null }
 ];
 
 function fakeClient(list: ApiClient["devices"]["list"] = async () => serverDevices): ApiClient {
@@ -37,6 +37,20 @@ async function waitForDevices(): Promise<void> {
 }
 
 describe("DevicesPage", () => {
+  it("shows the latest server telemetry for an active device", async () => {
+    renderDevices();
+    await waitForDevices();
+    fireEvent.click(screen.getByRole("button", { name: /PC000/ }));
+    const panel = await screen.findByRole("region", { name: "Telemetria" });
+    expect(panel).toHaveTextContent("37,5%");
+    expect(panel).toHaveTextContent("4 GB de 16 GB (25%)");
+    expect(panel).toHaveTextContent("128 GB de 512 GB (25%)");
+    expect(panel).toHaveTextContent("51,5 °C");
+    expect(panel).toHaveTextContent("1 d 1 h");
+    fireEvent.click(screen.getByRole("button", { name: /Servidor doméstico/ }));
+    expect(await screen.findByText(/Sem telemetria ainda/)).toBeVisible();
+  });
+
   it("keeps the sidebar in the approved order and Soon items do not navigate", async () => {
     renderDevices();
     await waitForDevices();

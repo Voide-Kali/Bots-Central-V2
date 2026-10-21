@@ -4,6 +4,7 @@ import type {
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
   Device,
+  DeviceTelemetry,
   PairingResponse,
   LoginRequest,
   RegisterAcceptedResponse,
@@ -59,6 +60,34 @@ function assertUser(value: unknown, status: number): AuthenticatedUser {
   return { id: value.id, email: value.email };
 }
 
+const telemetryNumberKeys = [
+  ["cpu_percent", "cpuPercent"],
+  ["load1", "load1"],
+  ["cpu_count", "cpuCount"],
+  ["memory_total_bytes", "memoryTotalBytes"],
+  ["memory_used_bytes", "memoryUsedBytes"],
+  ["disk_total_bytes", "diskTotalBytes"],
+  ["disk_used_bytes", "diskUsedBytes"],
+  ["temperature_c", "temperatureC"],
+  ["uptime_seconds", "uptimeSeconds"]
+] as const;
+
+function assertTelemetry(value: unknown, status: number): DeviceTelemetry | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value) || typeof value.recorded_at !== "string" || !Number.isFinite(Date.parse(value.recorded_at))) {
+    throw new ApiError("The API returned an invalid response.", status);
+  }
+  const result: Record<string, number | null | string> = { recordedAt: value.recorded_at };
+  for (const [wire, field] of telemetryNumberKeys) {
+    const item = value[wire];
+    if (item !== null && (typeof item !== "number" || !Number.isFinite(item))) {
+      throw new ApiError("The API returned an invalid response.", status);
+    }
+    result[field] = item;
+  }
+  return result as unknown as DeviceTelemetry;
+}
+
 function assertDevice(value: unknown, status: number): Device {
   if (!isRecord(value)
     || typeof value.id !== "string" || typeof value.name !== "string" || typeof value.platform !== "string"
@@ -77,7 +106,8 @@ function assertDevice(value: unknown, status: number): Device {
     lifecycleStatus: value.lifecycle_status,
     lastSeenAt: value.last_seen_at,
     agentVersion: value.agent_version,
-    fingerprint: value.fingerprint
+    fingerprint: value.fingerprint,
+    telemetry: assertTelemetry(value.telemetry, status)
   };
 }
 

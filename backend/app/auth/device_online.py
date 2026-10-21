@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import Device, DevicePairingToken, User
 from app.db.models import Session as DbSession
+from app.devices import telemetry
 
 SessionFactory = Callable[[], Session]
 PAIRING_TOKEN_BYTES = 32
@@ -315,6 +316,12 @@ def reject(
 
 
 def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
+    return _verify_heartbeat_claims(device=device, device_id=device_id, jws=jws)[0]
+
+
+def _verify_heartbeat_claims(
+    *, device: Device, device_id: uuid.UUID, jws: str
+) -> tuple[int, telemetry.TelemetrySample | None]:
     if device.lifecycle_status is DeviceLifecycleStatus.REVOKED:
         raise DeviceRevoked
     if device.lifecycle_status is not DeviceLifecycleStatus.ACTIVE:
@@ -331,7 +338,13 @@ def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
         or not 0 <= sequence <= MAX_SEQUENCE
     ):
         raise InvalidProof
-    return sequence
+    sample: telemetry.TelemetrySample | None = None
+    if "tel" in claims:
+        try:
+            sample = telemetry.parse_claim(claims["tel"])
+        except telemetry.InvalidTelemetry as error:
+            raise InvalidProof from error
+    return sequence, sample
 
 
 def authenticate_heartbeat(
@@ -352,7 +365,7 @@ def heartbeat(
         device = session.scalar(select(Device).where(Device.id == device_id))
         if device is None:
             raise DeviceNotFound
-        sequence = verify_heartbeat(device=device, device_id=device_id, jws=jws)
+        sequence, sample = _verify_heartbeat_claims(device=device, device_id=device_id, jws=jws)
         accepted = session.execute(
             update(Device)
             .where(
@@ -365,6 +378,8 @@ def heartbeat(
             .returning(Device.last_seen_at)
         ).scalar_one_or_none()
         if accepted is not None:
+            if sample is not None:
+                telemetry.store(session, device_id=device_id, sample=sample)
             return accepted
         current = session.scalar(select(Device.lifecycle_status).where(Device.id == device_id))
         if current is DeviceLifecycleStatus.REVOKED:
