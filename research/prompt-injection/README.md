@@ -56,6 +56,12 @@ python3 research/prompt-injection/experiment.py --model llama3.2:3b --reps 3 --o
 
 A rodada completa faz 20 ataques × 3 perguntas × 3 repetições × 3 condições, ou seja, 540 chamadas. Num servidor sem GPU isso leva umas horas, então rode com `nohup` e deixe trabalhando. Só a biblioteca padrão do Python é necessária, além do próprio pacote `backend/`.
 
+Depois, gere as tabelas e o gráfico do pôster (`relatorio.md` + `relatorio.svg`):
+
+```bash
+python3 research/prompt-injection/report.py resultados-*.csv --out relatorio
+```
+
 O `.csv` traz uma linha por tentativa, com a resposta do modelo. Ele serve para gráficos (por exemplo, a taxa de sucesso por categoria e por condição) e para citar exemplos reais no pôster.
 
 ## Limitações (para colocar no relatório)
