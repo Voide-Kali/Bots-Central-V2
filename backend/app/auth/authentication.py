@@ -13,6 +13,7 @@ from pydantic import SecretStr
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session as OrmSession
 
+from app.audit import events as audit
 from app.auth.emails import validate_and_canonicalize_email
 from app.auth.passwords import hash_password, verify_password
 from app.db.enums import AccountStatus, AuthenticationLevel, SessionRevocationReason
@@ -233,6 +234,14 @@ def login(session_factory: SessionFactory, *, email: str, password: str) -> Logi
                 created_at=now,
                 expires_at=idle_expiry,
             )
+        )
+        audit.record(
+            session,
+            user_id=user.id,
+            action="auth.login",
+            actor="user",
+            target_type="session",
+            target_id=str(session_id),
         )
         return LoginResult(
             user.id,

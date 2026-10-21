@@ -16,6 +16,7 @@ from jwt import InvalidTokenError
 from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
+from app.audit import events as audit
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import Device, DevicePairingToken, User
 from app.db.models import Session as DbSession
@@ -170,6 +171,14 @@ def create_pairing(
         session.add(pairing)
         session.flush()
         pairing_id = pairing.id
+        audit.record(
+            session,
+            user_id=user_id,
+            action="device.pairing_created",
+            actor="user",
+            target_type="pairing",
+            target_id=str(pairing_id),
+        )
     return Pairing(id=pairing_id, token=token, expires_at=expires_at)
 
 
@@ -196,6 +205,14 @@ def revoke_pairing(
         now = _clock(session)
         if pairing.consumed_at is None and pairing.revoked_at is None and pairing.expires_at > now:
             pairing.revoked_at = now
+            audit.record(
+                session,
+                user_id=user_id,
+                action="device.pairing_revoked",
+                actor="user",
+                target_type="pairing",
+                target_id=str(pairing_id),
+            )
 
 
 def enroll(
@@ -272,6 +289,15 @@ def enroll(
         session.flush()
         pairing.consumed_at = now
         pairing.device_id = device.id
+        audit.record(
+            session,
+            user_id=pairing.user_id,
+            action="device.enrolled",
+            actor="device",
+            target_type="device",
+            target_id=str(device.id),
+            details={"name": name[:120], "platform": platform[:64]},
+        )
         fingerprint = device.public_key_fingerprint
         assert fingerprint is not None
         return Enrollment(device_id=device.id, fingerprint=fingerprint)
@@ -299,6 +325,15 @@ def approve(
             raise FingerprintMismatch
         device.lifecycle_status = DeviceLifecycleStatus.ACTIVE
         device.approved_at = _clock(session)
+        audit.record(
+            session,
+            user_id=user_id,
+            action="device.approved",
+            actor="user",
+            target_type="device",
+            target_id=str(device_id),
+            details={"name": device.name},
+        )
 
 
 def reject(
@@ -313,6 +348,15 @@ def reject(
         ):
             raise FingerprintMismatch
         device.lifecycle_status = DeviceLifecycleStatus.REVOKED
+        audit.record(
+            session,
+            user_id=user_id,
+            action="device.rejected",
+            actor="user",
+            target_type="device",
+            target_id=str(device_id),
+            details={"name": device.name},
+        )
 
 
 def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:

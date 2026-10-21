@@ -1,5 +1,9 @@
 # Current State
 
+## Auditoria v0.1 (2026-10-21, em revisão)
+
+- Tabela `audit_events` append-only (trigger PostgreSQL bloqueia UPDATE/DELETE; só `ON DELETE SET NULL` do usuário é permitido), migration `0010_audit_events`. Registrados na mesma transação da ação: login, pareamento criado/cancelado, enrollment, aprovação/rejeição de dispositivo, vínculo/desvínculo do Telegram. Detalhes nunca contêm segredos (chaves suspeitas são recusadas). Leitura: `GET /api/v1/audit` (só os próprios eventos) e `/historico` no Telegram. Validação local: PostgreSQL 16 `404 passed`.
+
 ## Assistente de IA local v0.1 (2026-10-21, em revisão)
 
 - Texto livre no Telegram (chat vinculado) é respondido por um modelo local via Ollama com um snapshot somente leitura dos dispositivos do próprio usuário; sem ferramentas nem ações (ADR-013). Limite de 20 perguntas/10 min por chat. Validação local: backend com PostgreSQL 16 `397 passed`. Não testado contra um Ollama real.
