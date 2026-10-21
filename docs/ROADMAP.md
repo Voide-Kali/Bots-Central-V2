@@ -51,7 +51,7 @@ de pesquisa *"como permitir que uma IA atue sobre computadores sem poder ser man
 | D2 | **Código de aprovação por e-mail** para ações de alto risco, digitado no Telegram. Ver ADR-011. | Dois canais independentes; reaproveita a verificação de e-mail existente. |
 | D3 | **Painel web React** continua para administração (pareamento, aprovação de dispositivos). | Já existe e funciona. |
 | D4 | **App Flutter** (iOS/macOS) fica para quando houver orçamento para o Apple Developer Program. | US$ 99/ano fora do orçamento atual; ADR-004 continua válido. |
-| D5 | **Servidor em casa**: Ubuntu Server (SSD 256 GB, HD 10 TB, 16 GB RAM), Docker Compose, PostgreSQL 17. | Custo zero; hardware suficiente. |
+| D5 | **Servidor em casa**: Ubuntu Server (SSD 256 GB NVMe, HD 1 TB, 16 GB RAM), Docker Compose, PostgreSQL 17. | Custo zero; hardware suficiente. |
 | D6 | **Sem portas abertas**: acesso pela rede **Tailscale**; HTTPS `*.ts.net`. | Funciona atrás de CGNAT; sem domínio; pequena superfície de ataque. |
 | D7 | **IA local com Ollama** no servidor, atrás de uma interface trocável. Começa só com consultas. **[ADR]** | Custo zero; dados não saem de casa. |
 | D8 | **Agente para macOS e Linux**; Windows depois (testar em PC da escola). | Dispositivos disponíveis: Mac, notebook Kali. |
