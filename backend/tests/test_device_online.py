@@ -11,7 +11,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
@@ -128,9 +128,10 @@ def test_pairing_persists_only_digest_and_enrollment_is_one_time(
         )
         device = session.get(Device, device_id)
         assert pairing is not None and device is not None
-        assert pairing.token_digest == hashlib.sha256(
-            base64.urlsafe_b64decode(pairing_token + "=")
-        ).digest()
+        assert (
+            pairing.token_digest
+            == hashlib.sha256(base64.urlsafe_b64decode(pairing_token + "=")).digest()
+        )
         assert pairing_token.encode() not in pairing.token_digest
         assert device.lifecycle_status is DeviceLifecycleStatus.PENDING
         assert device.public_key_fingerprint == fingerprint
@@ -151,6 +152,104 @@ def test_pairing_persists_only_digest_and_enrollment_is_one_time(
             public_key_encoded=second_public,
             proof=second_proof,
             name="again",
+            platform="linux",
+            agent_version=None,
+        )
+
+
+def test_pairing_revocation_is_session_scoped_and_blocks_enrollment(
+    migrated_postgresql_engine: Engine,
+) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    pairing = device_online.create_pairing(factory, user_id=user_id, session_id=session_id)
+    assert pairing.id is not None
+    device_online.revoke_pairing(
+        factory, user_id=user_id, session_id=session_id, pairing_id=pairing.id
+    )
+    private, public_key = _key_material()
+    proof = jwt.encode(
+        {
+            "aud": device_online.ENROLLMENT_AUDIENCE,
+            "sub": "enrollment",
+            "pairing_token": pairing.token,
+        },
+        private,
+        algorithm="EdDSA",
+    )
+    with pytest.raises(device_online.InvalidPairing):
+        device_online.enroll(
+            factory,
+            pairing_token=pairing.token,
+            public_key_encoded=public_key,
+            proof=proof,
+            name="blocked",
+            platform="linux",
+            agent_version=None,
+        )
+    with pytest.raises(device_online.PairingNotFound):
+        device_online.revoke_pairing(
+            factory, user_id=user_id, session_id=uuid.uuid4(), pairing_id=pairing.id
+        )
+
+
+def test_consumed_and_expired_pairing_revocation_is_idempotent(
+    migrated_postgresql_engine: Engine,
+) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    device_id, _, _, _ = _enroll(factory, user_id=user_id, session_id=session_id)
+    with factory() as session:
+        consumed = session.scalar(
+            select(DevicePairingToken).where(DevicePairingToken.device_id == device_id)
+        )
+        assert consumed is not None
+        consumed_id = consumed.id
+    device_online.revoke_pairing(
+        factory, user_id=user_id, session_id=session_id, pairing_id=consumed_id
+    )
+    with factory() as session:
+        assert session.get(Device, device_id) is not None
+        assert session.get(DevicePairingToken, consumed_id).revoked_at is None  # type: ignore[union-attr]
+
+    expired = device_online.create_pairing(factory, user_id=user_id, session_id=session_id)
+    with factory() as session, session.begin():
+        pairing = session.get(DevicePairingToken, expired.id)
+        now = session.scalar(text("SELECT clock_timestamp()"))
+        assert pairing is not None and now is not None
+        pairing.created_at = now - timedelta(minutes=10)
+        pairing.expires_at = now - timedelta(minutes=1)
+    device_online.revoke_pairing(
+        factory, user_id=user_id, session_id=session_id, pairing_id=expired.id
+    )
+    with factory() as session:
+        assert session.get(DevicePairingToken, expired.id).revoked_at is None  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("claimed_token", [None, 1, [], {}, "é", "🔒"])
+def test_enrollment_rejects_invalid_pairing_token_claim(
+    migrated_postgresql_engine: Engine, claimed_token: object
+) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    pairing = device_online.create_pairing(factory, user_id=user_id, session_id=session_id)
+    private, public_key = _key_material()
+    proof = jwt.encode(
+        {
+            "aud": device_online.ENROLLMENT_AUDIENCE,
+            "sub": "enrollment",
+            "pairing_token": claimed_token,
+        },
+        private,
+        algorithm="EdDSA",
+    )
+    with pytest.raises(device_online.InvalidProof):
+        device_online.enroll(
+            factory,
+            pairing_token=pairing.token,
+            public_key_encoded=public_key,
+            proof=proof,
+            name="bad-claim",
             platform="linux",
             agent_version=None,
         )

@@ -74,6 +74,10 @@ def _body_limit(path: str) -> int | None:
     """Bound all public credential-bearing JSON, including UUID heartbeat routes."""
     if path.startswith("/api/v1/devices/") and path.endswith("/heartbeat"):
         return 16 * 1024
+    if path.startswith("/api/v1/devices/") and (
+        path.endswith("/approve") or path.endswith("/reject")
+    ):
+        return 1024
     return _AUTH_BODY_LIMITS.get(path)
 
 
@@ -588,12 +592,19 @@ async def logout(request: Request) -> Response:
     runtime = _runtime(request)
     if not _web_cookie_request_is_acceptable(request, runtime):
         return _generic_json_response(403, _INVALID_MESSAGE)
+    refresh_token = request.cookies.get("refresh_token")
     token = _bearer(request)
-    if token:
-        try:
+    try:
+        if refresh_token is not None:
+            matched = await _run_sync(
+                lambda: authentication.logout_refresh(runtime.session_factory, refresh_token)
+            )
+            if not matched and token:
+                await _run_sync(lambda: authentication.logout(runtime.session_factory, token))
+        elif token:
             await _run_sync(lambda: authentication.logout(runtime.session_factory, token))
-        except Exception:
-            return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     response = Response(status_code=204, headers=_NO_STORE_HEADERS)
     response.delete_cookie("refresh_token", path="/api/v1/auth")
     return response
@@ -689,7 +700,11 @@ async def create_device_pairing(body: PairingRequest, request: Request) -> Respo
         return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     return JSONResponse(
         status_code=201,
-        content={"pairing_token": pairing.token, "expires_at": pairing.expires_at.isoformat()},
+        content={
+            "pairing_id": str(pairing.id),
+            "pairing_token": pairing.token,
+            "expires_at": pairing.expires_at.isoformat(),
+        },
         headers=_NO_STORE_HEADERS,
     )
 
@@ -697,6 +712,18 @@ async def create_device_pairing(body: PairingRequest, request: Request) -> Respo
 @devices_router.post("/enrollments")
 async def enroll_device(body: EnrollmentRequest, request: Request) -> Response:
     runtime = _runtime(request)
+    controller = runtime.abuse_controller
+    if controller is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    try:
+        network = _network(request, runtime)
+    except ClientAddressUnavailable:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    admitted = await _admit(lambda: controller.admit_enrollment_preauth(network=network))
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return _generic_json_response(429, _UNAVAILABLE_MESSAGE)
     try:
         enrolled = await _run_sync(
             lambda: device_online.enroll(
@@ -750,6 +777,28 @@ async def approve_device(
     return JSONResponse(
         status_code=200, content={"lifecycle_status": "active"}, headers=_NO_STORE_HEADERS
     )
+
+
+@devices_router.delete("/pairings/{pairing_id}", status_code=204)
+async def revoke_device_pairing(pairing_id: uuid.UUID, request: Request) -> Response:
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        await _run_sync(
+            lambda: device_online.revoke_pairing(
+                runtime.session_factory,
+                user_id=principal.user_id,
+                session_id=principal.session_id,
+                pairing_id=pairing_id,
+            )
+        )
+    except device_online.PairingNotFound:
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return Response(status_code=204, headers=_NO_STORE_HEADERS)
 
 
 @devices_router.post("/{device_id}/reject")

@@ -104,6 +104,13 @@ HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
         AbuseLimit("global", 10000, 60),
     ),
 )
+ENROLLMENT_PREAUTH_POLICY = AbusePolicy(
+    operation="device_enrollment_preauth",
+    limits=(
+        AbuseLimit("network", 30, 300),
+        AbuseLimit("global", 1000, 300),
+    ),
+)
 
 SessionFactory = Callable[[], Session]
 
@@ -284,6 +291,11 @@ class AbuseController:
         return self._admit(
             HEARTBEAT_PREAUTH_POLICY,
             {"network": network, "global": "all"},
+        )
+
+    def admit_enrollment_preauth(self, *, network: str) -> bool:
+        return self._admit(
+            ENROLLMENT_PREAUTH_POLICY, {"network": network, "global": "all"}
         )
 
     def cleanup_expired(self) -> int:
