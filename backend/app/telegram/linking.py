@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.audit import events as audit
 from app.db.enums import AccountStatus
 from app.db.models import TelegramLink, TelegramLinkCode, User
+from app.devices import commands
 
 SessionFactory = Callable[[], Session]
 
@@ -137,8 +138,9 @@ def unlink_chat(session_factory: SessionFactory, *, chat_id: int) -> bool:
         )
         result = session.execute(delete(TelegramLink).where(TelegramLink.chat_id == chat_id))
         removed = bool(getattr(result, "rowcount", 0))
-        if removed:
+        if removed and user_id is not None:
             audit.record(session, user_id=user_id, action="telegram.unlinked", actor="telegram")
+            commands.cancel_open_for_user(session, user_id=user_id, reason="unlinked")
         return removed
 
 
@@ -147,6 +149,7 @@ def unlink_user(session_factory: SessionFactory, *, user_id: uuid.UUID) -> None:
         result = session.execute(delete(TelegramLink).where(TelegramLink.user_id == user_id))
         if getattr(result, "rowcount", 0):
             audit.record(session, user_id=user_id, action="telegram.unlinked", actor="user")
+            commands.cancel_open_for_user(session, user_id=user_id, reason="unlinked")
         session.execute(
             delete(TelegramLinkCode).where(
                 TelegramLinkCode.user_id == user_id, TelegramLinkCode.consumed_at.is_(None)

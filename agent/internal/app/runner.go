@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
@@ -43,6 +44,17 @@ const (
 	StateStopped              State = "stopped"
 )
 
+// CommandChannel fetches approved commands and reports results (signed by the transport).
+type CommandChannel interface {
+	PollCommand(ctx context.Context, deviceID string) (*commands.Command, error)
+	SubmitResult(ctx context.Context, deviceID string, command commands.Command, result commands.Result) error
+}
+
+// CommandExecutor runs one typed command locally.
+type CommandExecutor interface {
+	Execute(command commands.Command) commands.Result
+}
+
 // Config controls the local heartbeat runtime.
 type Config struct {
 	HeartbeatInterval time.Duration
@@ -72,7 +84,10 @@ type waitFunc func(context.Context, time.Duration) error
 type Dependencies struct {
 	Collector HostCollector
 	// Telemetry is optional; nil keeps presence-only heartbeats.
-	Telemetry     telemetry.Collector
+	Telemetry telemetry.Collector
+	// Commands and Executor are optional; both must be set to enable ADR-015 actions.
+	Commands      CommandChannel
+	Executor      CommandExecutor
 	Enrollment    EnrollmentState
 	Transport     transport.HeartbeatTransport
 	Logger        *logging.Logger
@@ -89,6 +104,8 @@ type Runner struct {
 	config     Config
 	collector  HostCollector
 	telemetry  telemetry.Collector
+	commands   CommandChannel
+	executor   CommandExecutor
 	enrollment EnrollmentState
 	transport  transport.HeartbeatTransport
 	logger     *logging.Logger
@@ -116,7 +133,7 @@ func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if dependencies.Jitter == nil {
 		dependencies.Jitter = defaultJitter
 	}
-	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
+	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, commands: dependencies.Commands, executor: dependencies.Executor, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
 }
 
 func validateConfig(config Config) error {
@@ -195,6 +212,7 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 			backoff.Reset()
 			r.setState(StateOnline)
 			r.logger.Info("heartbeat accepted by transport")
+			r.runCommands(ctx, deviceID)
 			if err := r.wait(ctx, r.heartbeatDelay()); err != nil {
 				if ctx.Err() != nil {
 					return nil
@@ -306,4 +324,31 @@ func waitFor(ctx context.Context, duration time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// runCommands polls once for an approved command after a successful heartbeat.
+// Failures are logged and never affect presence; the next heartbeat tries again.
+func (r *Runner) runCommands(ctx context.Context, deviceID string) {
+	if r.commands == nil || r.executor == nil {
+		return
+	}
+	pollContext, cancel := context.WithTimeout(ctx, r.config.TransportTimeout)
+	command, err := r.commands.PollCommand(pollContext, deviceID)
+	cancel()
+	if err != nil {
+		r.logger.Warn("command poll failed", logging.ErrorField(err))
+		return
+	}
+	if command == nil {
+		return
+	}
+	r.logger.Info("executing approved command", logging.Field{Key: "type", Value: command.Type})
+	result := r.executor.Execute(*command)
+	submitContext, cancelSubmit := context.WithTimeout(ctx, 4*r.config.TransportTimeout)
+	defer cancelSubmit()
+	if err := r.commands.SubmitResult(submitContext, deviceID, *command, result); err != nil {
+		r.logger.Warn("command result submission failed", logging.ErrorField(err))
+		return
+	}
+	r.logger.Info("command result accepted", logging.Field{Key: "ok", Value: fmt.Sprint(result.OK)})
 }

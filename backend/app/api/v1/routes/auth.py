@@ -77,6 +77,10 @@ def _body_limit(path: str) -> int | None:
     """Bound all public credential-bearing JSON, including UUID heartbeat routes."""
     if path.startswith("/api/v1/devices/") and path.endswith("/heartbeat"):
         return 16 * 1024
+    if path.startswith("/api/v1/devices/") and path.endswith("/commands/next"):
+        return 16 * 1024
+    if path.startswith("/api/v1/devices/") and "/commands/" in path and path.endswith("/result"):
+        return 15 * 1024 * 1024  # 10 MB file as base64 plus the signed envelope
     if path.startswith("/api/v1/devices/") and (
         path.endswith("/approve") or path.endswith("/reject")
     ):
