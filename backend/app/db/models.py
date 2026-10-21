@@ -567,3 +567,33 @@ class DevicePresenceAlert(Base):
     )
     last_presence: Mapped[str] = mapped_column(String(16), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AuditEvent(Base):
+    """Append-only audit row (a database trigger rejects updates and deletes)."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        CheckConstraint(
+            "actor IN ('user', 'device', 'telegram', 'system')", name="ck_audit_events_actor"
+        ),
+        CheckConstraint(
+            "outcome IN ('success', 'denied', 'failure')", name="ck_audit_events_outcome"
+        ),
+        CheckConstraint("action <> ''", name="ck_audit_events_action_not_empty"),
+        Index("ix_audit_events_user_occurred", "user_id", text("occurred_at DESC")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor: Mapped[str] = mapped_column(String(16), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    details: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )

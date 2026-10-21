@@ -18,7 +18,7 @@ nenhuma porta precisa ser aberta.
 
 1. No painel, card **Telegram** → **Vincular Telegram** → toque em **Abrir no Telegram**
    (ou envie `/vincular CODIGO` ao bot). O código vale 10 minutos e uma única vez.
-2. Comandos: `/status`, `/desvincular`, `/ajuda`.
+2. Comandos: `/status`, `/historico`, `/desvincular`, `/ajuda`.
 3. Alertas automáticos quando um dispositivo ativo fica offline ou volta (verificação a cada 30 s;
    offline = sem heartbeat aceito há 90 s).
 
