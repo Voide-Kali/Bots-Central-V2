@@ -19,5 +19,5 @@ pip install -e '.[dev]'
 pytest
 ```
 
-See `docs/CURRENT_STATE.md` for the verified project state and `docs/BUILD_V2.md`
-for the planned delivery order.
+See `docs/CURRENT_STATE.md` for the current state and `docs/ROADMAP.md`
+for the delivery plan.
