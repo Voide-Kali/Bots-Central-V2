@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.assistant import assistant
 from app.assistant.ollama import AssistantUnavailable
+from app.audit import events as audit
 from app.auth import device_online
 from app.auth.abuse_control import AbuseControlUnavailable
 from app.db.models import Device
@@ -27,6 +28,7 @@ HELP = (
     "Pergunte em texto livre (ex.: “qual PC está mais quente?”) e a IA responde.\n\n"
     "Comandos:\n"
     "/status — estado e telemetria dos seus dispositivos\n"
+    "/historico — últimas ações na sua conta\n"
     "/desvincular — desliga este chat da sua conta\n"
     "/ajuda — esta mensagem"
 )
@@ -125,6 +127,10 @@ def handle_update(
             return Reply(chat_id, NOT_LINKED)
         if name == "/status":
             return Reply(chat_id, status_text(session, user_id))
+        if name == "/historico":
+            rows = audit.list_for_user(session, user_id=user_id, limit=10)
+            body_text = "\n".join(audit.label(row) for row in rows) or "Nenhuma ação registrada."
+            return Reply(chat_id, "🧾 Últimas ações:\n" + body_text)
     if not body.startswith("/"):
         return _ask(chat_id, user_id, body, session_factory, admission, model)
     if name == "/desvincular":
