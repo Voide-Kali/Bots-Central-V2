@@ -1,6 +1,7 @@
 import type { KeyboardEvent, ReactElement } from "react";
 import type { Device, DeviceLifecycleStatus } from "../api/contracts";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { TelemetryPanel } from "./TelemetryPanel";
 
 interface DeviceListProps {
   readonly devices: readonly Device[];
@@ -46,7 +47,7 @@ export function DeviceList({ devices, selectedId, onSelect }: DeviceListProps): 
           <div><dt>Presença do servidor</dt><dd><ConnectionStatus presence={device.status} /></dd></div>
           <div><dt>Agent</dt><dd>{device.agentVersion ?? "Não informado pelo servidor"}</dd></div>
           <div><dt>Última atividade</dt><dd>{serverTimestamp(device.lastSeenAt)}</dd></div>
-        </dl></div> : null}
+        </dl>{device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}</div> : null}
       </li>;
     })}</ul>
   </section>;

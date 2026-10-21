@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 )
 
 // Model is an internal DTO, not an approved HTTP wire format.
@@ -17,6 +18,8 @@ type Model struct {
 	AgentVersion      string
 	Timestamp         time.Time
 	CapabilityVersion string
+	// Telemetry is optional; nil sends a presence-only heartbeat.
+	Telemetry *telemetry.Sample
 }
 
 func New(deviceID string, status hostinfo.Status, agentVersion string, timestamp time.Time, capabilityVersion string) (Model, error) {

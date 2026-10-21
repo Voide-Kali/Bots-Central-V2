@@ -69,9 +69,23 @@ describe("HTTP API adapter", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createHttpApiClient().devices.list()).resolves.toEqual([
-      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null },
-      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:exact=" }
+      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null },
+      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:exact=", telemetry: null }
     ]);
+  });
+
+  it("parses device telemetry and rejects malformed telemetry", async () => {
+    accessTokenStore.replace("access-token");
+    const base = { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0", fingerprint: null };
+    const wire = { recorded_at: "2026-10-21T12:00:00Z", cpu_percent: 12.5, load1: null, cpu_count: 8, memory_total_bytes: 100, memory_used_bytes: 40, disk_total_bytes: null, disk_used_bytes: null, temperature_c: 48, uptime_seconds: 60 };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ devices: [{ ...base, telemetry: wire }] })));
+    await expect(createHttpApiClient().devices.list()).resolves.toEqual([expect.objectContaining({
+      telemetry: { recordedAt: "2026-10-21T12:00:00Z", cpuPercent: 12.5, load1: null, cpuCount: 8, memoryTotalBytes: 100, memoryUsedBytes: 40, diskTotalBytes: null, diskUsedBytes: null, temperatureC: 48, uptimeSeconds: 60 }
+    })]);
+    for (const bad of [{ ...wire, cpu_percent: "12" }, { ...wire, recorded_at: "never" }, "x", { ...wire, uptime_seconds: undefined }]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ devices: [{ ...base, telemetry: bad }] })));
+      await expect(createHttpApiClient().devices.list()).rejects.toThrow("invalid response");
+    }
   });
 
   it("clears memory and surfaces unauthenticated on a 401", async () => {

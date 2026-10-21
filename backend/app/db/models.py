@@ -2,10 +2,13 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     LargeBinary,
@@ -458,3 +461,50 @@ class RefreshToken(Base):
             f"RefreshToken(id={self.id!s}, session_id={self.session_id!s}, "
             f"generation={self.generation!r}, consumed={self.consumed_at is not None!r})"
         )
+
+
+class DeviceTelemetrySample(Base):
+    """One bounded system-metrics sample accepted with a signed heartbeat."""
+
+    __tablename__ = "device_telemetry_samples"
+    __table_args__ = (
+        CheckConstraint(
+            "cpu_percent IS NULL OR (cpu_percent >= 0 AND cpu_percent <= 100)",
+            name="ck_device_telemetry_cpu_percent",
+        ),
+        CheckConstraint("load1 IS NULL OR load1 >= 0", name="ck_device_telemetry_load1"),
+        CheckConstraint("cpu_count IS NULL OR cpu_count > 0", name="ck_device_telemetry_cpu_count"),
+        CheckConstraint(
+            "memory_used_bytes IS NULL OR memory_total_bytes IS NULL "
+            "OR (memory_used_bytes >= 0 AND memory_used_bytes <= memory_total_bytes)",
+            name="ck_device_telemetry_memory",
+        ),
+        CheckConstraint(
+            "disk_used_bytes IS NULL OR disk_total_bytes IS NULL "
+            "OR (disk_used_bytes >= 0 AND disk_used_bytes <= disk_total_bytes)",
+            name="ck_device_telemetry_disk",
+        ),
+        CheckConstraint(
+            "temperature_c IS NULL OR (temperature_c >= -50 AND temperature_c <= 150)",
+            name="ck_device_telemetry_temperature",
+        ),
+        CheckConstraint(
+            "uptime_seconds IS NULL OR uptime_seconds >= 0", name="ck_device_telemetry_uptime"
+        ),
+        Index("ix_device_telemetry_device_recorded", "device_id", text("recorded_at DESC")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_total_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    memory_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_total_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

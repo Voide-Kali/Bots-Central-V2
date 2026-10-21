@@ -22,6 +22,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/jws"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 )
 
 const (
@@ -195,13 +196,15 @@ func (c *HTTPClient) SendHeartbeat(ctx context.Context, model heartbeat.Model) e
 		return err
 	}
 	token, err := jws.SignClaims(c.signer, struct {
-		Audience string `json:"aud"`
-		Subject  string `json:"sub"`
-		Sequence uint64 `json:"seq"`
+		Audience  string            `json:"aud"`
+		Subject   string            `json:"sub"`
+		Sequence  uint64            `json:"seq"`
+		Telemetry *telemetry.Sample `json:"tel,omitempty"`
 	}{
-		Audience: HeartbeatAudience,
-		Subject:  model.DeviceID,
-		Sequence: sequence,
+		Audience:  HeartbeatAudience,
+		Subject:   model.DeviceID,
+		Sequence:  sequence,
+		Telemetry: model.Telemetry,
 	})
 	if err != nil {
 		return err
