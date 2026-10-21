@@ -6,6 +6,7 @@ import type { Device } from "../api/contracts";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { DeviceList } from "../components/DeviceList";
+import { TelegramCard } from "../components/TelegramCard";
 
 type DeviceState =
   | { readonly kind: "idle" }
@@ -162,6 +163,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
             <button disabled={actionBusy} onClick={() => void cancelPairing()} type="button">Cancelar pairing</button>
           </> : <button disabled={actionBusy} onClick={() => void startPairing()} type="button">Adicionar dispositivo</button>}
         </section> : null}
+        {session.kind === "authenticated" && api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}
         {waitingForSession || loadingDevices ? <Skeletons /> : null}
         {requiresLogin ? <section className="state-panel"><h2>Acesso necessário</h2><p>Entre para consultar os dispositivos do seu espaço.</p><button onClick={() => navigate("/login")} type="button">Ir para entrar</button></section> : null}
         {unavailable ? <section className="state-panel state-panel--unavailable"><h2>Não foi possível atualizar seus dispositivos.</h2><p>Não foi possível carregar uma atualização do servidor. Tente novamente em alguns instantes.</p><button onClick={session.kind === "unavailable" ? () => void retryBootstrap() : refresh} type="button">Tentar novamente</button></section> : null}

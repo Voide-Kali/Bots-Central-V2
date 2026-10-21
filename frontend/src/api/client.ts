@@ -6,7 +6,9 @@ import type {
   LoginRequest,
   PairingResponse,
   RegisterAcceptedResponse,
-  RegisterRequest
+  RegisterRequest,
+  TelegramLinkCode,
+  TelegramStatus
 } from "./contracts";
 
 export interface AuthApi {
@@ -26,7 +28,15 @@ export interface DevicesApi {
   reject(id: string, fingerprint: string): Promise<void>;
 }
 
+export interface TelegramApi {
+  status(): Promise<TelegramStatus>;
+  createLinkCode(): Promise<TelegramLinkCode>;
+  unlink(): Promise<void>;
+}
+
 export interface ApiClient {
   readonly auth: AuthApi;
   readonly devices: DevicesApi;
+  /** Optional so test fakes and older builds keep working without the Telegram card. */
+  readonly telegram?: TelegramApi;
 }
