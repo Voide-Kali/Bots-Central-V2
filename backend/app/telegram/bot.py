@@ -28,8 +28,13 @@ logger = logging.getLogger("bots_central.telegram")
 
 def _send(client: TelegramClient, replies: list[Reply]) -> None:
     for reply in replies:
+        if reply.callback_id is not None:
+            try:
+                client.answer_callback(reply.callback_id)
+            except TelegramUnavailable:
+                logger.warning("telegram callback answer failed")
         try:
-            client.send_message(reply.chat_id, reply.text)
+            client.send_message(reply.chat_id, reply.text, reply.keyboard)
         except TelegramUnavailable:
             logger.warning("telegram send failed")
 
