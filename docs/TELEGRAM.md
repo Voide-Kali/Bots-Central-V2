@@ -22,6 +22,12 @@ nenhuma porta precisa ser aberta.
 3. Alertas automáticos quando um dispositivo ativo fica offline ou volta (verificação a cada 30 s;
    offline = sem heartbeat aceito há 90 s).
 
+## Perguntar para a IA (ADR-013)
+
+Com `ASSISTANT_OLLAMA_URL` configurado, qualquer mensagem que não seja comando vira pergunta
+para a IA local (ex.: “qual PC está mais quente?”, “quanto de disco sobra no Mac?”). Ela só
+consulta: não executa nenhuma ação. Limite de 20 perguntas por chat a cada 10 minutos.
+
 ## Segurança
 
 - Só chats **privados**; o bot ignora grupos, outros bots e mensagens em que remetente ≠ chat.
