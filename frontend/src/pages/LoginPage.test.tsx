@@ -27,14 +27,15 @@ async function waitForLoginForm(): Promise<void> {
 }
 
 describe("LoginPage", () => {
-  it("renders the approved trust-focused composition and recovery notice", async () => {
+  it("renders the approved trust-focused composition and links to recovery", async () => {
     renderLogin();
     await waitForLoginForm();
     expect(screen.getByText("Camada de confiança / v2")).toBeVisible();
     expect(screen.getByText("Espaço pessoal")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Veja o que está seguro e pronto." })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Esqueci minha senha" }));
-    expect(screen.getByText("Recuperação de conta ainda não está disponível nesta versão.")).toBeVisible();
+    fireEvent.click(screen.getByRole("link", { name: "Esqueci minha senha" }));
+    expect(window.location.pathname).toBe("/recover");
+    window.history.pushState({}, "", "/login");
   });
 
   it("provides an accessible password visibility control", async () => {

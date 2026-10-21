@@ -115,7 +115,18 @@ class SmtpEmailVerificationDeliveryAdapter:
         return message
 
     def deliver(self, intent: DeliveryIntent) -> None:
-        message = self._message(intent)
+        self._send(self._message(intent))
+
+    def send_plain(self, *, recipient: str, subject: str, body: str) -> None:
+        """Single-attempt plain-text email through the same STARTTLS configuration."""
+        message = EmailMessage()
+        message["From"] = self._sender
+        message["To"] = recipient
+        message["Subject"] = subject
+        message.set_content(body)
+        self._send(message)
+
+    def _send(self, message: EmailMessage) -> None:
         context = ssl.create_default_context()
         if self._ca_file is not None:
             try:

@@ -1,5 +1,9 @@
 # Current State
 
+## Recuperação de senha v0.1 (2026-10-21, em revisão — exige aprovação)
+
+- ADR-014: código de 8 dígitos por e-mail (15 min, uso único, só HMAC guardado, 5 tentativas), respostas genéricas, limites fail-closed, troca invalida todas as sessões (`security_version`). Migration `0011_password_reset`; tela `/recover` no painel. Validação local: backend PostgreSQL 16 `410 passed`; frontend 63 testes, lint, typecheck, build.
+
 ## Auditoria v0.1 (2026-10-21, em revisão)
 
 - Tabela `audit_events` append-only (trigger PostgreSQL bloqueia UPDATE/DELETE; só `ON DELETE SET NULL` do usuário é permitido), migration `0010_audit_events`. Registrados na mesma transação da ação: login, pareamento criado/cancelado, enrollment, aprovação/rejeição de dispositivo, vínculo/desvínculo do Telegram. Detalhes nunca contêm segredos (chaves suspeitas são recusadas). Leitura: `GET /api/v1/audit` (só os próprios eventos) e `/historico` no Telegram. Validação local: PostgreSQL 16 `404 passed`.

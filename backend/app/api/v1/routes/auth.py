@@ -59,6 +59,8 @@ _AUTH_BODY_LIMITS = {
     "/api/v1/auth/email-verification/consume-code": 1024,
     "/api/v1/auth/email-verification/consume-link": 1024,
     "/api/v1/auth/login": 8 * 1024,
+    "/api/v1/auth/password-reset/request": 1024,
+    "/api/v1/auth/password-reset/confirm": 8 * 1024,
     "/api/v1/devices/pairings": 1024,
     "/api/v1/devices/enrollments": 16 * 1024,
 }
