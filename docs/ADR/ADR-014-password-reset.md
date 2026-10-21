@@ -20,7 +20,8 @@ canal de confiança do cadastro (ADR-008) e o servidor já envia e-mail por SMTP
    uniforme); comparação em tempo constante; no máximo **5 erros por código** (contador
    commitado), depois o código morre.
 4. No sucesso: nova hash, código consumido, `users.security_version += 1` (invalida todos os
-   access/refresh tokens existentes) e todas as sessões revogadas com motivo `password_reset`.
+   access/refresh tokens existentes), todas as sessões revogadas com motivo `password_reset` e
+   **o vínculo do Telegram removido** (canal de contenção — revisão independente M2).
 5. Limites (PostgreSQL, fail-closed): pedido 3/h por e-mail, 10/h por rede; confirmação 10/h por
    e-mail, 20/h por rede.
 6. Auditoria: `auth.password_reset_requested`, `auth.password_reset_failed` (negado) e
@@ -33,3 +34,7 @@ canal de confiança do cadastro (ADR-008) e o servidor já envia e-mail por SMTP
 - 8 dígitos + 5 tentativas + 3 códigos/h por e-mail tornam adivinhação inviável
   (≈ 15 chances em 10⁸ por hora).
 - Pendente (roadmap): período de espera para ações remotas logo após uma recuperação.
+- Riscos aceitos nesta fase (revisão independente): (a) o pedido de código faz mais trabalho
+  para contas existentes do que para inexistentes, uma diferença de tempo mensurável só com muitas
+  redes e contida pelos limites; (b) a chave `ABUSE_CONTROL_HMAC_KEY` é reaproveitada com domínio
+  próprio em vez de um keyring dedicado como no ADR-008 — rever quando houver rotação de chaves.

@@ -24,7 +24,14 @@ from app.auth.abuse_control import AbuseControlKey
 from app.auth.emails import EmailValidationError, validate_and_canonicalize_email
 from app.auth.passwords import hash_password, validate_password
 from app.db.enums import AccountStatus, SessionRevocationReason
-from app.db.models import PasswordCredential, PasswordResetCode, User, UserEmail
+from app.db.models import (
+    PasswordCredential,
+    PasswordResetCode,
+    TelegramLink,
+    TelegramLinkCode,
+    User,
+    UserEmail,
+)
 from app.db.models import Session as DbSession
 
 SessionFactory = Callable[[], Session]
@@ -167,5 +174,11 @@ def confirm_reset(
         for db_session in sessions:
             db_session.revoked_at = now
             db_session.revocation_reason = SessionRevocationReason.PASSWORD_RESET
+        # A reset is a containment event: drop every other channel bound to the old
+        # credentials too (Telegram link and any pending link codes).
+        unlinked = session.execute(delete(TelegramLink).where(TelegramLink.user_id == user.id))
+        session.execute(delete(TelegramLinkCode).where(TelegramLinkCode.user_id == user.id))
+        if getattr(unlinked, "rowcount", 0):
+            audit.record(session, user_id=user.id, action="telegram.unlinked", actor="system")
         audit.record(session, user_id=user.id, action="auth.password_reset_completed", actor="user")
         return True

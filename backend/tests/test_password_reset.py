@@ -10,6 +10,7 @@ from sqlalchemy import delete, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from test_device_telemetry import _active_device, _app, pg_cleanup  # noqa: F401
+from test_telegram import _link
 
 from app.audit import events as audit
 from app.auth import authentication, password_reset
@@ -17,6 +18,7 @@ from app.auth.abuse_control import AbuseControlKey
 from app.auth.passwords import PasswordPolicyError, hash_password
 from app.auth.registration import PASSWORD_HASH_VERSION
 from app.db.models import PasswordCredential, PasswordResetCode, UserEmail
+from app.telegram import linking
 
 KEY = AbuseControlKey(base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("="))
 OLD = "old password that is long enough"
@@ -102,6 +104,8 @@ def test_successful_reset_replaces_password_and_kills_sessions(
 ) -> None:
     factory, user_id, email = account
     login = authentication.login(factory, email=email, password=OLD)
+    _link(factory, user_id)  # an attacker-linked Telegram must not survive the reset
+    assert linking.is_linked(factory, user_id=user_id)
     intent = password_reset.request_reset(factory, KEY, email=email.upper())
     assert intent is not None and intent.recipient == email
     code = intent.code.get_secret_value()
@@ -114,6 +118,7 @@ def test_successful_reset_replaces_password_and_kills_sessions(
     with pytest.raises(authentication.InvalidCredentials):
         authentication.login(factory, email=email, password=OLD)
     authentication.login(factory, email=email, password=NEW)
+    assert not linking.is_linked(factory, user_id=user_id)
     assert not password_reset.confirm_reset(
         factory, KEY, email=email, code=code, new_password=OLD + "x"
     )  # single use
