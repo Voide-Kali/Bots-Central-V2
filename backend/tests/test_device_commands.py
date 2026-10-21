@@ -293,3 +293,154 @@ def test_bad_requests_are_explained_and_create_nothing(setup: Any) -> None:
             session.scalars(select(DeviceCommand).where(DeviceCommand.user_id == user_id)).all()
             == []
         )
+
+
+def _approved_and_completed(
+    factory: Any, private: Any, device_id: uuid.UUID, mailer: _Mailer, seq: int
+) -> uuid.UUID:
+    _send(factory, "/enviar telemetry-agent segredo.pdf", mailer)
+    _send(factory, f"/aprovar {mailer.last_code()}", mailer)
+    command = commands.next_command(
+        factory, device_id=device_id, jws=_signed(private, device_id, seq, commands.POLL_AUDIENCE)
+    )
+    assert command is not None
+    command_id = uuid.UUID(command["id"])
+    _result(factory, private, device_id, command_id, seq + 1, FILE)
+    return command_id
+
+
+@pytest.mark.postgresql
+def test_unlinking_cancels_open_commands_and_blocks_delivery(setup: Any) -> None:
+    """Review M1: the owner unlinks after noticing; the file must not reach the old chat."""
+    factory, _user_id, device_id, private = setup
+    mailer = _Mailer()
+    command_id = _approved_and_completed(factory, private, device_id, mailer, 40)
+    _send(factory, "/desvincular", mailer)
+    deliveries, notices = commands.pending_deliveries(factory)
+    assert deliveries == [] and notices == []
+    with factory() as session:
+        assert session.get(CommandPayload, command_id) is None
+        assert session.get(DeviceCommand, command_id).status == "expired"
+
+
+@pytest.mark.postgresql
+def test_completed_file_is_not_sent_to_a_chat_relinked_elsewhere(setup: Any) -> None:
+    factory, user_id, device_id, private = setup
+    mailer = _Mailer()
+    command_id = _approved_and_completed(factory, private, device_id, mailer, 50)
+    with factory() as session, session.begin():  # chat now belongs to nobody / someone else
+        session.execute(delete(TelegramLink).where(TelegramLink.user_id == user_id))
+    assert commands.pending_deliveries(factory)[0] == []
+    with factory() as session:
+        assert session.get(CommandPayload, command_id) is not None  # kept until expiry
+
+
+@pytest.mark.postgresql
+def test_password_reset_cancels_open_commands(setup: Any) -> None:
+    """Review M2 (commands part)."""
+    from app.auth import password_reset
+    from app.auth.passwords import hash_password
+    from app.auth.registration import PASSWORD_HASH_VERSION
+    from app.db.models import PasswordCredential
+
+    factory, user_id, device_id, private = setup
+    mailer = _Mailer()
+    command_id = _approved_and_completed(factory, private, device_id, mailer, 60)
+    with factory() as session, session.begin():
+        session.add(
+            PasswordCredential(
+                user_id=user_id,
+                password_hash=hash_password("senha antiga bem comprida"),
+                password_hash_version=PASSWORD_HASH_VERSION,
+            )
+        )
+        email = session.scalar(select(UserEmail.email_display).where(UserEmail.user_id == user_id))
+    assert email is not None
+    intent = password_reset.request_reset(factory, KEY, email=email)
+    assert intent is not None
+    assert password_reset.confirm_reset(
+        factory,
+        KEY,
+        email=email,
+        code=intent.code.get_secret_value(),
+        new_password="senha nova bem comprida",
+    )
+    with factory() as session, session.begin():
+        assert session.get(DeviceCommand, command_id).status == "expired"
+        assert session.get(CommandPayload, command_id) is None
+        session.execute(delete(PasswordCredential).where(PasswordCredential.user_id == user_id))
+
+
+@pytest.mark.postgresql
+def test_code_approves_the_right_one_of_two_pending_requests(setup: Any) -> None:
+    """Review B1."""
+    factory, _user_id, device_id, private = setup
+    mailer = _Mailer()
+    _send(factory, "/enviar telemetry-agent primeiro.txt", mailer)
+    first = mailer.last_code()
+    _send(factory, "/enviar telemetry-agent segundo.txt", mailer)
+    assert "Aprovado" in _send(factory, f"/aprovar {first}", mailer)
+    command = commands.next_command(
+        factory, device_id=device_id, jws=_signed(private, device_id, 70, commands.POLL_AUDIENCE)
+    )
+    assert command is not None and command["file_name"] == "primeiro.txt"
+
+
+@pytest.mark.postgresql
+def test_email_failure_frees_the_slot(setup: Any) -> None:
+    """Review B3."""
+    factory, user_id, _device_id, _ = setup
+
+    class _Broken(_Mailer):
+        def send_plain(self, *, recipient: str, subject: str, body: str) -> None:
+            raise OSError("smtp down")
+
+    for _ in range(commands.MAX_OPEN_PER_USER + 1):
+        assert "Não consegui enviar o e-mail" in _send(
+            factory, "/enviar telemetry-agent a.txt", _Broken()
+        )
+    with factory() as session:
+        statuses = session.scalars(
+            select(DeviceCommand.status).where(DeviceCommand.user_id == user_id)
+        ).all()
+    assert statuses and set(statuses) == {"expired"}
+
+
+@pytest.mark.postgresql
+def test_undelivered_bytes_are_purged_after_the_delivery_window(setup: Any) -> None:
+    """Review B4."""
+    factory, _user_id, device_id, private = setup
+    mailer = _Mailer()
+    command_id = _approved_and_completed(factory, private, device_id, mailer, 80)
+    with factory() as session, session.begin():
+        session.execute(
+            update(DeviceCommand)
+            .where(DeviceCommand.id == command_id)
+            .values(finished_at=text("clock_timestamp() - interval '2 hours'"))
+        )
+    deliveries, notices = commands.pending_deliveries(factory)
+    assert deliveries == [] and notices
+    with factory() as session:
+        assert session.get(CommandPayload, command_id) is None
+        assert session.get(DeviceCommand, command_id).status == "expired"
+
+
+@pytest.mark.postgresql
+def test_ambiguous_device_names_are_refused(setup: Any) -> None:
+    """Review B6."""
+    factory, user_id, device_id, _ = setup
+    from app.db.models import Device
+
+    with factory() as session, session.begin():
+        original = session.get(Device, device_id)
+        assert original is not None
+        session.add(
+            Device(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                name="Telemetry-Agent",
+                platform="linux",
+                lifecycle_status=original.lifecycle_status,
+            )
+        )
+    assert "mais de um computador" in _send(factory, "/enviar telemetry-agent a.txt", _Mailer())

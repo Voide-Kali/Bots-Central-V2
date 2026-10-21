@@ -33,6 +33,7 @@ from app.db.models import (
     UserEmail,
 )
 from app.db.models import Session as DbSession
+from app.devices import commands
 
 SessionFactory = Callable[[], Session]
 CODE_TTL = timedelta(minutes=15)
@@ -180,5 +181,6 @@ def confirm_reset(
         session.execute(delete(TelegramLinkCode).where(TelegramLinkCode.user_id == user.id))
         if getattr(unlinked, "rowcount", 0):
             audit.record(session, user_id=user.id, action="telegram.unlinked", actor="system")
+        commands.cancel_open_for_user(session, user_id=user.id, reason="password_reset")
         audit.record(session, user_id=user.id, action="auth.password_reset_completed", actor="user")
         return True

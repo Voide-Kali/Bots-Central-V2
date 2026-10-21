@@ -76,6 +76,9 @@ func (e *Executor) Execute(command Command) Result {
 	if !info.Mode().IsRegular() { // rejects symlinks, folders, devices, sockets
 		return Result{Error: "not_regular"}
 	}
+	if linkCount(info) > 1 { // a hard link could point at a file outside the folder
+		return Result{Error: "not_regular"}
+	}
 	if info.Size() > MaxFileBytes {
 		return Result{Error: "too_large"}
 	}

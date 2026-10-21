@@ -40,6 +40,9 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 	if err := os.Symlink(secret, filepath.Join(shared, "link.txt")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Link(secret, filepath.Join(shared, "hard.txt")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(shared, "pasta"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +66,7 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 	}
 	cases := map[string]string{
 		"link.txt":      "not_regular",
+		"hard.txt":      "not_regular",
 		"pasta":         "not_regular",
 		"big.bin":       "too_large",
 		"missing.txt":   "not_found",

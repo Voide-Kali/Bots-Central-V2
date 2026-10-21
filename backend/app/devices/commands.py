@@ -36,7 +36,14 @@ from app.audit import events as audit
 from app.auth import device_online
 from app.auth.abuse_control import AbuseControlKey
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
-from app.db.models import CommandPayload, Device, DeviceCommand, User, UserEmail
+from app.db.models import (
+    CommandPayload,
+    Device,
+    DeviceCommand,
+    TelegramLink,
+    User,
+    UserEmail,
+)
 
 SessionFactory = Callable[[], Session]
 
@@ -44,6 +51,7 @@ POLL_AUDIENCE = "bots-central:commands:v1"
 RESULT_AUDIENCE = "bots-central:command-result:v1"
 APPROVAL_TTL = timedelta(minutes=5)
 EXECUTION_TTL = timedelta(minutes=10)
+DELIVERY_TTL = timedelta(hours=1)
 MAX_ATTEMPTS = 5
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_OPEN_PER_USER = 3
@@ -59,6 +67,10 @@ class CommandError(Exception):
 
 class DeviceNotFoundForUser(CommandError):
     message = "Dispositivo não encontrado ou não está ativo."
+
+
+class AmbiguousDeviceName(CommandError):
+    message = "Há mais de um computador com esse nome. Renomeie um deles no painel."
 
 
 class InvalidFileName(CommandError):
@@ -126,15 +138,18 @@ def request_send_file(
         user = session.scalar(select(User).where(User.id == user_id).with_for_update())
         if user is None or user.status is not AccountStatus.ACTIVE:
             raise DeviceNotFoundForUser
-        device = session.scalar(
+        matches = session.scalars(
             select(Device).where(
                 Device.user_id == user_id,
                 func.lower(Device.name) == device_name.strip().lower(),
                 Device.lifecycle_status == DeviceLifecycleStatus.ACTIVE,
             )
-        )
-        if device is None:
+        ).all()
+        if not matches:
             raise DeviceNotFoundForUser
+        if len(matches) > 1:
+            raise AmbiguousDeviceName
+        device = matches[0]
         email = session.scalar(
             select(UserEmail).where(
                 UserEmail.user_id == user_id,
@@ -203,7 +218,7 @@ def approve(
     approved: DeviceCommand | None = None
     with session_factory() as session, session.begin():
         now = _now(session)
-        command = session.scalar(
+        pending = session.scalars(
             select(DeviceCommand)
             .where(
                 DeviceCommand.user_id == user_id,
@@ -211,40 +226,49 @@ def approve(
                 DeviceCommand.approval_expires_at > now,
             )
             .order_by(DeviceCommand.created_at.desc())
-            .limit(1)
+            .limit(MAX_OPEN_PER_USER)
             .with_for_update()
-        )
-        if command is None or command.approval_mac is None:
+        ).all()
+        if not pending:
             raise InvalidApproval
-        if hmac.compare_digest(command.approval_mac, _mac(key, command.id, cleaned)):
-            command.status = "approved"
-            command.approved_at = now
-            command.approval_mac = None
+        # The code is bound to exactly one command; find which one it opens (review B1).
+        match = next(
+            (
+                command
+                for command in pending
+                if command.approval_mac is not None
+                and hmac.compare_digest(command.approval_mac, _mac(key, command.id, cleaned))
+            ),
+            None,
+        )
+        if match is not None:
+            match.status = "approved"
+            match.approved_at = now
+            match.approval_mac = None
             audit.record(
                 session,
                 user_id=user_id,
                 action="action.approved",
                 actor="telegram",
                 target_type="command",
-                target_id=str(command.id),
-                details={"file": command.file_name},
+                target_id=str(match.id),
+                details={"file": match.file_name},
             )
             session.flush()
-            session.expunge(command)  # keep loaded values after commit
-            approved = command
+            session.expunge(match)  # keep loaded values after commit
+            approved = match
         else:
-            command.approval_attempts += 1
-            if command.approval_attempts >= MAX_ATTEMPTS:
-                command.status = "denied"
-                command.approval_mac = None
-                command.finished_at = now
+            for command in pending:
+                command.approval_attempts += 1
+                if command.approval_attempts >= MAX_ATTEMPTS:
+                    command.status = "denied"
+                    command.approval_mac = None
+                    command.finished_at = now
             audit.record(
                 session,
                 user_id=user_id,
                 action="action.approval_failed",
                 actor="telegram",
-                target_type="command",
-                target_id=str(command.id),
                 outcome="denied",
             )
     if approved is None:
@@ -269,6 +293,63 @@ def _expire(session: Session, now: datetime) -> None:
         )
         .values(status="expired", finished_at=now, error_code="timeout")
     )
+    # Undeliverable files never stay in the database (review B4).
+    stale = select(DeviceCommand.id).where(
+        DeviceCommand.status == "completed", DeviceCommand.finished_at <= now - DELIVERY_TTL
+    )
+    session.execute(delete(CommandPayload).where(CommandPayload.command_id.in_(stale)))
+    session.execute(
+        update(DeviceCommand)
+        .where(DeviceCommand.status == "completed", DeviceCommand.finished_at <= now - DELIVERY_TTL)
+        .values(status="expired", error_code="delivery_failed")
+    )
+
+
+def cancel_open_for_user(session: Session, *, user_id: uuid.UUID, reason: str) -> None:
+    """Close every open command of a user silently (unlink / password reset — review M1/M2)."""
+    open_ids = select(DeviceCommand.id).where(
+        DeviceCommand.user_id == user_id,
+        DeviceCommand.status.in_(("pending_approval", "approved", "dispatched", "completed")),
+    )
+    session.execute(delete(CommandPayload).where(CommandPayload.command_id.in_(open_ids)))
+    result = session.execute(
+        update(DeviceCommand)
+        .where(
+            DeviceCommand.user_id == user_id,
+            DeviceCommand.status.in_(("pending_approval", "approved", "dispatched", "completed")),
+        )
+        .values(
+            status="expired",
+            approval_mac=None,
+            chat_id=None,
+            error_code=reason,
+            finished_at=func.clock_timestamp(),
+        )
+    )
+    if getattr(result, "rowcount", 0):
+        audit.record(
+            session,
+            user_id=user_id,
+            action="action.cancelled",
+            actor="system",
+            details={"reason": reason, "count": int(getattr(result, "rowcount", 0))},
+        )
+
+
+def cancel_request(session_factory: SessionFactory, *, command_id: uuid.UUID) -> None:
+    """Drop a request whose approval e-mail could not be sent (review B3)."""
+    with session_factory() as session, session.begin():
+        session.execute(
+            update(DeviceCommand)
+            .where(DeviceCommand.id == command_id, DeviceCommand.status == "pending_approval")
+            .values(
+                status="expired",
+                approval_mac=None,
+                chat_id=None,
+                error_code="email_failed",
+                finished_at=func.clock_timestamp(),
+            )
+        )
 
 
 # --- device side (signed by the agent key) ------------------------------------------------
@@ -450,8 +531,15 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
             select(DeviceCommand, CommandPayload, Device.name)
             .join(CommandPayload, CommandPayload.command_id == DeviceCommand.id)
             .join(Device, Device.id == DeviceCommand.device_id)
+            .join(
+                TelegramLink,
+                (TelegramLink.chat_id == DeviceCommand.chat_id)
+                & (TelegramLink.user_id == DeviceCommand.user_id),
+            )
             .where(DeviceCommand.status == "completed", DeviceCommand.chat_id.is_not(None))
+            .order_by(DeviceCommand.finished_at)
             .limit(5)
+            .with_for_update(of=DeviceCommand, skip_locked=True)
         ).all()
         for command, payload, device_name in rows:
             assert command.chat_id is not None
