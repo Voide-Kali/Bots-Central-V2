@@ -1,0 +1,28 @@
+{
+	admin off
+	# Certificates for *.ts.net come from the local tailscaled (socket mounted).
+}
+
+{$SERVER_HOSTNAME} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	@backend path /api/* /email-verification
+	handle @backend {
+		# Caddy ignores client-sent X-Forwarded-For and sets exactly one value,
+		# matching the backend's single-hop TRUSTED_PROXY_IP policy.
+		reverse_proxy 172.30.10.20:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
