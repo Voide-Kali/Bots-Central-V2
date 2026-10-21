@@ -1,4 +1,23 @@
-# Bots Central Linux Agent — Device Online V0.1
+# Aval agent (Bots Central) — Device Online V0.1
+
+## Instalar (Mac ou Kali)
+
+Pré-requisitos: Tailscale ligado no aparelho e Go instalado (`brew install go` no Mac,
+`sudo apt install -y golang` no Kali). No painel do Aval, clique em **Adicionar dispositivo**
+para obter o código de pareamento.
+
+```bash
+# macOS (roda como o seu usuário, sem sudo)
+./install/install-macos.sh https://SEU_SERVIDOR.tailXXXX.ts.net
+
+# Kali / Debian / Ubuntu (serviço systemd endurecido, usuário dedicado)
+sudo ./install/install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
+```
+
+O script compila o agente, pede o código **sem mostrar na tela** (nunca vai para argv,
+histórico ou arquivo), faz o pareamento e instala o serviço. Depois compare o fingerprint
+mostrado no terminal com o do painel e aprove.
+
 
 This module implements the Agent side of the frozen Device Online V0.1
 contract. It creates one local Ed25519 identity, displays its canonical
