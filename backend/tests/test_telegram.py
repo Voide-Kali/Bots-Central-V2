@@ -252,3 +252,33 @@ def test_empty_telegram_settings_are_treated_as_unset() -> None:
     assert Settings(telegram_bot_username="@my_bot_1").telegram_bot_username == "my_bot_1"
     with pytest.raises(ValueError):
         Settings(telegram_bot_username="no spaces allowed")
+
+
+def test_send_document_builds_a_safe_multipart_upload(monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import json as _json
+
+    captured: dict[str, Any] = {}
+
+    class _Response(io.BytesIO):
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    def fake(request: Any, timeout: float, context: Any) -> _Response:
+        captured["url"] = request.full_url
+        captured["type"] = request.headers["Content-type"]
+        captured["body"] = request.data
+        return _Response(_json.dumps({"ok": True, "result": {}}).encode())
+
+    monkeypatch.setattr("urllib.request.urlopen", fake)
+    client = telegram_client.TelegramClient(SecretStr("123:abc"))
+    client.send_document(42, 'rel"\r\natorio.pdf', b"\x00PDF-bytes", caption="📎 teste")
+    assert captured["url"].endswith("/sendDocument")
+    boundary = captured["type"].split("boundary=")[1]
+    body: bytes = captured["body"]
+    assert body.endswith(f"--{boundary}--\r\n".encode())
+    assert b'filename="rel\'atorio.pdf"' in body  # quotes and CR/LF neutralized
+    assert b"\x00PDF-bytes" in body and b"42" in body
