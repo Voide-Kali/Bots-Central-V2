@@ -12,6 +12,8 @@ from typing import Any, Protocol, cast
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.assistant import assistant
+from app.assistant.ollama import AssistantUnavailable
 from app.auth import device_online
 from app.auth.abuse_control import AbuseControlUnavailable
 from app.db.models import Device
@@ -22,6 +24,7 @@ from app.telegram.formatting import device_line
 SessionFactory = Callable[[], Session]
 
 HELP = (
+    "Pergunte em texto livre (ex.: “qual PC está mais quente?”) e a IA responde.\n\n"
     "Comandos:\n"
     "/status — estado e telemetria dos seus dispositivos\n"
     "/desvincular — desliga este chat da sua conta\n"
@@ -36,6 +39,8 @@ NOT_LINKED = (
 
 class LinkAdmission(Protocol):
     def admit_telegram_link(self, *, chat_id: int) -> bool: ...
+
+    def admit_assistant(self, *, chat_id: int) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -83,7 +88,11 @@ def status_text(session: Session, user_id: Any) -> str:
 
 
 def handle_update(
-    update: dict[str, Any], *, session_factory: SessionFactory, admission: LinkAdmission
+    update: dict[str, Any],
+    *,
+    session_factory: SessionFactory,
+    admission: LinkAdmission,
+    model: assistant.ChatModel | None = None,
 ) -> Reply | None:
     parsed = _private_message(update)
     if parsed is None:
@@ -116,7 +125,33 @@ def handle_update(
             return Reply(chat_id, NOT_LINKED)
         if name == "/status":
             return Reply(chat_id, status_text(session, user_id))
+    if not body.startswith("/"):
+        return _ask(chat_id, user_id, body, session_factory, admission, model)
     if name == "/desvincular":
         linking.unlink_chat(session_factory, chat_id=chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
     return Reply(chat_id, HELP)
+
+
+def _ask(
+    chat_id: int,
+    user_id: Any,
+    question: str,
+    session_factory: SessionFactory,
+    admission: LinkAdmission,
+    model: assistant.ChatModel | None,
+) -> Reply:
+    if model is None:
+        return Reply(chat_id, "A IA não está ativada neste servidor.\n\n" + HELP)
+    try:
+        if not admission.admit_assistant(chat_id=chat_id):
+            return Reply(chat_id, "Muitas perguntas seguidas. Aguarde alguns minutos.")
+    except AbuseControlUnavailable:
+        return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
+    try:
+        text_reply = assistant.answer(
+            session_factory, model, user_id=user_id, question=question
+        )
+    except AssistantUnavailable:
+        return Reply(chat_id, "A IA não respondeu a tempo. Tente de novo em instantes.")
+    return Reply(chat_id, "🤖 " + text_reply)

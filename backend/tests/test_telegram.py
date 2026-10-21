@@ -47,6 +47,9 @@ class _Admission:
             raise AbuseControlUnavailable("down")
         return self.result
 
+    def admit_assistant(self, *, chat_id: int) -> bool:
+        return self.admit_telegram_link(chat_id=chat_id)
+
 
 # --- pure ------------------------------------------------------------------------------
 

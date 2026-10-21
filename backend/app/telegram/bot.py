@@ -11,6 +11,7 @@ from types import FrameType
 
 from sqlalchemy.orm import sessionmaker
 
+from app.assistant.ollama import OllamaClient
 from app.auth.abuse_control import AbuseControlKey, AbuseController
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -38,6 +39,11 @@ def run() -> None:
     client = TelegramClient(settings.telegram_bot_token)
     factory = sessionmaker(bind=get_engine())
     admission = AbuseController(factory, AbuseControlKey.from_settings(settings))
+    model = (
+        OllamaClient(settings.assistant_ollama_url, settings.assistant_model)
+        if settings.assistant_ollama_url
+        else None
+    )
     stopping = False
 
     def stop(_signum: int, _frame: FrameType | None) -> None:
@@ -70,7 +76,9 @@ def run() -> None:
             if isinstance(update_id, int):
                 offset = update_id + 1
             try:
-                reply = handle_update(update, session_factory=factory, admission=admission)
+                reply = handle_update(
+                    update, session_factory=factory, admission=admission, model=model
+                )
             except Exception:
                 logger.exception("telegram update handling failed")
                 continue
