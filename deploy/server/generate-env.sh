@@ -29,13 +29,13 @@ EMAIL_VERIFICATION_MATERIAL_TYPE=code
 # --- E-mail of the system (Gmail with 2-step verification + app password) --
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USERNAME=REPLACE_ME@gmail.com
+SMTP_USERNAME=aval.app.br@gmail.com
 SMTP_PASSWORD=REPLACE_ME_APP_PASSWORD
-SMTP_SENDER=REPLACE_ME@gmail.com
+SMTP_SENDER=aval.app.br@gmail.com
 
 # --- Telegram (@BotFather) ---------------------------------------------
 TELEGRAM_BOT_TOKEN=REPLACE_ME
-TELEGRAM_BOT_USERNAME=REPLACE_ME
+TELEGRAM_BOT_USERNAME=aval_sistema_bot
 
 LOG_LEVEL=INFO
 ENV
