@@ -1,3 +1,5 @@
+> Superseded as the delivery plan by [ROADMAP.md](ROADMAP.md) (2026-10-21). Kept for history.
+
 # Build Order
 
 1. Maintain and validate the foundation: API, configuration, database migrations,
