@@ -43,17 +43,17 @@ uma, **se** ela entra no Aval e **como**, sem repetir a bagunça. Cada linha tem
 | Silenciar alertas por X horas / modo manutenção | ✅ | Botão "Silenciar 1 h / 8 h" |
 | Desligar, reiniciar, suspender o PC | 🔐 | Ação com aval por e-mail (ADR novo) |
 | Bloquear a tela | 🔐 | Ação com aval (risco baixo, útil na demo) |
-| Desbloquear a tela remotamente | ❌ | Abrir o PC à distância é exatamente o que um invasor quer |
+| Desbloquear a tela remotamente | 🔐 | Decisão do Voide (21/10): entra, com aval por e-mail e registro no histórico |
 | Foto da webcam | 🔐 | Ação com aval; foto vai só para o seu Telegram |
 | Scan de rede (`nmap -sn`) | 🔐 | Ação com aval, somente "quem está na minha rede" |
 | Controlar serviços (start/stop/restart de uma lista) | ⏸️ | Talvez com aval, depois |
 | `/logs` de um serviço | ⏸️ | Depois |
 | Terminal / `/cmd` (rodar comando livre) | ❌ | É o oposto do Aval; a pesquisa mostra por quê |
-| Instalar pacote (`apt-get`) pela IA | ❌ | Mesmo motivo |
-| `/atualizar` (apt upgrade remoto) | ❌ | Atualização se faz no próprio PC |
+| Instalar pacote pela **IA** | ❌ | A IA não propõe ações. Instalar um pacote **pelo menu**, com nome validado, 🔐 com aval |
+| `/atualizar` (ver atualizações e apt upgrade) | 🔐 | Decisão do Voide: entra com aval; só os comandos fixos `apt list --upgradable` e `apt upgrade -y` |
 | Modo emergência (bloquear + reiniciar módulos) | ⏸️ | Rever quando houver as ações com aval |
-| Banir IP/MAC no firewall pelo Telegram | ❌ | Fácil de se trancar para fora; pouco ganho |
-| Cofre de senhas no Telegram | ❌ | Senhas não devem passar pelo Telegram; use um gerenciador de senhas |
+| Banir IP/MAC no firewall pelo Telegram | 🔐 | Decisão do Voide: entra com aval; nunca bane o IP do Tailscale do servidor nem o gateway |
+| Cofre de senhas no Telegram | 🔐 | Decisão do Voide: entra. Cofre cifrado no PC (como `voice_vault.py`), revelar exige aval por e-mail, mensagem com autodestruição. Risco aceito: a senha revelada passa pelo Telegram |
 | Lista de "pendentes" com Confirmar/Cancelar | ✅ | Pedidos de aval pendentes com botão Cancelar (aprovar continua só com o código do e-mail) |
 | Apagar mensagens sensíveis do chat | ✅ | Útil para o código de vínculo |
 
@@ -127,13 +127,13 @@ uma, **se** ela entra no Aval e **como**, sem repetir a bagunça. Cada linha tem
 1. Telegram com menu, botões e cartões (PR #38) e edição da mesma mensagem.
 2. Alertas inteligentes (CPU, disco, temperatura e bateria) com silenciar.
 3. Watchdog do próprio Aval e `doctor.sh`.
-4. ADR-016 "Ações com aval": bloquear tela, foto da webcam, desligar/reiniciar e scan da rede,
-   todas com código por e-mail, lista branca e digest canônico. Implementar só depois da sua
-   aprovação.
+4. ADR-016 "Ações com aval": bloquear/desbloquear tela, foto da webcam, desligar/reiniciar,
+   scan da rede, banir IP/MAC, apt e cofre, todas com código por e-mail, lista branca e
+   digest canônico. Implementar só depois da sua aprovação, uma ação por PR.
 5. Sensor "senha errada → aviso (+ foto opcional)", dentro do ADR-016.
 
 **Depois da feira:** Gmail como serviço separado, Wi-Fi desconhecido, memória da IA, áudio, IPs e
 serviços na telemetria, e Windows.
 
-**Nunca:** terminal remoto, instalar pacote pela IA, desbloquear tela remotamente, cofre de
-senhas no Telegram.
+**Nunca (decisão do Voide em 21/10):** terminal remoto (comando livre) e qualquer ação proposta pela
+IA. Cofre, desbloquear tela, banir IP/MAC e apt entram como ações com aval (ADR-016).
