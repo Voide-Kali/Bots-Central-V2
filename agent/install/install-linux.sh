@@ -18,6 +18,9 @@ echo "==> User and folders"
 id aval-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin aval-agent
 install -d -m 0700 -o aval-agent -g aval-agent /var/lib/aval-agent
 install -d -m 0755 /etc/aval-agent
+# Folder whose files may be sent after e-mail approval (ADR-015). Add yourself to the
+# aval-agent group to drop files here:  sudo usermod -aG aval-agent "$SUDO_USER"
+install -d -m 2770 -o root -g aval-agent /srv/aval-compartilhado
 cat > /etc/aval-agent/config.json <<JSON
 {
   "state_dir": "/var/lib/aval-agent",
@@ -25,7 +28,8 @@ cat > /etc/aval-agent/config.json <<JSON
   "heartbeat_interval": "30s",
   "transport_timeout": "10s",
   "backoff_initial": "1s",
-  "backoff_max": "1m"
+  "backoff_max": "1m",
+  "shared_dir": "/srv/aval-compartilhado"
 }
 JSON
 chmod 0644 /etc/aval-agent/config.json
@@ -56,3 +60,4 @@ systemctl daemon-reload
 systemctl enable --now aval-agent
 systemctl --no-pager --lines=5 status aval-agent || true
 echo "Done. Logs: journalctl -u aval-agent -f"
+echo "Files you allow Aval to send (after e-mail approval) go in: /srv/aval-compartilhado"

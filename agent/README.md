@@ -14,7 +14,8 @@ para obter o código de pareamento.
 sudo ./install/install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 ```
 
-O script compila o agente, pede o código **sem mostrar na tela** (nunca vai para argv,
+O script compila o agente, cria a **pasta compartilhada** (só arquivos colocados ali podem
+ser enviados, e só depois do seu código de aprovação por e-mail — ADR-015), pede o código **sem mostrar na tela** (nunca vai para argv,
 histórico ou arquivo), faz o pareamento e instala o serviço. Depois compare o fingerprint
 mostrado no terminal com o do painel e aprove.
 

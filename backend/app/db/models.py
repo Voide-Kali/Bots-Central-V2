@@ -618,3 +618,70 @@ class PasswordResetCode(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class DeviceCommand(Base):
+    """A typed action for one device that only runs after human approval (ADR-015)."""
+
+    __tablename__ = "device_commands"
+    __table_args__ = (
+        CheckConstraint("kind IN ('send_file')", name="ck_device_commands_kind"),
+        CheckConstraint(
+            "status IN ('pending_approval', 'approved', 'dispatched', 'completed', 'failed', "
+            "'denied', 'expired', 'delivered')",
+            name="ck_device_commands_status",
+        ),
+        CheckConstraint(
+            "approval_attempts >= 0 AND approval_attempts <= 5",
+            name="ck_device_commands_attempts",
+        ),
+        CheckConstraint(
+            "approval_mac IS NULL OR octet_length(approval_mac) = 32",
+            name="ck_device_commands_mac_length",
+        ),
+        Index("ix_device_commands_device_status", "device_id", "status"),
+        Index("ix_device_commands_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    approval_mac: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
+    approval_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approval_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class CommandPayload(Base):
+    """File bytes returned by an agent; deleted right after delivery."""
+
+    __tablename__ = "command_payloads"
+    __table_args__ = (
+        CheckConstraint(
+            "size_bytes >= 0 AND size_bytes = octet_length(content)",
+            name="ck_command_payloads_size",
+        ),
+        CheckConstraint("octet_length(sha256) = 32", name="ck_command_payloads_sha_length"),
+    )
+
+    command_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("device_commands.id", ondelete="CASCADE"), primary_key=True
+    )
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

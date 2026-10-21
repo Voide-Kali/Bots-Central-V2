@@ -15,9 +15,11 @@ CONFIG="$BASE/config.json"
 STATE="$BASE/state"
 LOGS="$HOME/Library/Logs/Aval"
 PLIST="$HOME/Library/LaunchAgents/br.app.aval.agent.plist"
+SHARED="$HOME/Aval-Compartilhado"
 
 echo "==> Building"
-mkdir -p "$BASE" "$LOGS"
+mkdir -p "$BASE" "$LOGS" "$SHARED"
+chmod 0700 "$SHARED"
 (cd "$AGENT_DIR" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$BIN" ./cmd/bots-central-agent)
 chmod 0755 "$BIN"
 cat > "$CONFIG" <<JSON
@@ -27,7 +29,8 @@ cat > "$CONFIG" <<JSON
   "heartbeat_interval": "30s",
   "transport_timeout": "10s",
   "backoff_initial": "1s",
-  "backoff_max": "1m"
+  "backoff_max": "1m",
+  "shared_dir": "$SHARED"
 }
 JSON
 chmod 0600 "$CONFIG"
@@ -72,3 +75,4 @@ cat > "$PLIST" <<XML
 XML
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 echo "Done. Logs: tail -f \"$LOGS/agent.log\""
+echo "Files you allow Aval to send (after e-mail approval) go in: $SHARED"

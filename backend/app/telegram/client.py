@@ -5,6 +5,7 @@ underlying exception text; callers only see ``TelegramUnavailable``.
 """
 
 import json
+import secrets
 import ssl
 import urllib.error
 import urllib.request
@@ -54,6 +55,41 @@ class TelegramClient:
         if not isinstance(result, list):
             raise TelegramUnavailable
         return [item for item in result if isinstance(item, dict)]
+
+    def send_document(self, chat_id: int, file_name: str, content: bytes, caption: str) -> None:
+        """Upload a file as multipart/form-data (Bot API limit is 50 MB; we cap at 10 MB)."""
+        boundary = "aval" + secrets.token_hex(16)
+        safe_name = file_name.replace('"', "'").replace("\r", "").replace("\n", "")
+        parts = [
+            (f'Content-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}').encode(),
+            (
+                'Content-Disposition: form-data; name="caption"\r\n\r\n'
+                + caption[: MAX_MESSAGE_CHARS // 4]
+            ).encode(),
+            (
+                f'Content-Disposition: form-data; name="document"; filename="{safe_name}"\r\n'
+                "Content-Type: application/octet-stream\r\n\r\n"
+            ).encode()
+            + content,
+        ]
+        body = b"".join(f"--{boundary}\r\n".encode() + part + b"\r\n" for part in parts)
+        body += f"--{boundary}--\r\n".encode()
+        url = f"{API_BASE}/bot{self._token.get_secret_value()}/sendDocument"
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(  # noqa: S310 - fixed https host
+                request, timeout=self._timeout * 4, context=self._context
+            ) as response:
+                data = json.loads(response.read(1 << 20))
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            raise TelegramUnavailable from None
+        if not isinstance(data, dict) or data.get("ok") is not True:
+            raise TelegramUnavailable
 
     def send_message(self, chat_id: int, text: str) -> None:
         # Plain text only (no parse_mode): device names come from agents.
