@@ -597,3 +597,24 @@ class AuditEvent(Base):
     details: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+
+class PasswordResetCode(Base):
+    """One-time 8-digit reset code; only its keyed HMAC is stored (ADR-014)."""
+
+    __tablename__ = "password_reset_codes"
+    __table_args__ = (
+        CheckConstraint("octet_length(code_mac) = 32", name="ck_password_reset_mac_length"),
+        CheckConstraint("expires_at > created_at", name="ck_password_reset_expiry"),
+        CheckConstraint("attempts >= 0 AND attempts <= 5", name="ck_password_reset_attempts"),
+        Index("ix_password_reset_codes_user_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    code_mac: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

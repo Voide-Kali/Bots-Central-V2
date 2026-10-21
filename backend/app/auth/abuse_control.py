@@ -104,6 +104,22 @@ HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
         AbuseLimit("global", 10000, 60),
     ),
 )
+PASSWORD_RESET_REQUEST_POLICY = AbusePolicy(
+    operation="password_reset_request",
+    limits=(
+        AbuseLimit("identifier", 3, 3600),
+        AbuseLimit("network", 10, 3600),
+        AbuseLimit("global", 200, 60),
+    ),
+)
+PASSWORD_RESET_CONFIRM_POLICY = AbusePolicy(
+    operation="password_reset_confirm",
+    limits=(
+        AbuseLimit("identifier", 10, 3600),
+        AbuseLimit("network", 20, 3600),
+        AbuseLimit("global", 300, 60),
+    ),
+)
 TELEGRAM_LINK_POLICY = AbusePolicy(
     operation="telegram_link",
     limits=(
@@ -310,6 +326,18 @@ class AbuseController:
     def admit_enrollment_preauth(self, *, network: str) -> bool:
         return self._admit(
             ENROLLMENT_PREAUTH_POLICY, {"network": network, "global": "all"}
+        )
+
+    def admit_password_reset_request(self, *, canonical_email: str, network: str) -> bool:
+        return self._admit(
+            PASSWORD_RESET_REQUEST_POLICY,
+            {"identifier": canonical_email, "network": network, "global": "all"},
+        )
+
+    def admit_password_reset_confirm(self, *, canonical_email: str, network: str) -> bool:
+        return self._admit(
+            PASSWORD_RESET_CONFIRM_POLICY,
+            {"identifier": canonical_email, "network": network, "global": "all"},
         )
 
     def admit_telegram_link(self, *, chat_id: int) -> bool:
