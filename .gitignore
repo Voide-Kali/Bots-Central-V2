@@ -17,3 +17,5 @@ venv/
 *.log
 postgres-data/
 .local/
+
+nvpn/
