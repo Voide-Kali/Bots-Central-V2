@@ -26,6 +26,9 @@ class DeviceAdmission:
     def admit_heartbeat(self, *, device_id: uuid.UUID) -> bool:
         return self.device
 
+    def admit_enrollment_preauth(self, *, network: str) -> bool:
+        return self.preauth
+
 
 def unreachable_session_factory() -> Never:
     raise AssertionError("database must not be reached in this boundary test")
@@ -60,7 +63,7 @@ async def test_pairing_enrollment_approval_and_reject_http_contract(
         device_online,
         "create_pairing",
         lambda *_args, **_kwargs: device_online.Pairing(
-            "P" * 43, datetime.now(UTC) + timedelta(minutes=5)
+            uuid.uuid4(), "P" * 43, datetime.now(UTC) + timedelta(minutes=5)
         ),
     )
     monkeypatch.setattr(
@@ -110,6 +113,7 @@ async def test_pairing_enrollment_approval_and_reject_http_contract(
     assert unauthorized.status_code == 401
     assert pairing.status_code == 201
     assert pairing.json()["pairing_token"] == "P" * 43
+    assert pairing.json()["pairing_id"]
     assert "digest" not in pairing.text
     assert pairing.headers["cache-control"] == "no-store"
     assert enrollment.status_code == 201 and enrollment.json()["lifecycle_status"] == "pending"
@@ -118,6 +122,63 @@ async def test_pairing_enrollment_approval_and_reject_http_contract(
     assert approve.status_code == reject.status_code == 200
     assert len(approved) == 2
     assert oversized.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_enrollment_preauth_denial_precedes_signature_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = app_with_runtime(DeviceAdmission(preauth=False))
+
+    def forbidden(*_: object, **__: object) -> Never:
+        raise AssertionError("enrollment signature verification must not run after pre-auth denial")
+
+    monkeypatch.setattr(device_online, "enroll", forbidden)
+    async with await _client(app) as client:
+        response = await client.post(
+            "/api/v1/devices/enrollments",
+            json={
+                "pairing_token": "P" * 43,
+                "public_key": "K" * 43,
+                "proof": "x",
+                "name": "a",
+                "platform": "linux",
+            },
+        )
+    assert response.status_code == 429
+    assert response.json() == {"message": "Request temporarily unavailable."}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("operation", ["approve", "reject"])
+async def test_approve_reject_body_limit_precedes_mutation(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    app = app_with_runtime(DeviceAdmission())
+    principal = authentication.AuthenticatedPrincipal(uuid.uuid4(), uuid.uuid4(), "a@example.com")
+    called = 0
+    monkeypatch.setattr(authentication, "authenticate_access", lambda *_: principal)
+
+    def mutate(*_: object, **__: object) -> None:
+        nonlocal called
+        called += 1
+
+    monkeypatch.setattr(device_online, operation, mutate)
+    path = f"/api/v1/devices/{uuid.uuid4()}/{operation}"
+    async with await _client(app) as client:
+        valid = await client.post(
+            path,
+            json={"fingerprint": "x"},
+            headers={"Authorization": "Bearer " + "A" * 43},
+        )
+        oversized = await client.post(
+            path,
+            content=b"x" * 1025,
+            headers={"Authorization": "Bearer " + "A" * 43, "Content-Type": "application/json"},
+        )
+    assert valid.status_code == 200
+    assert oversized.status_code == 413
+    assert called == 1
 
 
 @pytest.mark.anyio

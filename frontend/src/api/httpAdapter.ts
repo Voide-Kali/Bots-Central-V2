@@ -1,13 +1,16 @@
-import type { ApiClient, AuthApi, DevicesApi } from "./client";
+import type { ApiClient, AuthApi, DevicesApi, TelegramApi } from "./client";
 import type {
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
   Device,
+  DeviceTelemetry,
   PairingResponse,
   LoginRequest,
   RegisterAcceptedResponse,
-  RegisterRequest
+  RegisterRequest,
+  TelegramLinkCode,
+  TelegramStatus
 } from "./contracts";
 import { ApiError } from "./errors";
 import { SameOriginHttpClient, readKnownJson } from "./http";
@@ -20,8 +23,18 @@ const paths = {
   refresh: "/api/v1/auth/refresh",
   logout: "/api/v1/auth/logout",
   me: "/api/v1/auth/me",
-  devices: "/api/v1/devices"
+  devices: "/api/v1/devices",
+  telegramLink: "/api/v1/telegram/link",
+  telegramLinkCode: "/api/v1/telegram/link-code"
 } as const;
+
+const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
+
+function assertBotUsername(value: unknown, status: number): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !botUsernamePattern.test(value)) throw new ApiError("The API returned an invalid response.", status);
+  return value;
+}
 
 // Refresh rotation is single-use. This is module-scoped so a Strict Mode effect replay
 // cannot accidentally redeem the same HttpOnly cookie twice.
@@ -59,6 +72,34 @@ function assertUser(value: unknown, status: number): AuthenticatedUser {
   return { id: value.id, email: value.email };
 }
 
+const telemetryNumberKeys = [
+  ["cpu_percent", "cpuPercent"],
+  ["load1", "load1"],
+  ["cpu_count", "cpuCount"],
+  ["memory_total_bytes", "memoryTotalBytes"],
+  ["memory_used_bytes", "memoryUsedBytes"],
+  ["disk_total_bytes", "diskTotalBytes"],
+  ["disk_used_bytes", "diskUsedBytes"],
+  ["temperature_c", "temperatureC"],
+  ["uptime_seconds", "uptimeSeconds"]
+] as const;
+
+function assertTelemetry(value: unknown, status: number): DeviceTelemetry | null {
+  if (value === undefined || value === null) return null;
+  if (!isRecord(value) || typeof value.recorded_at !== "string" || !Number.isFinite(Date.parse(value.recorded_at))) {
+    throw new ApiError("The API returned an invalid response.", status);
+  }
+  const result: Record<string, number | null | string> = { recordedAt: value.recorded_at };
+  for (const [wire, field] of telemetryNumberKeys) {
+    const item = value[wire];
+    if (item !== null && (typeof item !== "number" || !Number.isFinite(item))) {
+      throw new ApiError("The API returned an invalid response.", status);
+    }
+    result[field] = item;
+  }
+  return result as unknown as DeviceTelemetry;
+}
+
 function assertDevice(value: unknown, status: number): Device {
   if (!isRecord(value)
     || typeof value.id !== "string" || typeof value.name !== "string" || typeof value.platform !== "string"
@@ -77,15 +118,16 @@ function assertDevice(value: unknown, status: number): Device {
     lifecycleStatus: value.lifecycle_status,
     lastSeenAt: value.last_seen_at,
     agentVersion: value.agent_version,
-    fingerprint: value.fingerprint
+    fingerprint: value.fingerprint,
+    telemetry: assertTelemetry(value.telemetry, status)
   };
 }
 
 function assertPairing(value: unknown, status: number): PairingResponse {
-  if (!isRecord(value) || typeof value.pairing_token !== "string" || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at)) || value.pairing_token.length === 0) {
+  if (!isRecord(value) || typeof value.pairing_id !== "string" || typeof value.pairing_token !== "string" || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at)) || value.pairing_id.length === 0 || value.pairing_token.length === 0) {
     throw new ApiError("The API returned an invalid response.", status);
   }
-  return { pairingToken: value.pairing_token, expiresAt: value.expires_at };
+  return { pairingId: value.pairing_id, pairingToken: value.pairing_token, expiresAt: value.expires_at };
 }
 
 function assertDevices(value: unknown, status: number): readonly Device[] {
@@ -96,7 +138,7 @@ function assertDevices(value: unknown, status: number): readonly Device[] {
 }
 
 class HttpAuthApi implements AuthApi {
-  private readonly http = new SameOriginHttpClient();
+  public constructor(private readonly http: SameOriginHttpClient) {}
 
   public async register(input: RegisterRequest): Promise<RegisterAcceptedResponse> {
     const response = await this.http.postJson(paths.register, input, { acceptedStatuses: [202], includeAccessToken: false });
@@ -144,7 +186,7 @@ class HttpAuthApi implements AuthApi {
 }
 
 class HttpDevicesApi implements DevicesApi {
-  private readonly http = new SameOriginHttpClient();
+  public constructor(private readonly http: SameOriginHttpClient) {}
 
   public async list(): Promise<readonly Device[]> {
     const response = await this.http.get(paths.devices, { acceptedStatuses: [200] });
@@ -156,6 +198,10 @@ class HttpDevicesApi implements DevicesApi {
     return assertPairing(await readKnownJson<unknown>(response), response.status);
   }
 
+  public async revokePairing(pairingId: string): Promise<void> {
+    await this.http.delete(`${paths.devices}/pairings/${encodeURIComponent(pairingId)}`, { acceptedStatuses: [204] });
+  }
+
   public async approve(id: string, fingerprint: string): Promise<void> {
     await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/approve`, { fingerprint });
   }
@@ -165,6 +211,33 @@ class HttpDevicesApi implements DevicesApi {
   }
 }
 
+class HttpTelegramApi implements TelegramApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async status(): Promise<TelegramStatus> {
+    const response = await this.http.get(paths.telegramLink, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.linked !== "boolean") throw new ApiError("The API returned an invalid response.", response.status);
+    return { linked: value.linked, botUsername: assertBotUsername(value.bot_username, response.status) };
+  }
+
+  public async createLinkCode(): Promise<TelegramLinkCode> {
+    const response = await this.http.postJson(paths.telegramLinkCode, {}, { acceptedStatuses: [201] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{10}$/.test(value.code) || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at))) {
+      throw new ApiError("The API returned an invalid response.", response.status);
+    }
+    return { code: value.code, expiresAt: value.expires_at, botUsername: assertBotUsername(value.bot_username, response.status) };
+  }
+
+  public async unlink(): Promise<void> {
+    await this.http.delete(paths.telegramLink, { acceptedStatuses: [204] });
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
-  return { auth: new HttpAuthApi(), devices: new HttpDevicesApi() };
+  const http = new SameOriginHttpClient();
+  const auth = new HttpAuthApi(http);
+  http.setRefreshHandler(() => auth.refresh());
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http) };
 }

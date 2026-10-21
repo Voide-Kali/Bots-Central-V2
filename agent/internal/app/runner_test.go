@@ -14,6 +14,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
@@ -319,4 +320,47 @@ func containsState(states []State, want State) bool {
 		}
 	}
 	return false
+}
+
+type testTelemetry struct{ calls atomic.Int32 }
+
+func (c *testTelemetry) Collect() telemetry.Sample {
+	c.calls.Add(1)
+	cpus := 4
+	return telemetry.Sample{V: telemetry.Version, CPUs: &cpus}
+}
+
+func TestRunnerAttachesTelemetryOnlyAfterActivation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{transport.ErrDevicePending, nil, nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusPending}}
+	dependencies := testDependencies(fake, state)
+	collector := &testTelemetry{}
+	dependencies.Telemetry = collector
+	fake.OnSend = func(_ heartbeat.Model) {
+		if len(fake.Calls()) == 3 {
+			cancel()
+		}
+	}
+	runner, err := New(testConfig(), dependencies)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := runner.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	calls := fake.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("calls = %d", len(calls))
+	}
+	if calls[0].Telemetry != nil || calls[1].Telemetry != nil {
+		t.Fatal("pending probes must not carry telemetry")
+	}
+	if calls[2].Telemetry == nil || calls[2].Telemetry.CPUs == nil || *calls[2].Telemetry.CPUs != 4 {
+		t.Fatalf("active heartbeat telemetry = %#v", calls[2].Telemetry)
+	}
+	if collector.calls.Load() != 1 {
+		t.Fatalf("collector calls = %d", collector.calls.Load())
+	}
 }

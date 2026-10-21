@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import Device, DevicePairingToken, User
 from app.db.models import Session as DbSession
+from app.devices import telemetry
 
 SessionFactory = Callable[[], Session]
 PAIRING_TOKEN_BYTES = 32
@@ -34,6 +35,10 @@ class InvalidPairing(Exception):
 
 
 class PairingUnavailable(Exception):
+    pass
+
+
+class PairingNotFound(Exception):
     pass
 
 
@@ -67,6 +72,7 @@ class StaleHeartbeat(Exception):
 
 @dataclass(frozen=True)
 class Pairing:
+    id: uuid.UUID
     token: str
     expires_at: datetime
 
@@ -131,12 +137,18 @@ def create_pairing(
     token = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
     with session_factory() as session, session.begin():
         now = _clock(session)
+        user = session.scalar(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         db_session = session.scalar(
             select(DbSession)
             .where(DbSession.id == session_id, DbSession.user_id == user_id)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
-        user = session.scalar(select(User).where(User.id == user_id).with_for_update())
         if (
             user is None
             or db_session is None
@@ -148,16 +160,42 @@ def create_pairing(
         ):
             raise PairingUnavailable
         expires_at = now + PAIRING_TTL
-        session.add(
-            DevicePairingToken(
+        pairing = DevicePairingToken(
                 user_id=user_id,
                 initiating_session_id=session_id,
                 token_digest=hashlib.sha256(raw).digest(),
                 created_at=now,
                 expires_at=expires_at,
             )
+        session.add(pairing)
+        session.flush()
+        pairing_id = pairing.id
+    return Pairing(id=pairing_id, token=token, expires_at=expires_at)
+
+
+def revoke_pairing(
+    session_factory: SessionFactory,
+    *,
+    user_id: uuid.UUID,
+    session_id: uuid.UUID,
+    pairing_id: uuid.UUID,
+) -> None:
+    with session_factory() as session, session.begin():
+        pairing = session.scalar(
+            select(DevicePairingToken)
+            .where(
+                DevicePairingToken.id == pairing_id,
+                DevicePairingToken.user_id == user_id,
+                DevicePairingToken.initiating_session_id == session_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
-    return Pairing(token=token, expires_at=expires_at)
+        if pairing is None:
+            raise PairingNotFound
+        now = _clock(session)
+        if pairing.consumed_at is None and pairing.revoked_at is None and pairing.expires_at > now:
+            pairing.revoked_at = now
 
 
 def enroll(
@@ -176,7 +214,14 @@ def enroll(
     except ValueError as error:
         raise InvalidPairing from error
     claims = _verify_jws(proof, public_key, audience=ENROLLMENT_AUDIENCE)
-    if not hmac.compare_digest(cast(str, claims.get("pairing_token", "")), pairing_token):
+    claimed_pairing_token = claims.get("pairing_token")
+    if not isinstance(claimed_pairing_token, str):
+        raise InvalidProof
+    try:
+        _b64decode(claimed_pairing_token, expected_bytes=PAIRING_TOKEN_BYTES)
+    except ValueError as error:
+        raise InvalidProof from error
+    if not hmac.compare_digest(claimed_pairing_token, pairing_token):
         raise InvalidProof
     if not isinstance(claims.get("sub"), str):
         raise InvalidProof
@@ -187,7 +232,12 @@ def enroll(
             .with_for_update()
         )
         now = _clock(session)
-        if pairing is None or pairing.consumed_at is not None or pairing.expires_at <= now:
+        if (
+            pairing is None
+            or pairing.consumed_at is not None
+            or pairing.revoked_at is not None
+            or pairing.expires_at <= now
+        ):
             raise InvalidPairing
         user = session.scalar(select(User).where(User.id == pairing.user_id).with_for_update())
         initiating = session.scalar(
@@ -266,6 +316,12 @@ def reject(
 
 
 def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
+    return _verify_heartbeat_claims(device=device, device_id=device_id, jws=jws)[0]
+
+
+def _verify_heartbeat_claims(
+    *, device: Device, device_id: uuid.UUID, jws: str
+) -> tuple[int, telemetry.TelemetrySample | None]:
     if device.lifecycle_status is DeviceLifecycleStatus.REVOKED:
         raise DeviceRevoked
     if device.lifecycle_status is not DeviceLifecycleStatus.ACTIVE:
@@ -282,7 +338,13 @@ def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
         or not 0 <= sequence <= MAX_SEQUENCE
     ):
         raise InvalidProof
-    return sequence
+    sample: telemetry.TelemetrySample | None = None
+    if "tel" in claims:
+        try:
+            sample = telemetry.parse_claim(claims["tel"])
+        except telemetry.InvalidTelemetry as error:
+            raise InvalidProof from error
+    return sequence, sample
 
 
 def authenticate_heartbeat(
@@ -303,7 +365,7 @@ def heartbeat(
         device = session.scalar(select(Device).where(Device.id == device_id))
         if device is None:
             raise DeviceNotFound
-        sequence = verify_heartbeat(device=device, device_id=device_id, jws=jws)
+        sequence, sample = _verify_heartbeat_claims(device=device, device_id=device_id, jws=jws)
         accepted = session.execute(
             update(Device)
             .where(
@@ -316,6 +378,8 @@ def heartbeat(
             .returning(Device.last_seen_at)
         ).scalar_one_or_none()
         if accepted is not None:
+            if sample is not None:
+                telemetry.store(session, device_id=device_id, sample=sample)
             return accepted
         current = session.scalar(select(Device.lifecycle_status).where(Device.id == device_id))
         if current is DeviceLifecycleStatus.REVOKED:

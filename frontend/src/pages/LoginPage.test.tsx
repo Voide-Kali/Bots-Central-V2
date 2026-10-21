@@ -14,7 +14,7 @@ function fakeClient(login: ApiClient["auth"]["login"] = async () => undefined): 
       logout: async () => undefined,
       me: async () => ({ id: "user-1", email: "operator@example.test" })
     },
-    devices: { list: async () => [], createPairing: async () => ({ pairingToken: "test-only", expiresAt: "2026-09-12T12:00:00Z" }), approve: async () => undefined, reject: async () => undefined }
+    devices: { list: async () => [], createPairing: async () => ({ pairingId: "pairing", pairingToken: "test-only", expiresAt: "2026-09-12T12:00:00Z" }), revokePairing: async () => undefined, approve: async () => undefined, reject: async () => undefined }
   };
 }
 

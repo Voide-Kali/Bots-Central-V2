@@ -8,8 +8,24 @@ services:
       APP_NAME: Bots Central V2
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: INFO
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
     ports:
       - "8000:8000"
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+  telegram:
+    image: *backend_image
+    profiles: ["telegram"]
+    command: ["python", "-m", "app.telegram.bot"]
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: INFO
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in .env}
+      ABUSE_CONTROL_HMAC_KEY: ${ABUSE_CONTROL_HMAC_KEY:?set ABUSE_CONTROL_HMAC_KEY in .env}
     depends_on:
       migration:
         condition: service_completed_successfully

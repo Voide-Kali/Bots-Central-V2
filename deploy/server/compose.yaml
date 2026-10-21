@@ -1,0 +1,138 @@
+# Bots Central V2 — home server stack (Ubuntu + Docker + Tailscale).
+# Nothing is published to the internet: Caddy binds only to the Tailscale IP and
+# obtains its *.ts.net certificate from the local tailscaled.
+# Usage (from this folder):  docker compose --env-file .env up -d --build
+
+name: bots-central
+
+x-backend-env: &backend_env
+  env_file: .env
+  environment:
+    APP_ENV: production
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    PUBLIC_ORIGIN: https://${SERVER_HOSTNAME}
+    TRUSTED_PROXY_IP: 172.30.10.10
+    EMAIL_VERIFICATION_DELIVERY_MODE: smtp
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [internal]
+
+  migration:
+    build: ../../backend
+    image: bots-central-backend:local
+    command: ["alembic", "upgrade", "head"]
+    <<: *backend_env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+  backend:
+    build: ../../backend
+    image: bots-central-backend:local
+    restart: unless-stopped
+    <<: *backend_env
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks:
+      internal:
+        ipv4_address: 172.30.10.20
+      egress: {}  # SMTP to the system mailbox
+
+  telegram:
+    build: ../../backend
+    image: bots-central-backend:local
+    restart: unless-stopped
+    command: ["python", "-m", "app.telegram.bot"]
+    env_file: .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PUBLIC_ORIGIN: https://${SERVER_HOSTNAME}
+      TRUSTED_PROXY_IP: 172.30.10.10
+      EMAIL_VERIFICATION_DELIVERY_MODE: smtp
+      ASSISTANT_OLLAMA_URL: http://ollama:11434
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    networks: [internal, egress]
+
+  ollama:
+    # Local LLM for the read-only assistant (ADR-013). Not published; reachable only
+    # from containers. Pull the model once:
+    #   docker compose exec ollama ollama pull qwen2.5:3b
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    networks: [internal, egress]
+
+  web:
+    build:
+      context: ../../frontend
+      dockerfile: ../deploy/server/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      SERVER_HOSTNAME: ${SERVER_HOSTNAME}
+    ports:
+      - "${TAILSCALE_IP}:443:443"
+      - "${TAILSCALE_IP}:80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
+      - caddy-data:/data
+    depends_on: [backend]
+    networks:
+      internal:
+        ipv4_address: 172.30.10.10
+      egress: {}
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ${BACKUP_DIR}:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+networks:
+  internal:
+    internal: true
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+  egress:
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+
+volumes:
+  postgres-data:
+  caddy-data:
+  ollama-data:
