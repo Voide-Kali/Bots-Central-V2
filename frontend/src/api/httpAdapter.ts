@@ -19,6 +19,7 @@ import { accessTokenStore } from "./memoryAccessToken";
 
 const paths = {
   register: "/api/v1/auth/register",
+  resend: "/api/v1/auth/email-verification/resend",
   consumeCode: "/api/v1/auth/email-verification/consume-code",
   login: "/api/v1/auth/login",
   refresh: "/api/v1/auth/refresh",
@@ -143,6 +144,10 @@ function assertDevices(value: unknown, status: number): readonly Device[] {
 
 class HttpAuthApi implements AuthApi {
   public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async resendVerification(email: string): Promise<void> {
+    await this.http.postJson(paths.resend, { email }, { acceptedStatuses: [202], includeAccessToken: false });
+  }
 
   public async register(input: RegisterRequest): Promise<RegisterAcceptedResponse> {
     const response = await this.http.postJson(paths.register, input, { acceptedStatuses: [202], includeAccessToken: false });
