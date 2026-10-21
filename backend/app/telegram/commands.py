@@ -218,6 +218,7 @@ def _request_file(
             ),
         )
     except Exception:
+        commands.cancel_request(session_factory, command_id=intent.command_id)
         return Reply(chat_id, "Não consegui enviar o e-mail com o código. Tente de novo.")
     return Reply(
         chat_id,

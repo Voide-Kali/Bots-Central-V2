@@ -38,3 +38,17 @@ ser útil na demo e de baixo dano possível: trazer um arquivo do computador par
 - O arquivo passa pelo Telegram (sem ponta a ponta). Para arquivos sensíveis, link de download
   pela rede privada fica como evolução.
 - Latência de até ~30 s (o agente só pergunta após cada heartbeat).
+
+## Revisão independente (21/10/2026) — correções aplicadas
+
+- **M1:** a entrega exige que o chat ainda esteja vinculado ao **mesmo** usuário; desvincular
+  cancela comandos abertos e apaga bytes pendentes.
+- **M2:** recuperar a senha desvincula o Telegram e cancela comandos abertos (ADR-014).
+- **B1:** `/aprovar` encontra qual dos pedidos pendentes o código abre (antes, só o mais recente).
+- **B3:** falha no envio do e-mail cancela o pedido e libera a vaga.
+- **B4:** bytes não entregues em 1 h são apagados; seleção da entrega com `SKIP LOCKED`.
+- **B5:** o agente recusa arquivos com mais de um hard link.
+- **B6:** nome de computador ambíguo é recusado.
+- **B7 (risco aceito):** o corpo de até 15 MB é lido antes da verificação do JWS. Mitigado por:
+  servidor acessível só pela rede Tailscale (não fica na internet), limites de taxa por rede e
+  por dispositivo antes do processamento. Rever se o servidor for exposto publicamente.
