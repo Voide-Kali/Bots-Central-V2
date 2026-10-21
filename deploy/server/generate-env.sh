@@ -37,6 +37,9 @@ SMTP_SENDER=aval.app.br@gmail.com
 TELEGRAM_BOT_TOKEN=REPLACE_ME
 TELEGRAM_BOT_USERNAME=aval_sistema_bot
 
+# --- Local AI (ADR-013) -------------------------------------------------
+ASSISTANT_MODEL=qwen2.5:3b
+
 LOG_LEVEL=INFO
 ENV
 echo "Created $(pwd)/.env — edit the REPLACE_ME values (nano .env)."
