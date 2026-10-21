@@ -124,13 +124,27 @@ func parseVMStat(content string) (uint64, error) {
 		}
 		pages[strings.TrimSpace(name)] = number
 	}
-	active, okA := pages["Pages active"]
 	wired, okW := pages["Pages wired down"]
 	compressed := pages["Pages occupied by compressor"]
-	if pageSize == 0 || !okA || !okW {
+	if pageSize == 0 || !okW {
 		return 0, errors.New("telemetry: incomplete vm_stat")
 	}
-	return (active + wired + compressed) * pageSize, nil
+	// Activity Monitor: Memory Used = App Memory + Wired + Compressed, where
+	// App Memory = anonymous pages - purgeable pages. Older macOS without the
+	// "Anonymous pages" line falls back to active pages.
+	app, okAnon := pages["Anonymous pages"]
+	if okAnon {
+		if purgeable := pages["Pages purgeable"]; purgeable <= app {
+			app -= purgeable
+		}
+	} else {
+		active, okA := pages["Pages active"]
+		if !okA {
+			return 0, errors.New("telemetry: incomplete vm_stat")
+		}
+		app = active
+	}
+	return (app + wired + compressed) * pageSize, nil
 }
 
 // padSysctl restores trailing zero bytes that syscall.Sysctl strips from
