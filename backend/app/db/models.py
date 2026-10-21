@@ -2,15 +2,19 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     LargeBinary,
     Numeric,
     String,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -95,6 +99,10 @@ class DevicePairingToken(Base):
             "(consumed_at IS NOT NULL AND device_id IS NOT NULL)",
             name="ck_device_pairing_consumption_state",
         ),
+        CheckConstraint(
+            "revoked_at IS NULL OR consumed_at IS NULL",
+            name="ck_device_pairing_not_revoked_and_consumed",
+        ),
         Index("ix_device_pairing_tokens_expires_at", "expires_at"),
         Index("ix_device_pairing_tokens_user_id", "user_id"),
     )
@@ -110,6 +118,7 @@ class DevicePairingToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     device_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("devices.id", ondelete="RESTRICT"), nullable=True
     )
@@ -453,3 +462,108 @@ class RefreshToken(Base):
             f"RefreshToken(id={self.id!s}, session_id={self.session_id!s}, "
             f"generation={self.generation!r}, consumed={self.consumed_at is not None!r})"
         )
+
+
+class DeviceTelemetrySample(Base):
+    """One bounded system-metrics sample accepted with a signed heartbeat."""
+
+    __tablename__ = "device_telemetry_samples"
+    __table_args__ = (
+        CheckConstraint(
+            "cpu_percent IS NULL OR (cpu_percent >= 0 AND cpu_percent <= 100)",
+            name="ck_device_telemetry_cpu_percent",
+        ),
+        CheckConstraint("load1 IS NULL OR load1 >= 0", name="ck_device_telemetry_load1"),
+        CheckConstraint("cpu_count IS NULL OR cpu_count > 0", name="ck_device_telemetry_cpu_count"),
+        CheckConstraint(
+            "memory_used_bytes IS NULL OR memory_total_bytes IS NULL "
+            "OR (memory_used_bytes >= 0 AND memory_used_bytes <= memory_total_bytes)",
+            name="ck_device_telemetry_memory",
+        ),
+        CheckConstraint(
+            "disk_used_bytes IS NULL OR disk_total_bytes IS NULL "
+            "OR (disk_used_bytes >= 0 AND disk_used_bytes <= disk_total_bytes)",
+            name="ck_device_telemetry_disk",
+        ),
+        CheckConstraint(
+            "temperature_c IS NULL OR (temperature_c >= -50 AND temperature_c <= 150)",
+            name="ck_device_telemetry_temperature",
+        ),
+        CheckConstraint(
+            "uptime_seconds IS NULL OR uptime_seconds >= 0", name="ck_device_telemetry_uptime"
+        ),
+        Index("ix_device_telemetry_device_recorded", "device_id", text("recorded_at DESC")),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_total_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    memory_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_total_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class TelegramLink(Base):
+    """One private Telegram chat bound to one platform user (ADR-011)."""
+
+    __tablename__ = "telegram_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_telegram_links_user_id"),
+        UniqueConstraint("chat_id", name="uq_telegram_links_chat_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TelegramLinkCode(Base):
+    """Short-lived one-time code; only its SHA-256 digest is stored."""
+
+    __tablename__ = "telegram_link_codes"
+    __table_args__ = (
+        CheckConstraint(
+            "octet_length(code_digest) = 32", name="ck_telegram_link_codes_digest_length"
+        ),
+        CheckConstraint("expires_at > created_at", name="ck_telegram_link_codes_expiry"),
+        Index("ix_telegram_link_codes_user_id", "user_id"),
+        UniqueConstraint("code_digest", name="uq_telegram_link_codes_digest"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    code_digest: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DevicePresenceAlert(Base):
+    """Last presence value already announced to the owner, to alert only on changes."""
+
+    __tablename__ = "device_presence_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "last_presence IN ('online', 'offline')", name="ck_device_presence_alerts_value"
+        ),
+    )
+
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_presence: Mapped[str] = mapped_column(String(16), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

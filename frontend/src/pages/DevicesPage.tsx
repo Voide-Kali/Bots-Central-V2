@@ -6,6 +6,7 @@ import type { Device } from "../api/contracts";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { DeviceList } from "../components/DeviceList";
+import { TelegramCard } from "../components/TelegramCard";
 
 type DeviceState =
   | { readonly kind: "idle" }
@@ -39,7 +40,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [feedback, setFeedback] = useState<string>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [pairing, setPairing] = useState<{ readonly token: string; readonly expiresAt: string }>();
+  const [pairing, setPairing] = useState<{ readonly id: string; readonly token: string; readonly expiresAt: string }>();
   const [fingerprintInput, setFingerprintInput] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
 
@@ -103,7 +104,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     const generation = sessionGeneration.current;
     try {
       const created = await api.devices.createPairing();
-      if (mounted.current && generation === sessionGeneration.current) setPairing({ token: created.pairingToken, expiresAt: created.expiresAt });
+      if (mounted.current && generation === sessionGeneration.current) setPairing({ id: created.pairingId, token: created.pairingToken, expiresAt: created.expiresAt });
     } catch (error) { if (error instanceof UnauthenticatedError) invalidate(); else setFeedback("Não foi possível iniciar o pairing."); }
     finally { actionLock.current = false; if (mounted.current) setActionBusy(false); }
   }
@@ -111,6 +112,18 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     if (!pairing || Date.parse(pairing.expiresAt) <= Date.now()) return;
     try { await navigator.clipboard.writeText(pairing.token); setFeedback("Código copiado."); }
     catch { setFeedback("Não foi possível copiar. Selecione o código para copiá-lo."); }
+  }
+  async function cancelPairing(): Promise<void> {
+    if (!pairing || actionLock.current) return;
+    actionLock.current = true;
+    setActionBusy(true);
+    try {
+      await api.devices.revokePairing(pairing.id);
+      if (mounted.current) { setPairing(undefined); setFeedback("Pairing cancelado."); }
+    } catch (error) {
+      if (error instanceof UnauthenticatedError) invalidate();
+      else setFeedback("Não foi possível cancelar o pairing no servidor.");
+    } finally { actionLock.current = false; if (mounted.current) setActionBusy(false); }
   }
   async function decide(device: Device, decision: "approve" | "reject"): Promise<void> {
     if (actionLock.current || device.lifecycleStatus !== "pending" || device.fingerprint === null || fingerprintInput !== device.fingerprint) return;
@@ -147,9 +160,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
             <code style={{ overflowWrap: "anywhere" }}>{pairing.token}</code>
             <p>Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time></p>
             <button onClick={() => void copyPairing()} type="button">Copiar código</button>
-            <button onClick={() => setPairing(undefined)} type="button">Cancelar pairing</button>
+            <button disabled={actionBusy} onClick={() => void cancelPairing()} type="button">Cancelar pairing</button>
           </> : <button disabled={actionBusy} onClick={() => void startPairing()} type="button">Adicionar dispositivo</button>}
         </section> : null}
+        {session.kind === "authenticated" && api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}
         {waitingForSession || loadingDevices ? <Skeletons /> : null}
         {requiresLogin ? <section className="state-panel"><h2>Acesso necessário</h2><p>Entre para consultar os dispositivos do seu espaço.</p><button onClick={() => navigate("/login")} type="button">Ir para entrar</button></section> : null}
         {unavailable ? <section className="state-panel state-panel--unavailable"><h2>Não foi possível atualizar seus dispositivos.</h2><p>Não foi possível carregar uma atualização do servidor. Tente novamente em alguns instantes.</p><button onClick={session.kind === "unavailable" ? () => void retryBootstrap() : refresh} type="button">Tentar novamente</button></section> : null}

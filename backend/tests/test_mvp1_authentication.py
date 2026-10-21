@@ -19,7 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.v1.routes import auth as auth_route
-from app.auth import authentication
+from app.auth import authentication, device_online
 from app.auth.abuse_control import AbuseControlKey, AbuseController
 from app.auth.passwords import hash_password
 from app.core.config import Settings
@@ -27,6 +27,7 @@ from app.db.enums import AccountStatus, DeviceLifecycleStatus, SessionRevocation
 from app.db.models import (
     AccessToken,
     Device,
+    DevicePairingToken,
     PasswordCredential,
     RefreshToken,
     User,
@@ -69,12 +70,15 @@ def active_user(
         yield user_id, email, password
     finally:
         with Session(engine) as session, session.begin():
-            ids = list(
-                session.scalars(select(DbSession.id).where(DbSession.user_id == user_id))
-            )
+            ids = list(session.scalars(select(DbSession.id).where(DbSession.user_id == user_id)))
             if ids:
                 session.execute(delete(AccessToken).where(AccessToken.session_id.in_(ids)))
                 session.execute(delete(RefreshToken).where(RefreshToken.session_id.in_(ids)))
+                session.execute(
+                    delete(DevicePairingToken).where(
+                        DevicePairingToken.initiating_session_id.in_(ids)
+                    )
+                )
                 session.execute(delete(DbSession).where(DbSession.id.in_(ids)))
             session.execute(delete(Device).where(Device.user_id == user_id))
             session.execute(delete(PasswordCredential).where(PasswordCredential.user_id == user_id))
@@ -112,12 +116,22 @@ def assert_user_has_no_session_or_tokens(engine: Engine, user_id: uuid.UUID) -> 
             session.scalars(select(DbSession.id).where(DbSession.user_id == user_id))
         )
         assert session_ids == []
-        assert session.scalar(
-            select(text("count(*)")).select_from(AccessToken).where(AccessToken.session_id.in_(session_ids))
-        ) == 0
-        assert session.scalar(
-            select(text("count(*)")).select_from(RefreshToken).where(RefreshToken.session_id.in_(session_ids))
-        ) == 0
+        assert (
+            session.scalar(
+                select(text("count(*)"))
+                .select_from(AccessToken)
+                .where(AccessToken.session_id.in_(session_ids))
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(text("count(*)"))
+                .select_from(RefreshToken)
+                .where(RefreshToken.session_id.in_(session_ids))
+            )
+            == 0
+        )
 
 
 def test_login_persists_digests_and_authenticates(migrated_postgresql_engine: Engine) -> None:
@@ -126,9 +140,12 @@ def test_login_persists_digests_and_authenticates(migrated_postgresql_engine: En
         result = authentication.login(factory, email=email, password=password)
         assert result.user_id == user_id
         assert result.access_expires_in == 600
-        assert authentication.authenticate_access(
-            factory, result.access_token.get_secret_value()
-        ).user_id == user_id
+        assert (
+            authentication.authenticate_access(
+                factory, result.access_token.get_secret_value()
+            ).user_id
+            == user_id
+        )
         with Session(migrated_postgresql_engine) as session:
             access = session.scalar(
                 select(AccessToken).where(AccessToken.session_id == result.session_id)
@@ -234,29 +251,35 @@ def test_expired_refresh_is_not_rotated(migrated_postgresql_engine: Engine) -> N
         before = Session(migrated_postgresql_engine)
         try:
             refresh_count = before.scalar(
-                select(text("count(*)")).select_from(RefreshToken).where(
-                    RefreshToken.session_id == login.session_id
-                )
+                select(text("count(*)"))
+                .select_from(RefreshToken)
+                .where(RefreshToken.session_id == login.session_id)
             )
             access_count = before.scalar(
-                select(text("count(*)")).select_from(AccessToken).where(
-                    AccessToken.session_id == login.session_id
-                )
+                select(text("count(*)"))
+                .select_from(AccessToken)
+                .where(AccessToken.session_id == login.session_id)
             )
         finally:
             before.close()
         assert not authentication.refresh(factory, login.refresh_token.get_secret_value()).success
         with Session(migrated_postgresql_engine) as session:
-            assert session.scalar(
-                select(text("count(*)")).select_from(RefreshToken).where(
-                    RefreshToken.session_id == login.session_id
+            assert (
+                session.scalar(
+                    select(text("count(*)"))
+                    .select_from(RefreshToken)
+                    .where(RefreshToken.session_id == login.session_id)
                 )
-            ) == refresh_count
-            assert session.scalar(
-                select(text("count(*)")).select_from(AccessToken).where(
-                    AccessToken.session_id == login.session_id
+                == refresh_count
+            )
+            assert (
+                session.scalar(
+                    select(text("count(*)"))
+                    .select_from(AccessToken)
+                    .where(AccessToken.session_id == login.session_id)
                 )
-            ) == access_count
+                == access_count
+            )
 
 
 def test_revoked_refresh_is_not_rotated(migrated_postgresql_engine: Engine) -> None:
@@ -272,28 +295,34 @@ def test_revoked_refresh_is_not_rotated(migrated_postgresql_engine: Engine) -> N
             refresh.revoked_at = now
         with Session(migrated_postgresql_engine) as session:
             refresh_count = session.scalar(
-                select(text("count(*)")).select_from(RefreshToken).where(
-                    RefreshToken.session_id == login.session_id
-                )
+                select(text("count(*)"))
+                .select_from(RefreshToken)
+                .where(RefreshToken.session_id == login.session_id)
             )
             access_count = session.scalar(
-                select(text("count(*)")).select_from(AccessToken).where(
-                    AccessToken.session_id == login.session_id
-                )
+                select(text("count(*)"))
+                .select_from(AccessToken)
+                .where(AccessToken.session_id == login.session_id)
             )
         result = authentication.refresh(factory, login.refresh_token.get_secret_value())
         assert not result.success
         with Session(migrated_postgresql_engine) as session:
-            assert session.scalar(
-                select(text("count(*)")).select_from(RefreshToken).where(
-                    RefreshToken.session_id == login.session_id
+            assert (
+                session.scalar(
+                    select(text("count(*)"))
+                    .select_from(RefreshToken)
+                    .where(RefreshToken.session_id == login.session_id)
                 )
-            ) == refresh_count
-            assert session.scalar(
-                select(text("count(*)")).select_from(AccessToken).where(
-                    AccessToken.session_id == login.session_id
+                == refresh_count
+            )
+            assert (
+                session.scalar(
+                    select(text("count(*)"))
+                    .select_from(AccessToken)
+                    .where(AccessToken.session_id == login.session_id)
                 )
-            ) == access_count
+                == access_count
+            )
 
 
 def test_logout_is_idempotent_and_revokes_all_tokens(migrated_postgresql_engine: Engine) -> None:
@@ -317,6 +346,194 @@ def test_logout_is_idempotent_and_revokes_all_tokens(migrated_postgresql_engine:
             assert all(item.revoked_at is not None for item in refreshes)
         with pytest.raises(authentication.InvalidAccessToken):
             authentication.authenticate_access(factory, login.access_token.get_secret_value())
+
+
+@pytest.mark.anyio
+async def test_logout_refresh_authority_and_bearer_fallback(
+    migrated_postgresql_engine: Engine,
+) -> None:
+    """A known refresh chooses its session; unknown cookie material may fall back to bearer."""
+    headers = {"Origin": "http://localhost:8000", "Sec-Fetch-Site": "same-origin"}
+    factory = session_factory(migrated_postgresql_engine)
+    app = http_app(migrated_postgresql_engine)
+    with active_user(migrated_postgresql_engine) as (_, email, password):
+        known = authentication.login(factory, email=email, password=password)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set(
+                "refresh_token", known.refresh_token.get_secret_value(), path="/api/v1/auth"
+            )
+            response = await client.post(
+                "/api/v1/auth/logout",
+                headers={
+                    **headers,
+                    "Authorization": f"Bearer {known.access_token.get_secret_value()}",
+                },
+            )
+            assert response.status_code == 204
+            assert (
+                await client.get(
+                    "/api/v1/auth/me",
+                    headers={"Authorization": f"Bearer {known.access_token.get_secret_value()}"},
+                )
+            ).status_code == 401
+            assert (await client.post("/api/v1/auth/refresh", headers=headers)).status_code == 401
+
+        refresh_only = authentication.login(factory, email=email, password=password)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set(
+                "refresh_token", refresh_only.refresh_token.get_secret_value(), path="/api/v1/auth"
+            )
+            assert (await client.post("/api/v1/auth/logout", headers=headers)).status_code == 204
+        with pytest.raises(authentication.InvalidAccessToken):
+            authentication.authenticate_access(
+                factory, refresh_only.access_token.get_secret_value()
+            )
+
+        expired = authentication.login(factory, email=email, password=password)
+        with Session(migrated_postgresql_engine) as session, session.begin():
+            access = session.scalar(
+                select(AccessToken).where(AccessToken.session_id == expired.session_id)
+            )
+            now = session.scalar(text("SELECT clock_timestamp()"))
+            assert access is not None and now is not None
+            access.created_at = now - timedelta(minutes=10)
+            access.expires_at = now - timedelta(minutes=1)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set(
+                "refresh_token", expired.refresh_token.get_secret_value(), path="/api/v1/auth"
+            )
+            assert (
+                await client.post(
+                    "/api/v1/auth/logout",
+                    headers={
+                        **headers,
+                        "Authorization": f"Bearer {expired.access_token.get_secret_value()}",
+                    },
+                )
+            ).status_code == 204
+        assert not authentication.refresh(factory, expired.refresh_token.get_secret_value()).success
+
+        fallback = authentication.login(factory, email=email, password=password)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set("refresh_token", "Z" * 43, path="/api/v1/auth")
+            assert (
+                await client.post(
+                    "/api/v1/auth/logout",
+                    headers={
+                        **headers,
+                        "Authorization": f"Bearer {fallback.access_token.get_secret_value()}",
+                    },
+                )
+            ).status_code == 204
+        with pytest.raises(authentication.InvalidAccessToken):
+            authentication.authenticate_access(factory, fallback.access_token.get_secret_value())
+
+        untouched = authentication.login(factory, email=email, password=password)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            client.cookies.set("refresh_token", "Y" * 43, path="/api/v1/auth")
+            assert (await client.post("/api/v1/auth/logout", headers=headers)).status_code == 204
+            assert (await client.post("/api/v1/auth/logout", headers=headers)).status_code == 204
+        assert (
+            authentication.authenticate_access(
+                factory, untouched.access_token.get_secret_value()
+            ).session_id
+            == untouched.session_id
+        )
+
+
+@pytest.mark.anyio
+async def test_pairing_revoke_http_is_owner_and_initiating_session_scoped(
+    migrated_postgresql_engine: Engine,
+) -> None:
+    factory = session_factory(migrated_postgresql_engine)
+    with active_user(migrated_postgresql_engine) as (_, email, password):
+        with active_user(migrated_postgresql_engine) as (_, other_email, other_password):
+            initiating = authentication.login(factory, email=email, password=password)
+            same_owner_other_session = authentication.login(factory, email=email, password=password)
+            other_owner = authentication.login(factory, email=other_email, password=other_password)
+            pairing = device_online.create_pairing(
+                factory, user_id=initiating.user_id, session_id=initiating.session_id
+            )
+            app = http_app(migrated_postgresql_engine)
+            same_owner_headers = {
+                "Authorization": (
+                    f"Bearer {same_owner_other_session.access_token.get_secret_value()}"
+                )
+            }
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                route = f"/api/v1/devices/pairings/{pairing.id}"
+                other = await client.delete(
+                    route,
+                    headers={
+                        "Authorization": f"Bearer {other_owner.access_token.get_secret_value()}"
+                    },
+                )
+                second = await client.delete(
+                    route,
+                    headers=same_owner_headers,
+                )
+                owner = await client.delete(
+                    route,
+                    headers={
+                        "Authorization": f"Bearer {initiating.access_token.get_secret_value()}"
+                    },
+                )
+                repeated = await client.delete(
+                    route,
+                    headers={
+                        "Authorization": f"Bearer {initiating.access_token.get_secret_value()}"
+                    },
+                )
+            assert other.status_code == second.status_code == 404
+            assert owner.status_code == repeated.status_code == 204
+            with Session(migrated_postgresql_engine) as session:
+                assert session.get(DevicePairingToken, pairing.id).revoked_at is not None  # type: ignore[union-attr]
+
+
+@pytest.mark.anyio
+async def test_cross_user_approve_and_reject_do_not_mutate_pending_device(
+    migrated_postgresql_engine: Engine,
+) -> None:
+    factory = session_factory(migrated_postgresql_engine)
+    with active_user(migrated_postgresql_engine) as (owner_id, _, _):
+        with active_user(migrated_postgresql_engine) as (_, other_email, other_password):
+            fingerprint = "SHA256:" + "x" * 43
+            device_id = uuid.uuid4()
+            with Session(migrated_postgresql_engine) as session, session.begin():
+                session.add(
+                    Device(
+                        id=device_id,
+                        user_id=owner_id,
+                        name="pending",
+                        platform="linux",
+                        lifecycle_status=DeviceLifecycleStatus.PENDING,
+                        public_key=b"x" * 32,
+                        public_key_fingerprint=fingerprint,
+                    )
+                )
+            other = authentication.login(factory, email=other_email, password=other_password)
+            app = http_app(migrated_postgresql_engine)
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                headers = {"Authorization": f"Bearer {other.access_token.get_secret_value()}"}
+                approve = await client.post(
+                    f"/api/v1/devices/{device_id}/approve",
+                    json={"fingerprint": fingerprint},
+                    headers=headers,
+                )
+                reject = await client.post(
+                    f"/api/v1/devices/{device_id}/reject",
+                    json={"fingerprint": fingerprint},
+                    headers=headers,
+                )
+            assert approve.status_code == reject.status_code == 404
+            with Session(migrated_postgresql_engine) as session:
+                device = session.get(Device, device_id)
+                assert device is not None
+                assert device.lifecycle_status is DeviceLifecycleStatus.PENDING
 
 
 @pytest.mark.anyio
@@ -345,7 +562,8 @@ async def test_invalid_token_responses_do_not_echo_or_log_persisted_token_materi
         caplog.clear()
         headers = {"Origin": "http://localhost:8000", "Sec-Fetch-Site": "same-origin"}
         async with AsyncClient(
-            transport=ASGITransport(app=http_app(migrated_postgresql_engine)), base_url="http://test"
+            transport=ASGITransport(app=http_app(migrated_postgresql_engine)),
+            base_url="http://test",
         ) as client:
             me = await client.get(
                 "/api/v1/auth/me", headers={"Authorization": f"Bearer {access_token}"}
@@ -634,7 +852,8 @@ async def test_me_rejects_invalid_authority_state(
                 else:
                     user.status = AccountStatus.LOCKED
         async with AsyncClient(
-            transport=ASGITransport(app=http_app(migrated_postgresql_engine)), base_url="http://test"
+            transport=ASGITransport(app=http_app(migrated_postgresql_engine)),
+            base_url="http://test",
         ) as client:
             response = await client.get(
                 "/api/v1/auth/me",
@@ -724,7 +943,8 @@ async def test_devices_empty_list(migrated_postgresql_engine: Engine) -> None:
             session_factory(migrated_postgresql_engine), email=email, password=password
         )
         async with AsyncClient(
-            transport=ASGITransport(app=http_app(migrated_postgresql_engine)), base_url="http://test"
+            transport=ASGITransport(app=http_app(migrated_postgresql_engine)),
+            base_url="http://test",
         ) as client:
             response = await client.get(
                 "/api/v1/devices",

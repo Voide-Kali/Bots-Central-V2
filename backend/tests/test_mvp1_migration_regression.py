@@ -14,6 +14,13 @@ from app.core.config import get_settings
 
 pytestmark = pytest.mark.postgresql
 
+_REVOKED_AT_EXISTS = text(
+    "SELECT EXISTS ("
+    "SELECT 1 FROM information_schema.columns "
+    "WHERE table_name = 'device_pairing_tokens' AND column_name = 'revoked_at'"
+    ")"
+)
+
 
 def _catalog(engine: Engine) -> tuple[bool, bool]:
     with engine.connect() as connection:
@@ -75,6 +82,17 @@ def test_device_migration_roundtrip_0004_0005(
                     text("SELECT to_regclass('public.device_pairing_tokens') IS NOT NULL")
                 )
 
+            command.upgrade(config, "0007_pairing_revocation")
+            assert _revision(migrated_postgresql_engine) == "0007_pairing_revocation"
+            with migrated_postgresql_engine.connect() as connection:
+                assert connection.scalar(_REVOKED_AT_EXISTS)
+            command.downgrade(config, "0006_device_online_v01")
+            assert _revision(migrated_postgresql_engine) == "0006_device_online_v01"
+            with migrated_postgresql_engine.connect() as connection:
+                assert not connection.scalar(_REVOKED_AT_EXISTS)
+            command.upgrade(config, "0007_pairing_revocation")
+            assert _revision(migrated_postgresql_engine) == "0007_pairing_revocation"
+
             command.downgrade(config, "0005_device_foundation")
             assert _revision(migrated_postgresql_engine) == "0005_device_foundation"
             with migrated_postgresql_engine.connect() as connection:
@@ -89,5 +107,7 @@ def test_device_migration_roundtrip_0004_0005(
             command.upgrade(config, "0005_device_foundation")
             assert _revision(migrated_postgresql_engine) == "0005_device_foundation"
             assert _catalog(migrated_postgresql_engine) == (True, True)
+            # Leave the shared session database at head for tests collected afterwards.
+            command.upgrade(config, "head")
     finally:
         get_settings.cache_clear()

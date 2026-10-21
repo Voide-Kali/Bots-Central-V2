@@ -1,5 +1,50 @@
 # Current State
 
+## Assistente de IA local v0.1 (2026-10-21, em revisão)
+
+- Texto livre no Telegram (chat vinculado) é respondido por um modelo local via Ollama com um snapshot somente leitura dos dispositivos do próprio usuário; sem ferramentas nem ações (ADR-013). Limite de 20 perguntas/10 min por chat. Validação local: backend com PostgreSQL 16 `397 passed`. Não testado contra um Ollama real.
+
+## Bot do Telegram v0.1 (2026-10-21, em revisão)
+
+- `python -m app.telegram.bot` (long polling, profile `telegram` no Compose), vínculo por código de uso único gerado no painel (`/api/v1/telegram/link-code`), `/status` com telemetria, `/desvincular`, alertas online/offline. Migration `0009_telegram_bot`. Ver [TELEGRAM.md](TELEGRAM.md). Validação local: backend com PostgreSQL 16 `392 passed`; frontend 61 testes, lint, typecheck, build. O loop do processo (`bot.py`) não tem teste automatizado; precisa de teste manual com token real.
+
+## Telemetria v0.1 (2026-10-21, em revisão)
+
+- Claim opcional `tel` no heartbeat assinado (ADR-012), migration `0008_device_telemetry`, retenção de 7 dias, `telemetry` em `GET /api/v1/devices` e histórico em `GET /api/v1/devices/{id}/telemetry`. Agente coleta CPU/carga/memória/disco/temperatura/uptime no Linux e no macOS (sem temperatura no macOS). Painel mostra a última amostra. Validação local: backend com PostgreSQL 16 `378 passed`; agente `go test -race`, `go vet` (linux e darwin); frontend 58 testes, lint, typecheck e build.
+
+## MVP-1 hardening pending review (2026-09-17)
+
+- The dedicated `review/mvp1-hardening` worktree adds PostgreSQL-backed pre-auth
+  admission for anonymous enrollment, restores `User → Session` pairing lock order,
+  adds server-side cancellation for unconsumed pairings, and makes web authenticated
+  requests refresh-and-retry once after access-token expiry.
+- Logout now prefers the HttpOnly refresh-cookie digest under the existing same-origin
+  boundary, so it can revoke a server session after the in-memory access token expires.
+- Validation results for this uncommitted review branch are recorded with the handoff,
+  not asserted as an integrated MVP-1 release result.
+
+## MVP-1 hardening follow-up (2026-09-19)
+
+- Logout now treats a known refresh digest as authority for its owning session, including a
+  consumed family member. Unknown or malformed refresh material is deliberately inert; only
+  then may a supplied bearer revoke its own session. The public successful response remains
+  `204`, and the existing same-origin boundary is unchanged.
+- The web refresh/retry path now clears in-memory access authority only for an actual
+  unauthenticated refresh rejection. Temporary backend and network failures continue as
+  `ApiUnavailableError` and do not pretend that the cookie-backed session was invalidated.
+- Pairing cancellation adds a durable `revoked_at` migration state and a PostgreSQL check
+  preventing a pairing from being both consumed and revoked. The public pairing id is now
+  required by the service DTO; cancellation remains scoped to the owner and initiating session.
+- Final Unicode claim-validation gates passed: `ruff check .`; `mypy app tests` (52 files);
+  focused PostgreSQL suite (53 passed); explicit Alembic `0006 → 0007 → 0006 → 0007`
+  round-trip; full PostgreSQL suite (352 passed, 86% total coverage); `pip-audit` (no known
+  vulnerabilities); frontend tests (56 passed), lint, typecheck, and build; and
+  `git diff --check`. No commit or push was made.
+
+## Repositório: remoção de `nvpn/` (2026-10-21)
+
+- A pasta `nvpn/` (binário de ~78 MB commitado por engano) foi removida e adicionada ao `.gitignore`; o blob permanece no histórico Git.
+
 ## Dependências: correção do pip-audit (2026-10-21)
 
 - PyJWT 2.15.1 (ambos os locks), urllib3 2.8.0 e certifi 2026.10.19 (`requirements.lock`); local em Python 3.13 sem PostgreSQL: ruff, mypy, `pip check` e pip-audit dos dois locks passaram; pytest `123 passed, 215 skipped`.

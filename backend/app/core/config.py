@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     smtp_sender: str | None = None
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     smtp_ca_file: Path | None = None
+    telegram_bot_token: SecretStr | None = None
+    assistant_ollama_url: str | None = None
+    assistant_model: str = Field(default="qwen2.5:3b", pattern=r"^[A-Za-z0-9._:/-]{1,100}$")
+    telegram_bot_username: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_]{5,32}$")
 
     @field_validator("database_url")
     @classmethod
@@ -67,6 +71,17 @@ class Settings(BaseSettings):
             return ipaddress.ip_address(value).compressed
         except ValueError as error:
             raise ValueError("TRUSTED_PROXY_IP must be an IP address") from error
+
+    @field_validator(
+        "telegram_bot_username", "telegram_bot_token", "assistant_ollama_url", mode="before"
+    )
+    @classmethod
+    def empty_telegram_values_are_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        if isinstance(value, str):
+            return value.strip().removeprefix("@")
+        return value
 
     @field_validator("smtp_ca_file", mode="before")
     @classmethod
