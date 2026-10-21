@@ -107,5 +107,7 @@ def test_device_migration_roundtrip_0004_0005(
             command.upgrade(config, "0005_device_foundation")
             assert _revision(migrated_postgresql_engine) == "0005_device_foundation"
             assert _catalog(migrated_postgresql_engine) == (True, True)
+            # Leave the shared session database at head for tests collected afterwards.
+            command.upgrade(config, "head")
     finally:
         get_settings.cache_clear()

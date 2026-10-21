@@ -1,4 +1,4 @@
-import type { ApiClient, AuthApi, DevicesApi } from "./client";
+import type { ApiClient, AuthApi, DevicesApi, TelegramApi } from "./client";
 import type {
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
@@ -8,7 +8,9 @@ import type {
   PairingResponse,
   LoginRequest,
   RegisterAcceptedResponse,
-  RegisterRequest
+  RegisterRequest,
+  TelegramLinkCode,
+  TelegramStatus
 } from "./contracts";
 import { ApiError } from "./errors";
 import { SameOriginHttpClient, readKnownJson } from "./http";
@@ -21,8 +23,18 @@ const paths = {
   refresh: "/api/v1/auth/refresh",
   logout: "/api/v1/auth/logout",
   me: "/api/v1/auth/me",
-  devices: "/api/v1/devices"
+  devices: "/api/v1/devices",
+  telegramLink: "/api/v1/telegram/link",
+  telegramLinkCode: "/api/v1/telegram/link-code"
 } as const;
+
+const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
+
+function assertBotUsername(value: unknown, status: number): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !botUsernamePattern.test(value)) throw new ApiError("The API returned an invalid response.", status);
+  return value;
+}
 
 // Refresh rotation is single-use. This is module-scoped so a Strict Mode effect replay
 // cannot accidentally redeem the same HttpOnly cookie twice.
@@ -199,9 +211,33 @@ class HttpDevicesApi implements DevicesApi {
   }
 }
 
+class HttpTelegramApi implements TelegramApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async status(): Promise<TelegramStatus> {
+    const response = await this.http.get(paths.telegramLink, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.linked !== "boolean") throw new ApiError("The API returned an invalid response.", response.status);
+    return { linked: value.linked, botUsername: assertBotUsername(value.bot_username, response.status) };
+  }
+
+  public async createLinkCode(): Promise<TelegramLinkCode> {
+    const response = await this.http.postJson(paths.telegramLinkCode, {}, { acceptedStatuses: [201] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.code !== "string" || !/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{10}$/.test(value.code) || typeof value.expires_at !== "string" || !Number.isFinite(Date.parse(value.expires_at))) {
+      throw new ApiError("The API returned an invalid response.", response.status);
+    }
+    return { code: value.code, expiresAt: value.expires_at, botUsername: assertBotUsername(value.bot_username, response.status) };
+  }
+
+  public async unlink(): Promise<void> {
+    await this.http.delete(paths.telegramLink, { acceptedStatuses: [204] });
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
   const http = new SameOriginHttpClient();
   const auth = new HttpAuthApi(http);
   http.setRefreshHandler(() => auth.refresh());
-  return { auth, devices: new HttpDevicesApi(http) };
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http) };
 }

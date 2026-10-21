@@ -68,3 +68,14 @@ export interface EnrollmentResponse {
   readonly lifecycleStatus: "pending";
   readonly fingerprint: string;
 }
+
+export interface TelegramLinkCode {
+  readonly code: string;
+  readonly expiresAt: string;
+  readonly botUsername: string | null;
+}
+
+export interface TelegramStatus {
+  readonly linked: boolean;
+  readonly botUsername: string | null;
+}

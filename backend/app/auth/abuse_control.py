@@ -104,6 +104,13 @@ HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
         AbuseLimit("global", 10000, 60),
     ),
 )
+TELEGRAM_LINK_POLICY = AbusePolicy(
+    operation="telegram_link",
+    limits=(
+        AbuseLimit("chat", 5, 600),
+        AbuseLimit("global", 200, 600),
+    ),
+)
 ENROLLMENT_PREAUTH_POLICY = AbusePolicy(
     operation="device_enrollment_preauth",
     limits=(
@@ -297,6 +304,9 @@ class AbuseController:
         return self._admit(
             ENROLLMENT_PREAUTH_POLICY, {"network": network, "global": "all"}
         )
+
+    def admit_telegram_link(self, *, chat_id: int) -> bool:
+        return self._admit(TELEGRAM_LINK_POLICY, {"chat": str(chat_id), "global": "all"})
 
     def cleanup_expired(self) -> int:
         """Delete expired rows; callers may run this as bounded operational maintenance."""
