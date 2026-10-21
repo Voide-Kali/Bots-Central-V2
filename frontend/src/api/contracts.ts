@@ -40,6 +40,21 @@ export interface Device {
   readonly lastSeenAt: string | null;
   readonly agentVersion: string | null;
   readonly fingerprint: string | null;
+  readonly telemetry: DeviceTelemetry | null;
+}
+
+/** Latest system metrics accepted with a signed heartbeat (ADR-012). Null fields were not reported. */
+export interface DeviceTelemetry {
+  readonly recordedAt: string;
+  readonly cpuPercent: number | null;
+  readonly load1: number | null;
+  readonly cpuCount: number | null;
+  readonly memoryTotalBytes: number | null;
+  readonly memoryUsedBytes: number | null;
+  readonly diskTotalBytes: number | null;
+  readonly diskUsedBytes: number | null;
+  readonly temperatureC: number | null;
+  readonly uptimeSeconds: number | null;
 }
 
 export interface PairingResponse {

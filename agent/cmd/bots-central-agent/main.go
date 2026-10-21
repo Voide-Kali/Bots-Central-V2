@@ -19,6 +19,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/sequence"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
@@ -109,7 +110,7 @@ func main() {
 		}
 		logger.Info("enrollment state persisted", logging.Field{Key: "device_id", Value: result.DeviceID}, logging.Field{Key: "status", Value: result.LifecycleStatus})
 	}
-	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, app.Dependencies{Collector: hostinfo.SystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger})
+	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, app.Dependencies{Collector: hostinfo.SystemCollector(), Telemetry: telemetry.NewSystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger})
 	if err != nil {
 		logger.Error("agent startup failed", logging.ErrorField(err))
 		os.Exit(2)
