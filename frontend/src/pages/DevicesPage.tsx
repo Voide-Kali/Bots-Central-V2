@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { ApiClient } from "../api";
 import { UnauthenticatedError } from "../api";
@@ -48,7 +48,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const actionLock = useRef(false);
   const mounted = useRef(false);
   const sessionGeneration = useRef(0);
-  useEffect(() => { sessionGeneration.current += 1; }, [session.kind]);
+  // Layout effect: the generation must change in the same commit that shows the new session
+  // state, otherwise a click right after login can capture the stale generation and the
+  // pairing response is silently discarded (previously a flaky test).
+  useLayoutEffect(() => { sessionGeneration.current += 1; }, [session.kind]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   useEffect(() => {
