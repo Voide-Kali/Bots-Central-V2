@@ -30,7 +30,7 @@ describe("LoginPage", () => {
   it("renders the approved trust-focused composition and links to recovery", async () => {
     renderLogin();
     await waitForLoginForm();
-    expect(screen.getByText("Camada de confiança / v2")).toBeVisible();
+    expect(screen.getByText("a IA que só age com o seu aval")).toBeVisible();
     expect(screen.getByText("Espaço pessoal")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Veja o que está seguro e pronto." })).toBeVisible();
     fireEvent.click(screen.getByRole("link", { name: "Esqueci minha senha" }));

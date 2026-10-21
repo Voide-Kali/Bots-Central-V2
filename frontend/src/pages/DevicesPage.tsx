@@ -6,6 +6,7 @@ import type { Device } from "../api/contracts";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { DeviceList } from "../components/DeviceList";
+import { HistoryPanel } from "../components/HistoryPanel";
 import { TelegramCard } from "../components/TelegramCard";
 
 type DeviceState =
@@ -43,6 +44,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [pairing, setPairing] = useState<{ readonly id: string; readonly token: string; readonly expiresAt: string }>();
   const [fingerprintInput, setFingerprintInput] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [view, setView] = useState<"Devices" | "History">("Devices");
 
   const listRequest = useRef<Promise<void> | undefined>(undefined);
   const actionLock = useRef(false);
@@ -153,9 +155,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
 
   return <main className={`device-center ${sidebarOpen ? "device-center--sidebar-open" : ""}`}>
     <header className="device-header"><button aria-controls="device-sidebar" aria-expanded={sidebarOpen} aria-label="Abrir menu" className="sidebar-toggle" onClick={() => setSidebarOpen((open) => !open)} type="button"><span /><span /><span /></button><div className="device-header__context"><span>Espaço / pessoal</span><strong>Dados do servidor</strong><h1>Device Center</h1></div><div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" onClick={() => setProfileOpen((open) => !open)} type="button">{profileName}<span aria-hidden="true">⌄</span></button>{profileOpen ? <div role="menu"><button onClick={() => { setFeedback("As preferências do perfil ficam fora deste MVP."); setProfileOpen(false); }} role="menuitem" type="button">Perfil</button><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div></header>
-    <div className="device-shell"><>{sidebarOpen ? <button aria-label="Fechar menu" className="sidebar-scrim" onClick={() => setSidebarOpen(false)} type="button" /> : null}</><aside className="device-sidebar" id="device-sidebar"><div className="sidebar-brand"><span>bc</span><strong>Bots Central</strong></div><nav aria-label="Navegação do Device Center"><ul>{sidebarItems.map((item) => { const selected = item === "Devices"; return <li key={item}><button aria-current={selected ? "page" : undefined} className={selected ? "sidebar-item sidebar-item--active" : "sidebar-item"} onClick={() => { if (!selected) setFeedback(`${item} estará disponível em uma próxima versão.`); setSidebarOpen(false); }} type="button"><span>{item}</span>{selected ? null : <small>Soon</small>}</button></li>; })}</ul></nav><section aria-label="Cobertura de dispositivos" className="coverage-card"><span>Dispositivos online</span><strong>{deviceState.kind === "ready" ? `${online}/${devices.length}` : "—"}</strong><small>presença informada pelo servidor</small></section></aside>
+    <div className="device-shell"><>{sidebarOpen ? <button aria-label="Fechar menu" className="sidebar-scrim" onClick={() => setSidebarOpen(false)} type="button" /> : null}</><aside className="device-sidebar" id="device-sidebar"><div className="sidebar-brand"><span>av</span><strong>Aval</strong></div><nav aria-label="Navegação do Device Center"><ul>{sidebarItems.map((item) => { const selected = item === view; const available = item === "Devices" || (item === "History" && api.audit !== undefined); return <li key={item}><button aria-current={selected ? "page" : undefined} className={selected ? "sidebar-item sidebar-item--active" : "sidebar-item"} onClick={() => { if (item === "Devices" || (item === "History" && available)) { setView(item); setFeedback(undefined); } else setFeedback(`${item} estará disponível em uma próxima versão.`); setSidebarOpen(false); }} type="button"><span>{item}</span>{available ? null : <small>Soon</small>}</button></li>; })}</ul></nav><section aria-label="Cobertura de dispositivos" className="coverage-card"><span>Dispositivos online</span><strong>{deviceState.kind === "ready" ? `${online}/${devices.length}` : "—"}</strong><small>presença informada pelo servidor</small></section></aside>
       <section aria-labelledby="devices-heading" className="device-content">{feedback ? <p className="context-feedback" role="status">{feedback}</p> : null}
-        {deviceState.kind === "ready" ? <section aria-label="Resumo de dispositivos" className="summary-grid"><SummaryCard detail="dispositivos" label="Total" value={String(devices.length)} /><SummaryCard detail="presença atual informada" label="Online" value={String(online)} /><SummaryCard detail="aguardando fluxo do servidor" label="Pendentes" value={String(pending)} /><SummaryCard detail="momento da consulta" label="Atualizado" value={localTimestamp(deviceState.lastChecked)} /></section> : null}
+        {view === "History" && session.kind === "authenticated" && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : null}
+        {view === "History" && session.kind === "authenticated" ? null : <>{deviceState.kind === "ready" ? <section aria-label="Resumo de dispositivos" className="summary-grid"><SummaryCard detail="dispositivos" label="Total" value={String(devices.length)} /><SummaryCard detail="presença atual informada" label="Online" value={String(online)} /><SummaryCard detail="aguardando fluxo do servidor" label="Pendentes" value={String(pending)} /><SummaryCard detail="momento da consulta" label="Atualizado" value={localTimestamp(deviceState.lastChecked)} /></section> : null}
         {session.kind === "authenticated" ? <section className="pairing-notice" aria-label="Adicionar dispositivo">
           <h2>Adicionar dispositivo</h2>
           {pairing ? <>
@@ -181,6 +184,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           <button disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "approve")} type="button">Aprovar dispositivo</button>
           <button disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "reject")} type="button">Rejeitar dispositivo</button>
         </section> : null}
+        </>}
       </section></div>
   </main>;
 }

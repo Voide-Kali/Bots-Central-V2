@@ -13,13 +13,13 @@ export function AppShell({ currentPath, children }: PropsWithChildren<{ readonly
     <header className="site-header">
       <a className="brand" href="/login" onClick={(event) => interceptNavigation(event, "/login")}>
         <span className="brand-mark" aria-hidden="true">BC</span>
-        <span><strong>Bots Central</strong><small>V2 · acesso e dispositivos</small></span>
+        <span><strong>Aval</strong><small>a IA que só age com o seu aval</small></span>
       </a>
       <nav aria-label="Navegação principal"><ul className="nav-list">{navigation.map((item) => <li key={item.path}>
         <a href={item.path} aria-current={currentPath === item.path ? "page" : undefined} onClick={(event) => interceptNavigation(event, item.path)}>{item.label}</a>
       </li>)}</ul></nav>
     </header>
     <main id="main-content" className="content">{children}</main>
-    <footer className="site-footer">Bots Central V2 · Nenhum comando remoto está disponível nesta versão.</footer>
+    <footer className="site-footer">Aval · Nenhuma ação acontece nos seus computadores sem o seu aval.</footer>
   </div>;
 }
