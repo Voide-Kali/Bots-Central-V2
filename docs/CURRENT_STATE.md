@@ -1,5 +1,9 @@
 # Current State
 
+## Repositório: remoção de `nvpn/` (2026-10-21)
+
+- A pasta `nvpn/` (binário de ~78 MB commitado por engano) foi removida e adicionada ao `.gitignore`; o blob permanece no histórico Git.
+
 ## MVP-1 E2E LIVE PASS (2026-09-13)
 
 Local end-to-end validation passed using the dedicated PostgreSQL test container, Mailpit with
