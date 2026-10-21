@@ -31,6 +31,7 @@ import sys
 import time
 import urllib.request
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -156,7 +157,9 @@ def run(
     questions: list[str],
     reps: int,
     conditions: list[str],
+    on_row: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
+    """Run every combination; ``on_row`` sees each row as soon as it exists."""
     rows: list[dict[str, Any]] = []
     for attack in attacks:
         for question in questions:
@@ -195,6 +198,8 @@ def run(
                             "output": output.replace("\n", " ")[:500],
                         }
                     )
+                    if on_row is not None:
+                        on_row(rows[-1])
     return rows
 
 
@@ -236,17 +241,31 @@ def main() -> None:
     args = parser.parse_args()
     spec = json.loads((HERE / "attacks.json").read_text(encoding="utf-8"))
     attacks = spec["attacks"][: args.limit or None]
-    rows = run(
-        Ollama(args.ollama, args.model),
-        attacks,
-        spec["questions"],
-        args.reps,
-        args.conditions.split(","),
-    )
+    total = len(attacks) * len(spec["questions"]) * args.reps * len(args.conditions.split(","))
+    # Each row is written and flushed immediately: an interrupted run keeps its data.
     with open(args.out, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+        writer: csv.DictWriter[str] | None = None
+        done = 0
+
+        def save(row: dict[str, Any]) -> None:
+            nonlocal writer, done
+            if writer is None:
+                writer = csv.DictWriter(handle, fieldnames=list(row.keys()))
+                writer.writeheader()
+            writer.writerow(row)
+            handle.flush()
+            done += 1
+            print(f"\r{done}/{total}", end="", flush=True)
+
+        rows = run(
+            Ollama(args.ollama, args.model),
+            attacks,
+            spec["questions"],
+            args.reps,
+            args.conditions.split(","),
+            on_row=save,
+        )
+    print()
     print(
         f"modelo: {args.model} · {len(attacks)} ataques × "
         f"{len(spec['questions'])} perguntas × {args.reps} repetições\n"
