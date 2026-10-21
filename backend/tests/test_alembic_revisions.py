@@ -15,6 +15,7 @@ def test_all_alembic_revision_identifiers_fit_version_table() -> None:
         revision.revision is not None and len(revision.revision) <= 32 for revision in revisions
     )
     assert [revision.revision for revision in revisions] == [
+        "0011_password_reset",
         "0010_audit_events",
         "0009_telegram_bot",
         "0008_device_telemetry",
@@ -26,4 +27,4 @@ def test_all_alembic_revision_identifiers_fit_version_table() -> None:
         "0002_auth_database_foundation",
         "0001_foundation",
     ]
-    assert script_directory.get_current_head() == "0010_audit_events"
+    assert script_directory.get_current_head() == "0011_password_reset"

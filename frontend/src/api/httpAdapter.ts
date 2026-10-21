@@ -1,4 +1,4 @@
-import type { ApiClient, AuthApi, DevicesApi, TelegramApi } from "./client";
+import type { ApiClient, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
 import type {
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
@@ -25,7 +25,9 @@ const paths = {
   me: "/api/v1/auth/me",
   devices: "/api/v1/devices",
   telegramLink: "/api/v1/telegram/link",
-  telegramLinkCode: "/api/v1/telegram/link-code"
+  telegramLinkCode: "/api/v1/telegram/link-code",
+  resetRequest: "/api/v1/auth/password-reset/request",
+  resetConfirm: "/api/v1/auth/password-reset/confirm"
 } as const;
 
 const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
@@ -235,9 +237,21 @@ class HttpTelegramApi implements TelegramApi {
   }
 }
 
+class HttpPasswordResetApi implements PasswordResetApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async request(email: string): Promise<void> {
+    await this.http.postJson(paths.resetRequest, { email }, { acceptedStatuses: [202], includeAccessToken: false });
+  }
+
+  public async confirm(input: { readonly email: string; readonly code: string; readonly newPassword: string }): Promise<void> {
+    await this.http.postJson(paths.resetConfirm, { email: input.email, code: input.code, new_password: input.newPassword }, { acceptedStatuses: [200], includeAccessToken: false });
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
   const http = new SameOriginHttpClient();
   const auth = new HttpAuthApi(http);
   http.setRefreshHandler(() => auth.refresh());
-  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http) };
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http) };
 }
