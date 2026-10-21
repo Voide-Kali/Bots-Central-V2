@@ -53,6 +53,12 @@ docker compose ps
 docker compose logs -f backend telegram web   # Ctrl+C para sair
 ```
 
+Baixe o modelo da IA local (uma vez, ~2 GB):
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:3b
+```
+
 Teste do celular (com Tailscale ligado): `https://SEU_SERVIDOR.tailXXXX.ts.net` → painel.
 Saúde: `https://SEU_SERVIDOR.tailXXXX.ts.net/api/v1/health`.
 

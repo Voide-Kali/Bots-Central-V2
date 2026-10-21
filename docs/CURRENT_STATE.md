@@ -1,5 +1,9 @@
 # Current State
 
+## Assistente de IA local v0.1 (2026-10-21, em revisão)
+
+- Texto livre no Telegram (chat vinculado) é respondido por um modelo local via Ollama com um snapshot somente leitura dos dispositivos do próprio usuário; sem ferramentas nem ações (ADR-013). Limite de 20 perguntas/10 min por chat. Validação local: backend com PostgreSQL 16 `397 passed`. Não testado contra um Ollama real.
+
 ## Bot do Telegram v0.1 (2026-10-21, em revisão)
 
 - `python -m app.telegram.bot` (long polling, profile `telegram` no Compose), vínculo por código de uso único gerado no painel (`/api/v1/telegram/link-code`), `/status` com telemetria, `/desvincular`, alertas online/offline. Migration `0009_telegram_bot`. Ver [TELEGRAM.md](TELEGRAM.md). Validação local: backend com PostgreSQL 16 `392 passed`; frontend 61 testes, lint, typecheck, build. O loop do processo (`bot.py`) não tem teste automatizado; precisa de teste manual com token real.
