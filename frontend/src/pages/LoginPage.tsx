@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
+import { Brand } from "../components/Brand";
 
 function read(form: HTMLFormElement, name: string): string {
   return String(new FormData(form).get(name) ?? "");
@@ -31,30 +32,30 @@ export function LoginPage(): ReactElement {
   }
 
   return (
-    <main className="login-screen">
-      <section aria-labelledby="login-title" className="login-card">
-        <header className="login-branding">
-          <div className="login-brand-row">
-            <a aria-label="Aval" className="login-logo" href="/login">av</a>
-            <div><strong>Aval</strong><span>a IA que só age com o seu aval</span></div>
-            <span className="secure-badge">Acesso seguro</span>
+    <div className="auth-frame">
+      <header className="auth-frame__header"><a aria-label="Aval" className="brand-link" href="/login"><Brand withTagline /></a></header>
+      <main className="auth-frame__main">
+        <section aria-labelledby="login-title" className="auth-card">
+          <h1 id="login-title">Entrar</h1>
+          <p className="auth-card__lead">Veja seus computadores e aprove o que a IA pedir para fazer.</p>
+          <form className="form" onSubmit={submit} noValidate>
+            <div className="form-field"><label htmlFor="login-email">E-mail</label><input autoComplete="email" disabled={bootstrapping} id="login-email" inputMode="email" maxLength={320} name="email" required type="email" /></div>
+            <div className="form-field">
+              <div className="form-field__row"><label htmlFor="login-password">Senha</label><button aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword} className="link-button" disabled={bootstrapping} onClick={() => setShowPassword((visible) => !visible)} type="button">{showPassword ? "Ocultar" : "Mostrar"}</button></div>
+              <input autoComplete="current-password" disabled={bootstrapping} id="login-password" maxLength={1024} name="password" required type={showPassword ? "text" : "password"} />
+            </div>
+            {error ? <p className="notice notice--error" role="alert">E-mail ou senha incorretos. Se a conta é nova, confirme o e-mail antes de entrar.</p> : null}
+            {state.kind === "unavailable" ? <p className="notice notice--error" role="status">O servidor não respondeu. Confira se o Tailscale está ligado e tente de novo.</p> : null}
+            <button className="button button--primary" disabled={pending || bootstrapping} type="submit">{bootstrapping ? "Verificando sessão…" : pending ? "Entrando…" : "Entrar"}</button>
+            {state.kind === "unavailable" ? <button className="link-button" onClick={() => void retryBootstrap()} type="button">Tentar de novo</button> : null}
+          </form>
+          <div className="auth-card__links">
+            <a href="/register" onClick={(event) => { event.preventDefault(); navigate("/register"); }}>Criar conta</a>
+            <a href="/recover" onClick={(event) => { event.preventDefault(); navigate("/recover"); }}>Esqueci minha senha</a>
           </div>
-          <p className="space-label">Espaço pessoal</p>
-          <h1 id="login-title"><span>Veja o que está</span><span>seguro e pronto.</span></h1>
-          <p className="login-intro">Um espaço claro para confirmar que seus computadores estão presentes, protegidos e disponíveis quando você precisar.</p>
-        </header>
-
-        <form className="login-form" onSubmit={submit} noValidate>
-          <div className="login-field"><label htmlFor="login-email">E-mail</label><input autoComplete="email" disabled={bootstrapping} id="login-email" inputMode="email" maxLength={320} name="email" required type="email" /></div>
-          <div className="login-field"><div className="login-field__label"><label htmlFor="login-password">Senha</label><button aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword} className="password-toggle" disabled={bootstrapping} onClick={() => setShowPassword((visible) => !visible)} type="button">{showPassword ? "Ocultar" : "Mostrar"}</button></div><input autoComplete="current-password" disabled={bootstrapping} id="login-password" maxLength={1024} name="password" required type={showPassword ? "text" : "password"} /></div>
-          {error ? <p className="login-feedback login-feedback--error" role="alert">Não foi possível entrar. Confira seus dados e tente novamente.</p> : null}
-          {state.kind === "unavailable" ? <p className="login-feedback login-feedback--error" role="status">O servidor está indisponível no momento. Você pode tentar novamente.</p> : null}
-          <button className="login-submit" disabled={pending || bootstrapping} type="submit">{bootstrapping ? "Verificando sessão…" : pending ? "Entrando no Device Center…" : "Entrar no Device Center"}</button>
-          {state.kind === "unavailable" ? <button className="text-button" onClick={() => void retryBootstrap()} type="button">Tentar restaurar sessão</button> : null}
-          <div className="login-links"><a href="/register" onClick={(event) => { event.preventDefault(); navigate("/register"); }}>Criar conta</a><a href="/recover" onClick={(event) => { event.preventDefault(); navigate("/recover"); }}>Esqueci minha senha</a></div>
-        </form>
-        <footer className="login-footer"><span>Sessão protegida</span><span>BC / 02</span></footer>
-      </section>
-    </main>
+        </section>
+      </main>
+      <footer className="auth-frame__footer">Nada acontece nos seus computadores sem o seu aval.</footer>
+    </div>
   );
 }

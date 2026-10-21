@@ -19,6 +19,8 @@ export interface AuthApi {
   refresh(): Promise<void>;
   logout(): Promise<void>;
   me(): Promise<AuthenticatedUser>;
+  /** Optional so older fakes keep compiling; asks the server to send a fresh code. */
+  resendVerification?(email: string): Promise<void>;
 }
 
 export interface DevicesApi {
