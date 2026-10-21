@@ -1,4 +1,7 @@
-# Roadmap — Bots Central V2
+# Roadmap — Aval (antigo Bots Central V2)
+
+> **Nome do projeto: Aval** (decidido em 2026-10-21) — *"uma IA que só age com o seu aval"*.
+> O código e o repositório continuam como `Bots-Central-V2` até uma renomeação planejada.
 
 Versão 2 (2026-10-21). Substitui a ordem genérica de `BUILD_V2.md` como plano de entrega.
 Decisões marcadas como **[ADR]** ainda precisam de um ADR próprio antes da implementação.
@@ -121,4 +124,4 @@ organizações com vários membros.
   declarar o uso de IA conforme as regras de cada evento. Fazer "tour guiado" do código.
 - **IA local em CPU com 16 GB:** usar modelo pequeno; se ficar lento demais, reavaliar.
 - **Repositório público:** tornar privado em breve.
-- **Nome do projeto:** provisório; escolher nome definitivo antes da feira.
+- **Nome:** Aval. Renomear repositório, textos do painel e do bot numa tarefa própria.
