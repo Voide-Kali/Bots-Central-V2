@@ -4,6 +4,10 @@
 
 - A pasta `nvpn/` (binário de ~78 MB commitado por engano) foi removida e adicionada ao `.gitignore`; o blob permanece no histórico Git.
 
+## Dependências: correção do pip-audit (2026-10-21)
+
+- PyJWT 2.15.1 (ambos os locks), urllib3 2.8.0 e certifi 2026.10.19 (`requirements.lock`); local em Python 3.13 sem PostgreSQL: ruff, mypy, `pip check` e pip-audit dos dois locks passaram; pytest `123 passed, 215 skipped`.
+
 ## MVP-1 E2E LIVE PASS (2026-09-13)
 
 Local end-to-end validation passed using the dedicated PostgreSQL test container, Mailpit with
