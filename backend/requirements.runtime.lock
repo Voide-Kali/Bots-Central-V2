@@ -19,7 +19,7 @@ Mako==1.4.1
 MarkupSafe==3.0.3
 psycopg==3.3.5
 psycopg-binary==3.3.5
-PyJWT==2.13.0
+PyJWT==2.15.1
 pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.46.5
