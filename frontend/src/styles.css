@@ -180,3 +180,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 @media (max-width: 639px) {
   .login-screen { padding: 0; }.login-card { min-height: 100vh; padding: 1.25rem; border: 0; }.secure-badge { display: none; }.space-label { margin-top: 4rem; }.login-card h1 { font-size: clamp(2.7rem, 14vw, 4rem); }.login-footer { margin-top: 4rem; }.device-header__context h1 { font-size: 1.35rem; }.profile-menu > button { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.summary-card { min-height: 110px; }.device-toolbar { align-items: flex-start; flex-direction: column; }.device-controls { align-items: stretch; flex-direction: column; }.filter-group { width: 100%; }.filter-button { flex: 1; }.device-list__head { display: none; }.device-row { display: grid; grid-template-columns: 1fr auto; gap: .8rem; }.device-row .technical-value { grid-column: 1; }.device-row > :last-child { grid-column: 2; grid-row: 2; align-self: end; color: var(--text-muted); font-size: .78rem; }.device-details { align-items: stretch; flex-direction: column; }.device-details dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }.details-button { width: 100%; }.nav-list { flex-wrap: wrap; }.site-header { align-items: flex-start; flex-direction: column; }.content { width: min(100% - 1.5rem, 1100px); padding: 2rem 0; }
 }
+
+.telemetry-panel { margin-top: 1rem; }
+.telemetry-panel dl { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); margin: 0; }
+.telemetry-item dd { display: grid; gap: 0.35rem; margin: 0.25rem 0 0; }
+.telemetry-item meter { width: 100%; height: 0.6rem; }
+.telemetry-empty { margin-top: 1rem; opacity: 0.8; }

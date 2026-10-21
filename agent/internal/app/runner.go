@@ -14,6 +14,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/retry"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
@@ -69,7 +70,9 @@ type waitFunc func(context.Context, time.Duration) error
 
 // Dependencies make side effects explicit and enable deterministic tests.
 type Dependencies struct {
-	Collector     HostCollector
+	Collector HostCollector
+	// Telemetry is optional; nil keeps presence-only heartbeats.
+	Telemetry     telemetry.Collector
 	Enrollment    EnrollmentState
 	Transport     transport.HeartbeatTransport
 	Logger        *logging.Logger
@@ -85,6 +88,7 @@ type Dependencies struct {
 type Runner struct {
 	config     Config
 	collector  HostCollector
+	telemetry  telemetry.Collector
 	enrollment EnrollmentState
 	transport  transport.HeartbeatTransport
 	logger     *logging.Logger
@@ -112,7 +116,7 @@ func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if dependencies.Jitter == nil {
 		dependencies.Jitter = defaultJitter
 	}
-	return &Runner{config: config, collector: dependencies.Collector, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
+	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
 }
 
 func validateConfig(config Config) error {
@@ -170,6 +174,10 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 		if err == nil {
 			var model heartbeat.Model
 			model, err = heartbeat.New(deviceID, status, r.config.AgentVersion, r.now(), r.config.CapabilityVersion)
+			if err == nil && r.telemetry != nil && lifecycle == enrollment.StatusActive {
+				sample := r.telemetry.Collect()
+				model.Telemetry = &sample
+			}
 			if err == nil {
 				r.setState(StateConnecting)
 				deliveryContext, cancel := context.WithTimeout(ctx, r.config.TransportTimeout)

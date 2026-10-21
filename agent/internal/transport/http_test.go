@@ -21,6 +21,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 )
 
 const testDeviceID = "123e4567-e89b-12d3-a456-426614174000"
@@ -290,4 +291,43 @@ func verifyBackendClaims(t *testing.T, token string, publicKey ed25519.PublicKey
 		t.Fatalf("Claims() error = %v", err)
 	}
 	return claims
+}
+
+func TestHeartbeatCarriesSignedTelemetryClaim(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	client := newTestHTTP(t, httpTestSigner{key: privateKey}, &testSequence{}, now, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var body map[string]string
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatalf("decode heartbeat body: %v", err)
+		}
+		verifyBackendClaims(t, body["jws"], publicKey)
+		parts := strings.Split(body["jws"], ".")
+		payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+		if err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		var claims struct {
+			Tel map[string]any `json:"tel"`
+		}
+		if err := json.Unmarshal(payload, &claims); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if claims.Tel["v"] != float64(1) || claims.Tel["cpus"] != float64(8) {
+			t.Fatalf("tel claim = %#v", claims.Tel)
+		}
+		return testResponse(http.StatusOK, make(http.Header), `{"accepted":true}`), nil
+	}))
+	model, err := heartbeat.New(testDeviceID, hostinfo.Status{Hostname: "host", Platform: "linux/amd64"}, "test", now, "cap-v1")
+	if err != nil {
+		t.Fatalf("heartbeat.New() error = %v", err)
+	}
+	cpus := 8
+	model.Telemetry = &telemetry.Sample{V: telemetry.Version, CPUs: &cpus}
+	if err := client.SendHeartbeat(context.Background(), model); err != nil {
+		t.Fatalf("SendHeartbeat() error = %v", err)
+	}
 }

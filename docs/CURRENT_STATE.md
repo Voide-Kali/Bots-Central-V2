@@ -1,5 +1,9 @@
 # Current State
 
+## Telemetria v0.1 (2026-10-21, em revisão)
+
+- Claim opcional `tel` no heartbeat assinado (ADR-012), migration `0008_device_telemetry`, retenção de 7 dias, `telemetry` em `GET /api/v1/devices` e histórico em `GET /api/v1/devices/{id}/telemetry`. Agente coleta CPU/carga/memória/disco/temperatura/uptime no Linux e no macOS (sem temperatura no macOS). Painel mostra a última amostra. Validação local: backend com PostgreSQL 16 `378 passed`; agente `go test -race`, `go vet` (linux e darwin); frontend 58 testes, lint, typecheck e build.
+
 ## MVP-1 hardening pending review (2026-09-17)
 
 - The dedicated `review/mvp1-hardening` worktree adds PostgreSQL-backed pre-auth
