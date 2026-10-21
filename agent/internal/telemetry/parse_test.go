@@ -62,7 +62,13 @@ func TestParseVMStat(t *testing.T) {
 	}, "\n")
 	used, err := parseVMStat(out)
 	if err != nil || used != 150000*16384 {
-		t.Fatalf("used=%d err=%v", used, err)
+		t.Fatalf("fallback (no anonymous line): used=%d err=%v", used, err)
+	}
+	modern := out + "\nAnonymous pages:                         120000.\nPages purgeable:                          5000."
+	used, err = parseVMStat(modern)
+	// Activity Monitor formula: (anonymous - purgeable) + wired + compressed
+	if err != nil || used != (120000-5000+20000+30000)*16384 {
+		t.Fatalf("modern: used=%d err=%v", used, err)
 	}
 	if _, err := parseVMStat("Pages active: 1."); err == nil {
 		t.Fatal("missing page size must fail")
