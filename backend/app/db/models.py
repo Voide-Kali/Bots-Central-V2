@@ -720,3 +720,32 @@ class ActionPin(Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DeviceEvent(Base):
+    """Something the computer reported by itself, e.g. a wrong password (ADR-019).
+
+    The photo is kept only until the bot delivers it (or for 24 h at most).
+    """
+
+    __tablename__ = "device_events"
+    __table_args__ = (
+        CheckConstraint("kind IN ('failed_login')", name="ck_device_events_kind"),
+        CheckConstraint(
+            "photo IS NULL OR octet_length(photo) <= 5242880", name="ck_device_events_photo_size"
+        ),
+        Index("ix_device_events_pending", "delivered_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

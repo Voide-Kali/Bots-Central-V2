@@ -282,7 +282,7 @@ function parseAuditEvent(value: unknown, status: number): AuditEvent {
   }
   const details = value.details;
   const pick = (key: string): string | null => isRecord(details) && typeof details[key] === "string" ? (details[key] as string).slice(0, 120) : null;
-  return { occurredAt: value.occurred_at, actor: value.actor, action: value.action, outcome: value.outcome, name: pick("name"), kind: pick("action"), file: pick("file"), byPin: isRecord(details) && details.by === "pin" };
+  return { occurredAt: value.occurred_at, actor: value.actor, action: value.action, outcome: value.outcome, name: pick("name"), kind: pick("action"), file: pick("file"), byPin: isRecord(details) && details.by === "pin", source: pick("source") };
 }
 
 class HttpAuditApi implements AuditApi {

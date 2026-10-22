@@ -20,7 +20,7 @@ from app.auth.email_verification_delivery import SmtpEmailVerificationDeliveryAd
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import get_engine
-from app.devices import commands
+from app.devices import commands, events
 from app.telegram.alerts import collect_presence_alerts
 from app.telegram.client import TelegramClient, TelegramUnavailable
 from app.telegram.commands import ActionDeps, Reply, handle_update
@@ -73,6 +73,20 @@ def _deliver_files(client: TelegramClient, factory: sessionmaker[Session]) -> No
             logger.warning("telegram document send failed")
             continue
         commands.mark_delivered(factory, command_id=item.command_id)
+
+
+def _deliver_events(client: TelegramClient, factory: sessionmaker[Session]) -> None:
+    """ADR-019: wrong-password warnings, with the photo when the computer took one."""
+    for item in events.pending_events(factory):
+        try:
+            if item.photo:
+                client.send_photo(item.chat_id, item.photo, item.caption)
+            else:
+                client.send_message(item.chat_id, item.caption)
+        except TelegramUnavailable:
+            logger.warning("telegram event send failed")
+            continue
+        events.mark_delivered(factory, event_id=item.event_id)
 
 
 def _chat_of(update: dict[str, Any]) -> int | None:
@@ -166,6 +180,10 @@ def run() -> None:
                 _deliver_files(client, factory)
             except Exception:
                 logger.exception("file delivery pass failed")
+            try:
+                _deliver_events(client, factory)
+            except Exception:
+                logger.exception("event delivery pass failed")
             next_alert = time.monotonic() + ALERT_INTERVAL_SECONDS
         if time.monotonic() >= next_cleanup:
             # Expired rate-limit rows are never read again; drop them once an hour.

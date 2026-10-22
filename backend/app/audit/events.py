@@ -12,6 +12,7 @@ from typing import Any, Literal
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.core.timezone import local
 from app.db.models import AuditEvent
 
 Actor = Literal["user", "device", "telegram", "system"]
@@ -101,6 +102,7 @@ LABELS = {
     "pin.locked": "PIN travado por 15 minutos",
     "admin.role_changed": "Papel da conta alterado",
     "admin.user_activated": "Conta ativada pelo administrador",
+    "sensor.failed_login": "Senha errada no computador",
 }
 ACTION_NAMES = {
     "send_file": "enviar arquivo",
@@ -110,12 +112,14 @@ ACTION_NAMES = {
 
 
 def label(event: AuditEvent) -> str:
-    when: datetime = event.occurred_at
+    when: datetime = local(event.occurred_at)
     name = LABELS.get(event.action, event.action)
     details = event.details if isinstance(event.details, dict) else {}
     parts = [ACTION_NAMES.get(str(details.get("action")), "")]
     if isinstance(details.get("file"), str) and details["file"]:
         parts.append(str(details["file"]))
+    if isinstance(details.get("source"), str):
+        parts.append(str(details["source"]))
     if isinstance(details.get("name"), str):
         parts.append(str(details["name"]))
     if details.get("by") == "pin":

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -60,6 +63,10 @@ type HTTPConfig struct {
 
 // HTTPClient implements the final Device Online V0.1 wire protocol.
 type HTTPClient struct {
+	// signed serialises every sequence-signed request from allocation to response, so
+	// two requests can never reach the server out of order (a late lower sequence is
+	// "stale" and would mark the device state as lost). ADR-019 adds a second goroutine.
+	signed         sync.Mutex
 	backendBaseURL *url.URL
 	signer         jose.OpaqueSigner
 	sequence       SequenceAllocator
@@ -189,6 +196,8 @@ func (c *HTTPClient) Enroll(ctx context.Context, pairingToken string, metadata E
 // SendHeartbeat allocates and durably commits a sequence before signing or
 // sending it. Server time, not agent metadata, is the presence authority.
 func (c *HTTPClient) SendHeartbeat(ctx context.Context, model heartbeat.Model) error {
+	c.signed.Lock()
+	defer c.signed.Unlock()
 	if !isCanonicalUUID(model.DeviceID) {
 		return errors.New("transport: invalid device ID")
 	}
@@ -429,6 +438,8 @@ const (
 // PollCommand asks for one approved command. The request is signed and
 // consumes a sequence number like a heartbeat, so it cannot be replayed.
 func (c *HTTPClient) PollCommand(ctx context.Context, deviceID string) (*commands.Command, error) {
+	c.signed.Lock()
+	defer c.signed.Unlock()
 	if !isCanonicalUUID(deviceID) {
 		return nil, errors.New("transport: invalid device ID")
 	}
@@ -462,6 +473,8 @@ func (c *HTTPClient) PollCommand(ctx context.Context, deviceID string) (*command
 // SubmitResult reports a command outcome. File bytes travel next to the JWS;
 // their size and SHA-256 are inside the signed claims.
 func (c *HTTPClient) SubmitResult(ctx context.Context, deviceID string, command commands.Command, result commands.Result) error {
+	c.signed.Lock()
+	defer c.signed.Unlock()
 	if !isCanonicalUUID(deviceID) || !isCanonicalUUID(command.ID) {
 		return errors.New("transport: invalid IDs")
 	}
@@ -502,6 +515,8 @@ const LiveAudience = "bots-central:live:v1"
 // SendLive delivers one signed telemetry sample and returns whether the owner is
 // still watching. It shares the heartbeat sequence, so it cannot be replayed.
 func (c *HTTPClient) SendLive(ctx context.Context, deviceID string, sample telemetry.Sample) (bool, error) {
+	c.signed.Lock()
+	defer c.signed.Unlock()
 	if !isCanonicalUUID(deviceID) {
 		return false, errors.New("transport: invalid device ID")
 	}
@@ -524,6 +539,41 @@ func (c *HTTPClient) SendLive(ctx context.Context, deviceID string, sample telem
 		return false, errors.New("transport: invalid live response")
 	}
 	return result.Live, nil
+}
+
+// EventAudience marks events the computer reports by itself (ADR-019).
+const EventAudience = "bots-central:event:v1"
+
+// SendEvent reports a wrong password; the photo (optional) travels next to the JWS and
+// its size and SHA-256 are signed.
+func (c *HTTPClient) SendEvent(ctx context.Context, deviceID, kind, source string, photo []byte) error {
+	c.signed.Lock()
+	defer c.signed.Unlock()
+	if !isCanonicalUUID(deviceID) {
+		return errors.New("transport: invalid device ID")
+	}
+	claims := map[string]any{"aud": EventAudience, "sub": deviceID, "kind": kind, "source": source}
+	body := map[string]any{}
+	if len(photo) > 0 {
+		sum := sha256.Sum256(photo)
+		claims["size"] = len(photo)
+		claims["sha256"] = hex.EncodeToString(sum[:])
+		body["photo_b64"] = base64.StdEncoding.EncodeToString(photo)
+	}
+	token, err := c.signNext(claims)
+	if err != nil {
+		return err
+	}
+	body["jws"] = token
+	response, err := c.postJSON(ctx, "/api/v1/devices/"+deviceID+"/events", body)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return responseError(response, c.now())
+	}
+	return nil
 }
 
 func (c *HTTPClient) signNext(claims map[string]any) (string, error) {
