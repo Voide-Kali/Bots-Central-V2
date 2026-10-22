@@ -51,7 +51,13 @@ export function AdminPanel({ api, onUnauthenticated }: { readonly api: AdminApi;
     finally { if (mounted.current) setBusy(undefined); }
   }
 
-  if (state.kind === "loading") return <section className="panel panel--state"><p>Carregando administração…</p></section>;
+  if (state.kind === "loading") return <div className="admin">
+    <section aria-labelledby="admin-title" className="title-row">
+      <div><h1 id="admin-title">Administração</h1><p className="title-row__sub">Visível só para administradores. Não mostra arquivos, fotos, PINs nem senhas.</p></div>
+      <div className="title-row__actions"><button className="button" disabled type="button">Atualizar</button></div>
+    </section>
+    <section aria-label="Carregando administração" className="panel"><div aria-hidden="true" className="skeleton-rows">{[0, 1, 2, 3].map((row) => <span className="skeleton skeleton--row" key={row} />)}</div></section>
+  </div>;
   if (state.kind === "unavailable") return <section className="panel panel--state panel--warning"><h2>Administração indisponível</h2><p>O servidor não respondeu.</p><button className="button" onClick={() => void load()} type="button">Tentar novamente</button></section>;
   const { overview, users, failures, events } = state.data;
   const failedRecently = (overview.commands24h.failed ?? 0) + (overview.commands24h.denied ?? 0);
@@ -96,7 +102,7 @@ export function AdminPanel({ api, onUnauthenticated }: { readonly api: AdminApi;
     </section>
 
     <section aria-labelledby="admin-events" className="panel">
-      <div className="panel__head"><h2 id="admin-events">Histórico de todos</h2></div>
+      <div className="panel__head"><h2 id="admin-events">Histórico de todos</h2><p className="panel__meta">{events.length === 1 ? "1 evento" : `${events.length} eventos`}</p></div>
       <ol className="history-list">{events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
         <time className="num" dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
         <strong>{ACTION_LABELS[event.action] ?? event.action}</strong>
