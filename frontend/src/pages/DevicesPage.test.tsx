@@ -48,34 +48,42 @@ describe("DevicesPage", () => {
     expect(panel).toHaveTextContent("51,5 °C");
     expect(panel).toHaveTextContent("1 d 1 h");
     fireEvent.click(screen.getByRole("button", { name: /Servidor doméstico/ }));
-    expect(await screen.findByText(/Sem telemetria ainda/)).toBeVisible();
+    expect(await screen.findByText(/Sem medições ainda/)).toBeVisible();
   });
 
-  it("keeps the sidebar in the approved order and Soon items do not navigate", async () => {
+  it("opens the History view when the audit API is available and returns to devices", async () => {
+    const api: ApiClient = { ...fakeClient(), audit: { list: vi.fn(async () => [{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "auth.login", outcome: "success", name: null }]) } };
+    renderDevices(api);
+    await waitForDevices();
+    fireEvent.click(screen.getByRole("button", { name: "Histórico" }));
+    expect(await screen.findByText("Login no painel")).toBeVisible();
+    expect(screen.queryByRole("button", { name: /PC000/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Computadores" }));
+    await waitForDevices();
+  });
+
+  it("shows only real sections in the top navigation", async () => {
     renderDevices();
     await waitForDevices();
-    const items = within(screen.getByRole("navigation", { name: "Navegação do Device Center" })).getAllByRole("button");
-    expect(items.map((item) => item.textContent?.replace("Soon", "").trim())).toEqual(["Devices", "Automations", "Notifications", "History", "Security", "Settings"]);
-    expect(items[0]).toHaveAttribute("aria-current", "page");
-    fireEvent.click(screen.getByRole("button", { name: /Automations/ }));
-    expect(screen.getByText("Automations estará disponível em uma próxima versão.")).toBeVisible();
-    expect(window.location.pathname).not.toBe("/automations");
+    const tabs = within(screen.getByRole("navigation", { name: "Seções" })).getAllByRole("button");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Computadores"]);
+    expect(tabs[0]).toHaveAttribute("aria-current", "page");
   });
 
   it("derives summary and presence from server fields without a runtime mock", async () => {
     renderDevices();
     await waitForDevices();
-    expect(screen.getByText("2/3")).toBeVisible();
-    expect(screen.getByText("Pendentes")).toBeVisible();
-    expect(screen.getAllByText("1")).not.toHaveLength(0);
-    expect(screen.getByText("Dados do servidor")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Adicionar dispositivo" })).toBeVisible();
+    const summary = screen.getByLabelText("Resumo");
+    expect(summary).toHaveTextContent("2 de 3 online");
+    expect(summary).toHaveTextContent("1 aguardando seu aval");
+    expect(screen.getByText(/Laptop de viagem está aguardando seu aval/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Adicionar computador" })).toBeVisible();
   });
 
   it("searches by server device ID, name, and platform", async () => {
     renderDevices();
     await waitForDevices();
-    const search = screen.getByRole("searchbox", { name: "Buscar dispositivos" });
+    const search = screen.getByRole("searchbox", { name: "Buscar computadores" });
     fireEvent.change(search, { target: { value: "MBP-07" } });
     expect(screen.getByRole("button", { name: /Laptop de viagem/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /PC000/ })).not.toBeInTheDocument();
@@ -100,25 +108,25 @@ describe("DevicesPage", () => {
     fireEvent.keyDown(row, { key: "Enter" });
     expect(row).toHaveAttribute("aria-expanded", "true");
     const details = screen.getByLabelText("Detalhes de Laptop de viagem");
-    expect(within(details).getByText("Aguardando aprovação")).toBeVisible();
-    expect(within(details).getByText("Ainda não recebido pelo servidor")).toBeVisible();
-    expect(within(details).getByText("Não informado pelo servidor")).toBeVisible();
+    expect(within(details).getByText("Aguardando seu aval")).toBeVisible();
+    expect(within(details).getByText("Ainda não se conectou")).toBeVisible();
+    expect(within(details).getByText("Não informada")).toBeVisible();
   });
 
   it("renders backend unavailable state and retries successfully", async () => {
     const list = vi.fn().mockRejectedValueOnce(new ApiUnavailableError()).mockResolvedValue(serverDevices);
     renderDevices(fakeClient(list));
-    await screen.findByRole("heading", { name: "Não foi possível atualizar seus dispositivos." });
+    await screen.findByRole("heading", { name: "Não foi possível atualizar seus computadores." });
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitForDevices();
-    await waitFor(() => expect(screen.getByText("Lista de dispositivos atualizada com dados do servidor.")).toBeVisible());
+    await waitFor(() => expect(screen.getByText("Lista atualizada.")).toBeVisible());
   });
 
   it("preserves loading structure without enabled controls", async () => {
     renderDevices(fakeClient((): Promise<never> => new Promise(() => undefined)));
     await waitFor(() => expect(screen.getByRole("button", { name: "Atualizar" })).toBeDisabled());
-    expect(screen.getByLabelText("Carregando resumo")).toBeVisible();
-    expect(screen.getByLabelText("Buscar dispositivos")).toBeDisabled();
+    expect(screen.getByLabelText("Carregando")).toBeVisible();
+    expect(screen.getByLabelText("Buscar computadores")).toBeDisabled();
   });
 });
 
@@ -130,7 +138,7 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
 
 async function selectPending(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: /Laptop de viagem/ }));
-  fireEvent.change(screen.getByLabelText("Fingerprint exibido pelo Agent"), { target: { value: serverDevices[1]!.fingerprint } });
+  fireEvent.change(screen.getByLabelText("Código mostrado no computador"), { target: { value: serverDevices[1]!.fingerprint } });
 }
 
 describe("Device Online pairing and decisions", () => {
@@ -143,7 +151,7 @@ describe("Device Online pairing and decisions", () => {
     const location = window.location.href;
     const api = renderDevices();
     await waitForDevices();
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
     expect(await screen.findByText("test-only-pairing")).toBeVisible();
     expect(api.devices.createPairing).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/Expira em/).querySelector("time")).toHaveAttribute("dateTime");
@@ -151,9 +159,9 @@ describe("Device Online pairing and decisions", () => {
     await waitFor(() => expect(copy).toHaveBeenCalledWith("test-only-pairing"));
     expect(persist).not.toHaveBeenCalled();
     expect(window.location.href).toBe(location);
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar código" })); });
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
     await screen.findByText("test-only-pairing");
     cleanup();
     renderDevices(api);
@@ -164,11 +172,11 @@ describe("Device Online pairing and decisions", () => {
   it("keeps pairing visible when server-side cancellation fails", async () => {
     const api = renderDevices();
     await waitForDevices();
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
     await screen.findByText("test-only-pairing");
     api.devices.revokePairing = vi.fn(async () => { throw new Error("network"); });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
-    expect(await screen.findByText("Não foi possível cancelar o pairing no servidor.")).toBeVisible();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar código" })); });
+    expect(await screen.findByText("Não foi possível cancelar o código no servidor.")).toBeVisible();
     expect(screen.getByText("test-only-pairing")).toBeVisible();
   });
 
@@ -182,7 +190,7 @@ describe("Device Online pairing and decisions", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     renderDevices(createHttpApiClient());
-    fireEvent.click(await screen.findByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Adicionar computador" }));
     expect(await screen.findByText("http-pairing-token")).toBeVisible();
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/devices/pairings", expect.objectContaining({ method: "POST", body: "{}" }));
   });
@@ -192,7 +200,7 @@ describe("Device Online pairing and decisions", () => {
     const pending = deferred<{ pairingId: string; pairingToken: string; expiresAt: string }>();
     api.devices.createPairing = vi.fn(() => pending.promise);
     renderDevices(api); await waitForDevices();
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
     fireEvent.click(screen.getByRole("button", { name: /operator@example.test/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Sair" }));
     await screen.findByText("Acesso necessário");
@@ -208,7 +216,7 @@ describe("Device Online pairing and decisions", () => {
     api.devices.createPairing = vi.fn(() => pending.promise);
     renderDevices(api);
     await waitForDevices();
-    const button = screen.getByRole("button", { name: "Adicionar dispositivo" });
+    const button = screen.getByRole("button", { name: "Adicionar computador" });
     fireEvent.click(button); fireEvent.click(button);
     expect(button).toBeDisabled();
     expect(api.devices.createPairing).toHaveBeenCalledTimes(1);
@@ -219,10 +227,10 @@ describe("Device Online pairing and decisions", () => {
     renderDevices(); await waitForDevices();
     fireEvent.click(screen.getByRole("button", { name: /Laptop de viagem/ }));
     expect(screen.getByText(serverDevices[1]!.fingerprint!)).toHaveTextContent(/^SHA256:AbC\+\/exact-fingerprint=$/);
-    expect(screen.getByText(/corresponder exatamente ao exibido pelo Agent/)).toBeVisible();
-    const approve = screen.getByRole("button", { name: "Aprovar dispositivo" });
+    expect(screen.getByText(/Ele tem que ser exatamente este/)).toBeVisible();
+    const approve = screen.getByRole("button", { name: "Aprovar computador" });
     expect(approve).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Fingerprint exibido pelo Agent"), { target: { value: "SHA256:wrong" } });
+    fireEvent.change(screen.getByLabelText("Código mostrado no computador"), { target: { value: "SHA256:wrong" } });
     expect(approve).toBeDisabled();
   });
 
@@ -230,10 +238,10 @@ describe("Device Online pairing and decisions", () => {
     const api = renderDevices(fakeClient(async () => serverDevices.map((device) => ({ ...device, fingerprint: null }))));
     await waitForDevices();
     fireEvent.click(screen.getByRole("button", { name: /Laptop de viagem/ }));
-    expect(screen.getByRole("alert")).toHaveTextContent("O servidor não retornou o fingerprint");
-    fireEvent.click(screen.getByRole("button", { name: "Aprovar dispositivo" }));
-    expect(screen.getByRole("button", { name: "Aprovar dispositivo" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Rejeitar dispositivo" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("O servidor não mandou o código de identificação");
+    fireEvent.click(screen.getByRole("button", { name: "Aprovar computador" }));
+    expect(screen.getByRole("button", { name: "Aprovar computador" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Recusar" })).toBeDisabled();
     expect(api.devices.approve).not.toHaveBeenCalled();
   });
 
@@ -245,10 +253,10 @@ describe("Device Online pairing and decisions", () => {
     const api = fakeClient(list);
     api.devices[decision] = vi.fn(() => action.promise);
     renderDevices(api); await waitForDevices();
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
     await screen.findByText("test-only-pairing");
     await selectPending();
-    const button = screen.getByRole("button", { name: decision === "approve" ? "Aprovar dispositivo" : "Rejeitar dispositivo" });
+    const button = screen.getByRole("button", { name: decision === "approve" ? "Aprovar computador" : "Recusar" });
     fireEvent.click(button); fireEvent.click(button);
     expect(api.devices[decision]).toHaveBeenCalledExactlyOnceWith("MBP-07", "SHA256:AbC+/exact-fingerprint=");
     expect(button).toBeDisabled();
@@ -257,18 +265,18 @@ describe("Device Online pairing and decisions", () => {
     expect(list).toHaveBeenCalledTimes(2);
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
     const row = screen.getByRole("button", { name: /Laptop de viagem/ });
-    expect(within(row).getByText("Aguardando aprovação")).toBeVisible();
+    expect(within(row).getByText("Aguardando seu aval")).toBeVisible();
     expect(within(row).getByRole("img", { name: "Indicador offline" })).toBeVisible();
-    expect(within(row).queryByText("Ativo")).not.toBeInTheDocument();
-    expect(within(row).queryByText("Revogado")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Aprovado")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Desativado")).not.toBeInTheDocument();
     await act(async () => refresh.resolve(serverDevices.map((device) => device.id === "MBP-07" ? { ...device, lifecycleStatus: decision === "approve" ? "active" : "revoked", status: "offline" } : device)));
-    expect(within(screen.getByRole("button", { name: /Laptop de viagem/ })).getByText(decision === "approve" ? "Ativo" : "Revogado")).toBeVisible();
+    expect(within(screen.getByRole("button", { name: /Laptop de viagem/ })).getByText(decision === "approve" ? "Aprovado" : "Desativado")).toBeVisible();
   });
 
   it("does not reject without explicit confirmation", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const api = renderDevices(); await waitForDevices(); await selectPending();
-    fireEvent.click(screen.getByRole("button", { name: "Rejeitar dispositivo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Recusar" }));
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(api.devices.reject).not.toHaveBeenCalled();
   });
@@ -277,15 +285,15 @@ describe("Device Online pairing and decisions", () => {
     const list = vi.fn().mockResolvedValue(serverDevices);
     renderDevices(fakeClient(list)); await waitForDevices();
     vi.useFakeTimers();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(list).toHaveBeenCalledTimes(2);
-    if (ending === "cancel") await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar pairing" })); });
+    if (ending === "cancel") await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar código" })); });
     if (ending === "unmount") cleanup();
     if (ending === "expiry") await act(async () => { await vi.advanceTimersByTimeAsync(55_000); });
     if (ending === "completion") {
       await selectPending();
-      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Aprovar dispositivo" })); });
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Aprovar computador" })); });
     }
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
     const count = list.mock.calls.length;
@@ -298,11 +306,11 @@ describe("Device Online pairing and decisions", () => {
     const list = vi.fn().mockResolvedValueOnce(serverDevices).mockReturnValueOnce(slow.promise).mockResolvedValue(serverDevices);
     renderDevices(fakeClient(list)); await waitForDevices();
     vi.useFakeTimers();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar dispositivo" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
     expect(list).toHaveBeenCalledTimes(2);
     await selectPending();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Aprovar dispositivo" })); });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Aprovar computador" })); });
     expect(list).toHaveBeenCalledTimes(2);
     await act(async () => slow.resolve(serverDevices));
     expect(list).toHaveBeenCalledTimes(3);
@@ -315,9 +323,9 @@ describe("Device Online pairing and decisions", () => {
     accessTokenStore.replace("session-token");
     renderDevices(api); await waitForDevices();
     if (method !== "createPairing") await selectPending();
-    const name = method === "createPairing" ? "Adicionar dispositivo" : method === "approve" ? "Aprovar dispositivo" : "Rejeitar dispositivo";
+    const name = method === "createPairing" ? "Adicionar computador" : method === "approve" ? "Aprovar computador" : "Recusar";
     fireEvent.click(screen.getByRole("button", { name }));
-    await screen.findByText(method === "createPairing" ? "Não foi possível iniciar o pairing." : "O servidor não aceitou a decisão.");
+    await screen.findByText(method === "createPairing" ? "Não foi possível gerar o código. Tente de novo." : "O servidor não aceitou a decisão. Atualize a lista e tente de novo.");
     expect(accessTokenStore.read()).toBe("session-token");
     expect(screen.queryByText("Acesso necessário")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name }));

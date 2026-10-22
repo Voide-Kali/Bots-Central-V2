@@ -84,6 +84,17 @@ LABELS = {
     "device.rejected": "Dispositivo rejeitado",
     "telegram.linked": "Telegram vinculado",
     "telegram.unlinked": "Telegram desvinculado",
+    "auth.password_reset_requested": "Código de recuperação de senha pedido",
+    "auth.password_reset_completed": "Senha redefinida",
+    "auth.password_reset_failed": "Tentativa de redefinir senha falhou",
+    "action.requested": "Ação pedida (aguardando aval)",
+    "action.approved": "Ação aprovada com código",
+    "action.approval_failed": "Código de aprovação incorreto",
+    "action.cancelled": "Ação cancelada",
+    "action.dispatched": "Ação entregue ao agente",
+    "action.failed": "Ação falhou no agente",
+    "action.completed": "Ação concluída pelo agente",
+    "action.delivered": "Arquivo entregue no Telegram",
 }
 
 
