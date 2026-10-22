@@ -269,8 +269,8 @@ function parseAuditEvent(value: unknown, status: number): AuditEvent {
     throw new ApiError("The API returned an invalid response.", status);
   }
   const details = value.details;
-  const name = isRecord(details) && typeof details.name === "string" ? details.name.slice(0, 120) : null;
-  return { occurredAt: value.occurred_at, actor: value.actor, action: value.action, outcome: value.outcome, name };
+  const pick = (key: string): string | null => isRecord(details) && typeof details[key] === "string" ? (details[key] as string).slice(0, 120) : null;
+  return { occurredAt: value.occurred_at, actor: value.actor, action: value.action, outcome: value.outcome, name: pick("name"), kind: pick("action"), file: pick("file"), byPin: isRecord(details) && details.by === "pin" };
 }
 
 class HttpAuditApi implements AuditApi {
