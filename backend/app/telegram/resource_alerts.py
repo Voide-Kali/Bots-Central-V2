@@ -1,8 +1,9 @@
 """Smart resource alerts (idea from the old Kali Bunker, read-only).
 
-A metric must stay above its limit in the last ``SUSTAINED_SAMPLES`` heartbeats
-(about 90 s) before the owner is warned, and each (device, metric) pair is then
-quiet for ``COOLDOWN``. Cooldowns live in the bot process: a restart can repeat
+A metric must stay above its limit in every sample of the last ``WINDOW`` (at least
+``SUSTAINED_SAMPLES`` samples spanning ``MIN_SPAN``) before the owner is warned, so the
+1-second live samples of ADR-018 do not alert on a short peak, and each (device,
+metric) pair is then quiet for ``COOLDOWN``. Cooldowns live in the bot process: a restart can repeat
 one warning, never hide one.
 """
 
@@ -23,7 +24,9 @@ from app.telegram.commands import Reply
 SessionFactory = Callable[[], Session]
 
 SUSTAINED_SAMPLES = 3
-WINDOW = timedelta(minutes=3)
+WINDOW = timedelta(seconds=80)
+MIN_SPAN = timedelta(seconds=50)
+MAX_SAMPLES = 200
 COOLDOWN_SECONDS = 30 * 60
 CPU_LIMIT = 90.0
 RAM_LIMIT = 95.0
@@ -75,9 +78,11 @@ class ResourceAlerter:
                         DeviceTelemetrySample.recorded_at >= now - WINDOW,
                     )
                     .order_by(DeviceTelemetrySample.recorded_at.desc())
-                    .limit(SUSTAINED_SAMPLES)
+                    .limit(MAX_SAMPLES)
                 ).all()
                 if len(samples) < SUSTAINED_SAMPLES:
+                    continue
+                if samples[0].recorded_at - samples[-1].recorded_at < MIN_SPAN:
                     continue
                 values = [_metrics(sample) for sample in samples]
                 for metric, limit in LIMITS.items():

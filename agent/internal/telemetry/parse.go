@@ -178,8 +178,8 @@ func decodeUint64(raw string) (uint64, bool) {
 	return v, v > 0
 }
 
-// parseTopCPU reads the CPU busy share from macOS `top -l 2 -n 0 -s 1` output.
-// The first sample is an average since boot, so the LAST "CPU usage" line wins:
+// parseTopCPU reads the CPU busy share from macOS `top` output (one line or many).
+// top's first sample is an average since boot, so the LAST "CPU usage" line wins:
 //
 //	CPU usage: 7.12% user, 10.40% sys, 82.47% idle
 func parseTopCPU(content string) (float64, bool) {

@@ -224,6 +224,18 @@ class HttpDevicesApi implements DevicesApi {
   public async reject(id: string, fingerprint: string): Promise<void> {
     await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/reject`, { fingerprint });
   }
+
+  public async history(id: string, minutes: number): Promise<readonly DeviceTelemetry[]> {
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new RangeError("minutes out of range");
+    const response = await this.http.get(`${paths.devices}/${encodeURIComponent(id)}/telemetry?minutes=${minutes}`, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || !Array.isArray(value.samples)) throw new ApiError("The API returned an invalid response.", response.status);
+    return value.samples.map((item) => assertTelemetry(item, response.status)).filter((item): item is DeviceTelemetry => item !== null);
+  }
+
+  public async watch(id: string): Promise<void> {
+    await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/watch`, {}, { acceptedStatuses: [204] });
+  }
 }
 
 class HttpTelegramApi implements TelegramApi {
