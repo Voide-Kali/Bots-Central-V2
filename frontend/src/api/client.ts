@@ -1,4 +1,5 @@
 import type {
+  AuditEvent,
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
@@ -18,6 +19,8 @@ export interface AuthApi {
   refresh(): Promise<void>;
   logout(): Promise<void>;
   me(): Promise<AuthenticatedUser>;
+  /** Optional so older fakes keep compiling; asks the server to send a fresh code. */
+  resendVerification?(email: string): Promise<void>;
 }
 
 export interface DevicesApi {
@@ -34,6 +37,10 @@ export interface TelegramApi {
   unlink(): Promise<void>;
 }
 
+export interface AuditApi {
+  list(limit?: number): Promise<readonly AuditEvent[]>;
+}
+
 export interface PasswordResetApi {
   request(email: string): Promise<void>;
   confirm(input: { readonly email: string; readonly code: string; readonly newPassword: string }): Promise<void>;
@@ -45,4 +52,5 @@ export interface ApiClient {
   /** Optional so test fakes and older builds keep working without the Telegram card. */
   readonly telegram?: TelegramApi;
   readonly passwordReset?: PasswordResetApi;
+  readonly audit?: AuditApi;
 }

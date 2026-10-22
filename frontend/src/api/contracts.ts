@@ -79,3 +79,11 @@ export interface TelegramStatus {
   readonly linked: boolean;
   readonly botUsername: string | null;
 }
+
+export interface AuditEvent {
+  readonly occurredAt: string;
+  readonly actor: string;
+  readonly action: string;
+  readonly outcome: string;
+  readonly name: string | null;
+}

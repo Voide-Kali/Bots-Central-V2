@@ -23,16 +23,15 @@ function renderLogin(api: ApiClient = fakeClient()): void {
 }
 
 async function waitForLoginForm(): Promise<void> {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Entrar no Device Center" })).not.toBeDisabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Entrar" })).not.toBeDisabled());
 }
 
 describe("LoginPage", () => {
   it("renders the approved trust-focused composition and links to recovery", async () => {
     renderLogin();
     await waitForLoginForm();
-    expect(screen.getByText("Camada de confiança / v2")).toBeVisible();
-    expect(screen.getByText("Espaço pessoal")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Veja o que está seguro e pronto." })).toBeVisible();
+    expect(screen.getByText("a IA que só age com o seu aval")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Entrar" })).toBeVisible();
     fireEvent.click(screen.getByRole("link", { name: "Esqueci minha senha" }));
     expect(window.location.pathname).toBe("/recover");
     window.history.pushState({}, "", "/login");
@@ -53,7 +52,7 @@ describe("LoginPage", () => {
     await waitForLoginForm();
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "demo@example.test" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "not-a-real-password" } });
-    fireEvent.click(screen.getByRole("button", { name: "Entrar no Device Center" }));
-    expect(screen.getByRole("button", { name: "Entrando no Device Center…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+    expect(screen.getByRole("button", { name: "Entrando…" })).toBeDisabled();
   });
 });

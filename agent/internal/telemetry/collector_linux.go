@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -78,13 +79,42 @@ func (c *SystemCollector) Collect() Sample {
 	return Sanitize(s)
 }
 
-// temperature returns the hottest thermal zone, if any is exposed.
+// cpuSensorDrivers are hwmon drivers that report the processor itself. When one is
+// present we trust only it: vendor/firmware sensors (for example Dell's dell_smm)
+// sometimes expose bogus channels such as a constant 126 °C.
+var cpuSensorDrivers = map[string]bool{
+	"coretemp": true, "k10temp": true, "zenpower": true, "cpu_thermal": true, "soc_thermal": true,
+}
+
+// maxPlausibleC drops readings no running consumer machine reports for real.
+const maxPlausibleC = 110
+
+// temperature returns the hottest CPU sensor, or the hottest plausible zone when the
+// machine exposes no recognised CPU driver.
 func (c *SystemCollector) temperature() *float64 {
+	hwmonDirs, _ := filepath.Glob(c.path("/sys/class/hwmon/hwmon*"))
+	var cpu []string
+	for i, dir := range hwmonDirs {
+		if i >= 32 {
+			break
+		}
+		name, err := os.ReadFile(filepath.Join(dir, "name"))
+		if err == nil && cpuSensorDrivers[strings.TrimSpace(string(name))] {
+			files, _ := filepath.Glob(filepath.Join(dir, "temp*_input"))
+			cpu = append(cpu, files...)
+		}
+	}
+	if best := hottest(cpu); best != nil {
+		return best
+	}
 	matches, _ := filepath.Glob(c.path("/sys/class/thermal/thermal_zone*/temp"))
 	hwmon, _ := filepath.Glob(c.path("/sys/class/hwmon/hwmon*/temp*_input"))
-	matches = append(matches, hwmon...)
+	return hottest(append(matches, hwmon...))
+}
+
+func hottest(files []string) *float64 {
 	var best *float64
-	for i, file := range matches {
+	for i, file := range files {
 		if i >= 64 {
 			break
 		}
@@ -93,7 +123,7 @@ func (c *SystemCollector) temperature() *float64 {
 			continue
 		}
 		v, err := parseMilliCelsius(string(data))
-		if err != nil || v <= 0 || v > 150 {
+		if err != nil || v <= 0 || v > maxPlausibleC {
 			continue
 		}
 		if best == nil || v > *best {
