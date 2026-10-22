@@ -35,8 +35,8 @@ export function LoginPage(): ReactElement {
       <section aria-labelledby="login-title" className="login-card">
         <header className="login-branding">
           <div className="login-brand-row">
-            <a aria-label="Bots Central" className="login-logo" href="/login">bc</a>
-            <div><strong>Bots Central</strong><span>Camada de confiança / v2</span></div>
+            <a aria-label="Aval" className="login-logo" href="/login">av</a>
+            <div><strong>Aval</strong><span>a IA que só age com o seu aval</span></div>
             <span className="secure-badge">Acesso seguro</span>
           </div>
           <p className="space-label">Espaço pessoal</p>
