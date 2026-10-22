@@ -125,7 +125,7 @@ func TestWireFormatUsesOnlyAllowedKeys(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{"v": true, "cpu_pct": true, "load1": true, "cpus": true, "mem_total": true, "mem_used": true, "disk_total": true, "disk_used": true, "temp_c": true, "uptime_s": true}
+	allowed := map[string]bool{"v": true, "cpu_pct": true, "load1": true, "cpus": true, "mem_total": true, "mem_used": true, "disk_total": true, "disk_used": true, "temp_c": true, "uptime_s": true, "battery_pct": true, "battery_charging": true}
 	for key := range decoded {
 		if !allowed[key] {
 			t.Fatalf("unexpected key %q", key)
@@ -144,6 +144,57 @@ func TestParseTopCPUUsesTheLastSample(t *testing.T) {
 	}
 	if _, ok := parseTopCPU("nothing here"); ok {
 		t.Fatal("expected no value")
+	}
+}
+
+func TestParseBatteryPmset(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		percent int
+		charge  bool
+		ok      bool
+	}{
+		{
+			name:    "discharging",
+			content: "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=4653155)\t73%; discharging; 3:21 remaining present: true\n",
+			percent: 73, charge: false, ok: true,
+		},
+		{
+			name:    "charging",
+			content: "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t41%; charging; 1:12 remaining present: true\n",
+			percent: 41, charge: true, ok: true,
+		},
+		{
+			name:    "charged on AC is not charging",
+			content: "Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining present: true\n",
+			percent: 100, charge: false, ok: true,
+		},
+		{name: "desktop without battery", content: "Now drawing from 'AC Power'\n", ok: false},
+		{name: "garbage", content: "nothing useful here\n", ok: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			percent, charge, ok := parseBatteryPmset(tc.content)
+			if ok != tc.ok || (ok && (percent != tc.percent || charge != tc.charge)) {
+				t.Fatalf("got (%d, %v, %v), want (%d, %v, %v)", percent, charge, ok, tc.percent, tc.charge, tc.ok)
+			}
+		})
+	}
+}
+
+func TestSanitizeDropsBatteryOutOfRange(t *testing.T) {
+	got := Sanitize(Sample{BatteryPercent: ptr(140), BatteryCharging: ptr(true)})
+	if got.BatteryPercent != nil || got.BatteryCharging != nil {
+		t.Fatalf("out-of-range battery survived: %+v", got)
+	}
+	got = Sanitize(Sample{BatteryCharging: ptr(true)})
+	if got.BatteryCharging != nil {
+		t.Fatalf("charging flag without a level survived: %+v", got)
+	}
+	got = Sanitize(Sample{BatteryPercent: ptr(20), BatteryCharging: ptr(false)})
+	if got.BatteryPercent == nil || *got.BatteryPercent != 20 || got.BatteryCharging == nil || *got.BatteryCharging {
+		t.Fatalf("valid battery dropped: %+v", got)
 	}
 }
 
