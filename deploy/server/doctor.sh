@@ -28,27 +28,36 @@ for s in db backend telegram web ollama backup; do
   [ "$state" = "running" ] && pass "$s rodando" || fail "$s: ${state:-não existe}" "docker compose --env-file .env up -d; docker compose logs --tail 30 $s"
 done
 
-echo "== Serviços externos (testados de dentro do backend)"
-docker compose exec -T backend python - <<'PY' 2>/dev/null
-import json, os, smtplib, ssl, urllib.request
-def say(ok, text, fix=""):
-    print(("  ✅ " if ok else "  ❌ ") + text + ("" if ok else "\n     → " + fix))
+echo "== Serviços externos"
+# Each check runs in the container that really uses it (the backend has no route to Telegram).
+external="$(
+docker compose exec -T backend python - <<'PY' 2>&1
+import os, smtplib, ssl
 try:
     s = smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587")), timeout=15)
     s.starttls(context=ssl.create_default_context())
     s.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
     s.quit()
-    say(True, "Gmail aceitou o login (códigos por e-mail vão funcionar)")
+    print("OK Gmail aceitou o login (códigos por e-mail vão funcionar)")
 except Exception as e:
-    say(False, f"Gmail recusou: {type(e).__name__}", "gere uma senha de app nova e coloque no .env; depois: docker compose up -d --force-recreate backend telegram")
+    print(f"FAIL Gmail recusou: {type(e).__name__}|gere uma senha de app nova, coloque no .env e rode: docker compose up -d --force-recreate backend telegram")
+PY
+docker compose exec -T telegram python - <<'PY' 2>&1
+import json, os, urllib.request
 try:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getMe", timeout=15) as r:
-        name = json.load(r)["result"]["username"]
-    say(True, f"Telegram respondeu como @{name}")
+        print("OK Telegram respondeu como @" + json.load(r)["result"]["username"])
 except Exception as e:
-    say(False, f"Telegram recusou: {type(e).__name__}", "token errado ou revogado: pegue o atual no @BotFather")
+    print(f"FAIL Telegram recusou: {type(e).__name__}|token errado ou revogado: pegue o atual no @BotFather")
 PY
+)"
+while IFS= read -r line; do
+  case "$line" in
+    OK\ *) pass "${line#OK }";;
+    FAIL\ *) msg="${line#FAIL }"; fail "${msg%%|*}" "${msg#*|}";;
+  esac
+done <<< "$external"
 if docker compose exec -T ollama ollama list 2>/dev/null | grep -q "${ASSISTANT_MODEL:-qwen2.5:3b}"; then
   pass "modelo da IA baixado"
 else
