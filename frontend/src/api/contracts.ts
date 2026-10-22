@@ -131,3 +131,17 @@ export interface AuditEvent {
   /** ADR-019: the program where the wrong password was typed ("gdm-password"). */
   readonly source?: string | null;
 }
+
+/** ADR-021: run a Telegram action from the panel, approved with the PIN. */
+export type ActionKind = "lock_screen" | "webcam_photo" | "network_scan";
+
+export type StartActionResult =
+  | { readonly ok: true; readonly commandId: string }
+  | { readonly ok: false; readonly reason: "wrong_pin" | "locked" | "busy" | "not_found" | "failed" };
+
+export interface WebActionStatus {
+  readonly status: string; // pending_approval | approved | dispatched | completed | delivered | failed | expired | denied
+  readonly message: string | null; // done text or friendly failure reason
+  readonly text: string | null; // result text (network_scan)
+  readonly hasPhoto: boolean; // a webcam_photo result is ready to fetch
+}

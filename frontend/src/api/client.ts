@@ -1,4 +1,5 @@
 import type {
+  ActionKind,
   AdminEvent,
   AdminFailure,
   AdminOverview,
@@ -13,8 +14,10 @@ import type {
   PairingResponse,
   RegisterAcceptedResponse,
   RegisterRequest,
+  StartActionResult,
   TelegramLinkCode,
-  TelegramStatus
+  TelegramStatus,
+  WebActionStatus
 } from "./contracts";
 
 export interface AuthApi {
@@ -38,6 +41,12 @@ export interface DevicesApi {
   history?(id: string, minutes: number): Promise<readonly DeviceTelemetry[]>;
   /** ADR-018: keep this computer reporting every second for the next 60 s. */
   watch?(id: string): Promise<void>;
+  /** ADR-021: run a catalogue action from the panel, approved with the PIN. */
+  startAction?(id: string, kind: ActionKind, pin: string): Promise<StartActionResult>;
+  /** ADR-021: poll a panel-started action until it finishes. */
+  actionStatus?(id: string, commandId: string): Promise<WebActionStatus>;
+  /** ADR-021: the photo bytes of a finished webcam_photo, handed over once. */
+  actionPhoto?(id: string, commandId: string): Promise<Blob>;
 }
 
 export interface TelegramApi {
