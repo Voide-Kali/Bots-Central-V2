@@ -54,7 +54,7 @@ def _deliver_files(client: TelegramClient, factory: sessionmaker[Session]) -> No
                 item.chat_id,
                 item.file_name,
                 item.content,
-                caption=f"📎 {item.file_name} — enviado por {item.device_name} (aprovado por você)",
+                caption=f"{item.file_name} — enviado por {item.device_name} (aprovado por você)",
             )
         except TelegramUnavailable:
             logger.warning("telegram document send failed")

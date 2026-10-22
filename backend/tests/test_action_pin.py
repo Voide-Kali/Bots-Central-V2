@@ -152,7 +152,7 @@ def test_plain_portuguese_request_and_pin_in_telegram(pinned: Any) -> None:
     wrong = _say(factory, "111222", mailer, message_id=90)
     assert "Restam 4" in wrong.text and wrong.delete_message_id == 90
     done = _say(factory, "482913", mailer, message_id=91)
-    assert done.text.startswith("✅ Aprovado: tirar uma foto") and done.delete_message_id == 91
+    assert done.text.startswith("Aprovado: tirar uma foto") and done.delete_message_id == 91
     again = _say(factory, "482913", mailer, message_id=92)
     assert again.text == "Nenhum pedido esperando PIN agora."
     question = _say(factory, "qual computador está mais quente?", mailer)

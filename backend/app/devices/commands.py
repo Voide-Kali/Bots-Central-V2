@@ -88,19 +88,19 @@ class ActionSpec:
 ACTIONS: dict[str, ActionSpec] = {
     "send_file": ActionSpec(
         verb="enviar um arquivo",
-        done="📎 Arquivo de {name} enviado.",
+        done="Arquivo de {name} enviado.",
         returns_file=True,
         risk="O arquivo sai do computador e vem para o seu Telegram.",
     ),
     "lock_screen": ActionSpec(
         verb="bloquear a tela",
-        done="🔒 Tela de {name} bloqueada.",
+        done="Tela de {name} bloqueada.",
         returns_file=False,
         risk="Quem estiver usando o computador terá que digitar a senha de novo.",
     ),
     "webcam_photo": ActionSpec(
         verb="tirar uma foto pela webcam",
-        done="📷 Foto de {name} enviada.",
+        done="Foto de {name} enviada.",
         returns_file=True,
         risk="A câmera do computador tira UMA foto, que vem só para o seu Telegram.",
     ),
@@ -317,9 +317,7 @@ def approval_email(intent: ApprovalIntent) -> tuple[str, str]:
     """(subject, body) of the approval e-mail, in Portuguese."""
     spec = ACTIONS[intent.kind]
     code = intent.code.get_secret_value()
-    what = (
-        f"enviar o arquivo {intent.file_name}" if intent.kind == "send_file" else spec.verb
-    )
+    what = f"enviar o arquivo {intent.file_name}" if intent.kind == "send_file" else spec.verb
     subject = f"Aval — aprovar: {what} ({intent.device_name})"
     body = (
         "Pedido no Aval:\n\n"
@@ -791,9 +789,9 @@ def _closed_text(command: DeviceCommand) -> str:
         else f"para {spec.verb if spec else 'a ação'}"
     )
     if command.status == "denied":
-        return f"⛔ Pedido {what} bloqueado: código errado demais vezes."
+        return f"Pedido {what} bloqueado: código errado demais vezes."
     if command.status == "expired":
-        return f"⌛ Pedido {what} expirou sem ser concluído."
+        return f"Pedido {what} expirou sem ser concluído."
     reasons = {
         "not_found": "o arquivo não está na pasta compartilhada",
         "not_regular": "não é um arquivo comum",
@@ -807,9 +805,9 @@ def _closed_text(command: DeviceCommand) -> str:
         reasons["too_large"] = "o arquivo passa de 10 MB"
         reasons["disabled"] = "o envio de arquivos está desligado nesse computador"
         reason = reasons.get(command.error_code or "", "erro ao ler o arquivo")
-        return f"❌ Não foi possível enviar {command.file_name}: {reason}."
+        return f"Não foi possível enviar {command.file_name}: {reason}."
     reason = reasons.get(command.error_code or "", "erro no computador")
-    return f"❌ Não foi possível {spec.verb if spec else 'concluir a ação'}: {reason}."
+    return f"Não foi possível {spec.verb if spec else 'concluir a ação'}: {reason}."
 
 
 def mark_delivered(session_factory: SessionFactory, *, command_id: uuid.UUID) -> None:
