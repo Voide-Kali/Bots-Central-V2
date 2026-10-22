@@ -37,7 +37,7 @@ function Meter({ label, percent, text }: { readonly label: string; readonly perc
 
 export function TelemetryPanel({ telemetry }: { readonly telemetry: DeviceTelemetry | null }): ReactElement {
   if (telemetry === null) {
-    return <p className="telemetry-empty">Sem telemetria ainda. Ela aparece depois que o agente aprovado enviar o próximo heartbeat.</p>;
+    return <p className="telemetry-empty">Sem medições ainda. Elas aparecem em até um minuto depois que o computador se conecta.</p>;
   }
   const memory = usage(telemetry.memoryUsedBytes, telemetry.memoryTotalBytes);
   const disk = usage(telemetry.diskUsedBytes, telemetry.diskTotalBytes);
@@ -54,6 +54,6 @@ export function TelemetryPanel({ telemetry }: { readonly telemetry: DeviceTeleme
       <div className="telemetry-item"><dt>Temperatura</dt><dd>{telemetry.temperatureC === null ? "Não disponível neste hardware" : `${bytes.format(telemetry.temperatureC)} °C`}</dd></div>
       <div className="telemetry-item"><dt>Ligado há</dt><dd>{telemetry.uptimeSeconds === null ? "Não informado" : formatUptime(telemetry.uptimeSeconds)}</dd></div>
     </dl>
-    <p className="technical-label">Medido em {Number.isNaN(recorded.valueOf()) ? telemetry.recordedAt : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" }).format(recorded)}</p>
+    <p className="telemetry-panel__time">Medido em {Number.isNaN(recorded.valueOf()) ? telemetry.recordedAt : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" }).format(recorded)}</p>
   </section>;
 }
