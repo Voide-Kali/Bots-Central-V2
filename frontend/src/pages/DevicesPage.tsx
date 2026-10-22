@@ -7,6 +7,7 @@ import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
 import { DeviceList } from "../components/DeviceList";
+import { AdminPanel } from "../components/AdminPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { PinCard } from "../components/PinCard";
 import { TelegramCard } from "../components/TelegramCard";
@@ -44,7 +45,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [pairing, setPairing] = useState<{ readonly id: string; readonly token: string; readonly expiresAt: string }>();
   const [fingerprintInput, setFingerprintInput] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
-  const [view, setView] = useState<"devices" | "history">("devices");
+  const [view, setView] = useState<"devices" | "history" | "admin">("devices");
 
   const listRequest = useRef<Promise<void> | undefined>(undefined);
   const actionLock = useRef(false);
@@ -154,7 +155,12 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const unavailable = session.kind === "unavailable" || deviceState.kind === "unavailable";
   const authenticated = session.kind === "authenticated";
   const profileName = authenticated ? session.identity.email : "Perfil";
-  const tabs: ReadonlyArray<{ readonly id: "devices" | "history"; readonly label: string }> = [{ id: "devices", label: "Computadores" }, ...(api.audit ? [{ id: "history" as const, label: "Histórico" }] : [])];
+  const isAdmin = authenticated && session.identity.role === "admin" && api.admin !== undefined;
+  const tabs: ReadonlyArray<{ readonly id: "devices" | "history" | "admin"; readonly label: string }> = [
+    { id: "devices", label: "Computadores" },
+    ...(api.audit ? [{ id: "history" as const, label: "Histórico" }] : []),
+    ...(isAdmin ? [{ id: "admin" as const, label: "Admin" }] : [])
+  ];
 
   return <div className="app">
     <header className="topbar">
@@ -164,7 +170,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     </header>
     <main className="workspace" id="main-content">
       {feedback ? <p className="notice" role="status">{feedback}</p> : null}
-      {view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : <>
+      {view === "admin" && isAdmin && api.admin ? <AdminPanel api={api.admin} onUnauthenticated={invalidate} /> : view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : <>
         <section aria-labelledby="devices-title" className="overview">
           <div>
             <h1 id="devices-title">Seus computadores</h1>
