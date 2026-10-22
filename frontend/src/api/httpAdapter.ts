@@ -1,4 +1,4 @@
-import type { ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
+import type { ActionPinApi, ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
 import type {
   AuditEvent,
   AuthenticatedUser,
@@ -30,7 +30,8 @@ const paths = {
   telegramLinkCode: "/api/v1/telegram/link-code",
   resetRequest: "/api/v1/auth/password-reset/request",
   resetConfirm: "/api/v1/auth/password-reset/confirm",
-  audit: "/api/v1/audit"
+  audit: "/api/v1/audit",
+  actionPin: "/api/v1/me/action-pin"
 } as const;
 
 const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
@@ -279,9 +280,26 @@ class HttpAuditApi implements AuditApi {
   }
 }
 
+class HttpActionPinApi implements ActionPinApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async status(): Promise<{ readonly configured: boolean; readonly lockedUntil: string | null }> {
+    const response = await this.http.get(paths.actionPin, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.configured !== "boolean" || (value.locked_until !== null && typeof value.locked_until !== "string")) {
+      throw new ApiError("The API returned an invalid response.", response.status);
+    }
+    return { configured: value.configured, lockedUntil: value.locked_until as string | null };
+  }
+
+  public async set(password: string, pin: string): Promise<void> {
+    await this.http.putJson(paths.actionPin, { password, pin }, { acceptedStatuses: [204] });
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
   const http = new SameOriginHttpClient();
   const auth = new HttpAuthApi(http);
   http.setRefreshHandler(() => auth.refresh());
-  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http), audit: new HttpAuditApi(http) };
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http), audit: new HttpAuditApi(http), actionPin: new HttpActionPinApi(http) };
 }
