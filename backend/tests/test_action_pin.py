@@ -157,3 +157,65 @@ def test_plain_portuguese_request_and_pin_in_telegram(pinned: Any) -> None:
     assert again.text == "Nenhum pedido esperando PIN agora."
     question = _say(factory, "qual computador está mais quente?", mailer)
     assert "IA" in question.text  # questions still go to the assistant (disabled here)
+
+
+@pytest.mark.postgresql
+def test_several_actions_in_a_row_are_not_rate_limited_like_linking(pinned: Any) -> None:
+    """Regression (E2E 22/10): actions shared the 5-per-10-min linking budget."""
+    from test_device_commands import _Mailer
+    from test_telegram import _msg
+
+    from app.auth.abuse_control import AbuseController
+    from app.db.models import AuthAbuseBucket
+    from app.telegram.commands import ActionDeps, handle_update
+
+    factory, user_id, _, _ = pinned
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    admission = AbuseController(factory, KEY)
+    try:
+        for index in range(8):
+            update = _msg("bloqueia o telemetry-agent")
+            update["message"]["message_id"] = 200 + index
+            reply = handle_update(
+                update,
+                session_factory=factory,
+                admission=admission,
+                actions=ActionDeps(key=KEY, mailer=_Mailer()),
+            )
+            assert reply is not None and "digite seu PIN" in reply.text, reply
+    finally:
+        with factory() as session, session.begin():
+            session.execute(delete(AuthAbuseBucket))
+
+
+@pytest.mark.anyio
+async def test_reading_the_pin_status_is_not_blocked_by_the_body_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression (E2E 22/10): GET /me/action-pin got 415 from the JSON body middleware,
+    so the panel could never show 'Criar PIN'."""
+    import uuid
+
+    from httpx import ASGITransport, AsyncClient
+    from test_admin import _client_app
+
+    from app.auth import authentication
+
+    principal = authentication.AuthenticatedPrincipal(uuid.uuid4(), uuid.uuid4(), "a@b.c", "user")
+    monkeypatch.setattr(authentication, "authenticate_access", lambda *_: principal)
+    monkeypatch.setattr(action_pin, "status", lambda *_: (False, None))
+
+    class _Session:
+        def __enter__(self) -> "_Session":
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    app = _client_app(lambda: _Session())  # type: ignore[arg-type,return-value]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+        response = await client.get(
+            "/api/v1/me/action-pin", headers={"Authorization": "Bearer " + "A" * 43}
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["configured"] is False

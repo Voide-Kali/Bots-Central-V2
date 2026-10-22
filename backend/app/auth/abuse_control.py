@@ -127,6 +127,16 @@ TELEGRAM_LINK_POLICY = AbusePolicy(
         AbuseLimit("global", 200, 600),
     ),
 )
+# Action requests and approvals from Telegram (ADR-016). Separate from linking: the
+# owner may lock, photograph or fetch several times in a row. Each action still needs
+# the PIN (5 errors lock it for 15 min) or the e-mail code.
+TELEGRAM_ACTION_POLICY = AbusePolicy(
+    operation="telegram_action",
+    limits=(
+        AbuseLimit("chat", 30, 600),
+        AbuseLimit("global", 300, 600),
+    ),
+)
 ASSISTANT_POLICY = AbusePolicy(
     operation="assistant_question",
     limits=(
@@ -342,6 +352,9 @@ class AbuseController:
 
     def admit_telegram_link(self, *, chat_id: int) -> bool:
         return self._admit(TELEGRAM_LINK_POLICY, {"chat": str(chat_id), "global": "all"})
+
+    def admit_telegram_action(self, *, chat_id: int) -> bool:
+        return self._admit(TELEGRAM_ACTION_POLICY, {"chat": str(chat_id), "global": "all"})
 
     def admit_assistant(self, *, chat_id: int) -> bool:
         return self._admit(ASSISTANT_POLICY, {"chat": str(chat_id), "global": "all"})

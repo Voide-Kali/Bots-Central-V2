@@ -50,6 +50,8 @@ class LinkAdmission(Protocol):
 
     def admit_assistant(self, *, chat_id: int) -> bool: ...
 
+    def admit_telegram_action(self, *, chat_id: int) -> bool: ...
+
 
 @dataclass(frozen=True)
 class Reply:
@@ -333,7 +335,7 @@ def _dispatch(
         if actions is None:
             return Reply(chat_id, "Ações não estão ativadas neste servidor.")
         try:
-            if not admission.admit_telegram_link(chat_id=chat_id):
+            if not admission.admit_telegram_action(chat_id=chat_id):
                 return Reply(chat_id, "Muitas tentativas. Aguarde alguns minutos.")
         except AbuseControlUnavailable:
             return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
