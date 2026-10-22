@@ -429,3 +429,74 @@ def test_chat_queue_keeps_order_per_chat_and_does_not_block_others() -> None:
     second.result(timeout=5)
     assert order == ["chat2", "chat1-question", "chat1-pin"]  # same chat stays in order
     queue.shutdown()
+
+
+# --- Kali-Bunker-style inline menu (no bottom keyboard, no emojis) -----------------------
+
+
+def test_assistant_output_has_no_emojis() -> None:
+    from app.assistant import assistant
+
+    assert assistant.strip_emojis("tudo ok \U0001F916✅ CPU 40 °C") == "tudo ok  CPU 40 °C"
+    assert assistant.strip_emojis("sem simbolos") == "sem simbolos"
+
+
+@pytest.mark.postgresql
+def test_old_emoji_button_label_still_maps_to_a_command(factory: sessionmaker[Session]) -> None:
+    # A tap on a leftover "[chart] Painel" button (emoji prefix) maps to /painel.
+    user_id, _, _ = _active_device(factory)
+    _link(factory, user_id)
+    reply = commands.handle_update(
+        _msg("\U0001F4CA Painel"), session_factory=factory, admission=_Admission()
+    )
+    assert reply is not None and reply.text == commands.PANEL_TEXT
+    assert reply.keyboard == commands.MAIN_MENU
+
+
+@pytest.mark.postgresql
+def test_painel_opens_inline_menu_and_start_clears_old_keyboard(
+    factory: sessionmaker[Session],
+) -> None:
+    user_id, _, _ = _active_device(factory)
+    _link(factory, user_id)
+
+    painel = commands.handle_update(
+        _msg("/painel"), session_factory=factory, admission=_Admission()
+    )
+    assert painel is not None and painel.text == commands.PANEL_TEXT
+    assert painel.keyboard == commands.MAIN_MENU
+    assert painel.remove_reply_keyboard is False  # /painel alone does not re-clear
+    datas = [b["callback_data"] for row in painel.keyboard["inline_keyboard"] for b in row]
+    assert datas == ["menu:status", "menu:ia", "menu:hist", "menu:arquivo", "menu:help"]
+
+    start = commands.handle_update(_msg("/start"), session_factory=factory, admission=_Admission())
+    assert start is not None and start.remove_reply_keyboard is True  # clears the stale keyboard
+
+    # The computers screen (old "Painel") is reached under its new name and keeps a Voltar.
+    computers = commands.handle_update(
+        _msg("/computadores"), session_factory=factory, admission=_Admission()
+    )
+    assert computers is not None and computers.text.startswith("AVAL")
+    assert computers.keyboard is not None
+    kb = computers.keyboard["inline_keyboard"]
+    back = [b for row in kb for b in row if b["text"] == "Voltar"]
+    assert back == [{"text": "Voltar", "callback_data": "menu:home"}]
+
+
+def test_send_clears_stale_keyboard_then_sends_inline_menu() -> None:
+    from app.telegram import bot
+
+    class _Client:
+        def __init__(self) -> None:
+            self.sent: list[tuple[str, Any]] = []
+
+        def send_message(self, _chat: int, text: str, keyboard: Any = None) -> None:
+            self.sent.append((text, keyboard))
+
+    reply = commands.Reply(
+        CHAT, commands.PANEL_TEXT, commands.MAIN_MENU, remove_reply_keyboard=True
+    )
+    client = _Client()
+    bot._send(client, [reply])  # type: ignore[arg-type]
+    assert client.sent[0] == (commands.PANEL_TEXT, {"remove_keyboard": True})
+    assert client.sent[1][1] == commands.MAIN_MENU
