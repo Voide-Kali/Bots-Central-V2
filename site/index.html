@@ -200,7 +200,8 @@ main:focus { outline: none; }
 .cmds { padding-block: 160px 100px; }
 .cmds__search { display: block; width: min(100%, 83.3%); height: 1.9em; padding: 0 .5em; border: 0; border-radius: var(--radius); background: var(--surface); box-shadow: inset 0 2px 6px rgb(0 0 0 / .6), 0 1px 0 rgb(255 255 255 / .05); color: var(--ink); font-family: var(--text); font-size: clamp(28px, 3vw, 44px); }
 .cmds__search::placeholder { color: var(--muted); }
-.cmds h2 { margin-bottom: 18px; color: var(--muted); font-family: var(--text); font-size: var(--step-lead); font-weight: 400; }
+.cmds h2 { margin-bottom: 10px; color: var(--muted); font-family: var(--text); font-size: var(--step-lead); font-weight: 400; }
+.cmds__lead { max-width: 52ch; margin-bottom: 28px; color: var(--muted); font-size: var(--step-small); line-height: 1.5; }
 .cmd-list { margin-top: 32px; }
 .cmd { display: block; width: 100%; padding: .12em .35em; border: 0; border-radius: var(--radius); background: none; text-align: left; cursor: pointer; transition: background-color .2s, transform .25s var(--ease-out), box-shadow .25s var(--ease-out); }
 .cmd__name { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; font-family: var(--display); font-size: clamp(44px, 6vw, 104px); line-height: 1.02; text-transform: uppercase; }
@@ -331,7 +332,7 @@ main:focus { outline: none; }
   </div>
 
   <div class="hero__intro">
-    <p class="hero__lead">O Aval cuida dos seus computadores pelo Telegram. A IA conversa, explica e avisa. <strong>Bloquear a tela, tirar uma foto ou mandar um arquivo só acontece depois do seu PIN.</strong></p>
+    <p class="hero__lead">Uma IA que cuida dos seus computadores pelo Telegram. Ela conversa, explica e avisa, mas <strong>nunca age sozinha</strong>: toda ação espera a sua aprovação. Sem terminal remoto, sem controlar a sua tela.</p>
     <div class="hero__cta"><a class="btn" href="#experimente">Experimente um pedido</a><a class="textlink" href="#pesquisa">Ver a pesquisa</a></div>
   </div>
   <h1 class="hero__title display"><span class="line"><span style="--i:0">Nada acontece</span></span><span class="line"><span style="--i:1">sem o seu <span class="accent">aval</span></span></span></h1>
@@ -341,7 +342,7 @@ main:focus { outline: none; }
   <section class="intro wrap reveal" aria-labelledby="intro-t">
     <div class="intro__top">
       <h2 id="intro-t" class="display" style="--d:0">Uma IA com freio</h2>
-      <p style="--d:1">Assistentes que mexem no seu computador costumam agir sozinhos. No Aval a IA não tem nenhuma ferramenta: quem executa é o agente instalado no PC, e só o que você aprovou, numa lista fechada de ações.</p>
+      <p style="--d:1">Assistentes que mexem no seu computador costumam agir sozinhos. No Aval a IA não tem nenhuma ferramenta: quem executa é o agente instalado no PC, e só o que você aprovou, numa lista fechada de ações. Não há terminal remoto nem controle da sua tela.</p>
     </div>
     <dl class="facts" style="--d:2">
       <div><dt>6<span class="u">dígitos</span></dt><dd>O seu PIN pessoal aprova cada ação. A mensagem com o PIN é apagada do chat.</dd></div>
@@ -404,6 +405,7 @@ main:focus { outline: none; }
 
   <section class="cmds wrap" aria-labelledby="cmds-t" data-ui>
     <h2 id="cmds-t">O que o Aval faz</h2>
+    <p class="cmds__lead">O que já está pronto e o que vem a seguir. O monitoramento é só leitura; toda ação que mexe no computador espera o seu aval.</p>
     <label><span class="sr-only">Procurar uma função</span><input class="cmds__search" id="filter" placeholder="Procurar uma função" autocomplete="off"></label>
     <div class="cmd-list" role="listbox" aria-label="Funções" id="cmds"></div>
     <p class="cmds__empty" id="cmds-empty" hidden>Nenhuma função com esse nome ainda.</p>
@@ -422,7 +424,8 @@ main:focus { outline: none; }
 
   <section class="faq wrap" id="perguntas" aria-labelledby="faq-t">
     <div class="qa"><h2 id="faq-t">Perguntas</h2></div>
-    <div class="qa reveal"><h3>A IA pode agir sozinha?</h3><p>Não. Ela lê, responde e explica, mas não tem ferramenta nenhuma. Os pedidos de ação são reconhecidos por regras fixas sobre a sua própria mensagem e sempre esperam o seu PIN.</p></div>
+    <div class="qa reveal"><h3>A IA pode agir sozinha?</h3><p>Não. Ela lê, responde e explica, mas não tem ferramenta nenhuma. Os pedidos de ação são reconhecidos por regras fixas sobre a sua própria mensagem e sempre esperam o seu aval.</p></div>
+    <div class="qa reveal"><h3>O Aval controla a minha tela ou abre um terminal remoto?</h3><p>Não. Não existe acesso remoto nem terminal. O agente só executa ações típicas de uma lista fechada, cada uma aprovada por você. Nenhuma pessoa, nem a IA, entra no seu computador.</p></div>
     <div class="qa reveal"><h3>E se alguém pegar o meu Telegram?</h3><p>Sem o PIN, nada roda. Cinco erros travam o PIN por 15 minutos, cada tentativa fica no histórico e o PIN só aprova o pedido mais recente.</p></div>
     <div class="qa reveal"><h3>Onde ficam os meus dados?</h3><p>Num servidor seu, em casa ou na empresa, acessível só pela sua rede privada do Tailscale. Nada passa por um servidor nosso.</p></div>
     <div class="qa reveal"><h3>O agente pode fazer qualquer coisa no PC?</h3><p>Só o que você liberou na instalação, de uma lista fechada. Cada pedido chega assinado, e o agente confere a assinatura antes de executar.</p></div>
@@ -523,9 +526,10 @@ main:focus { outline: none; }
     ["Bloquear a tela", "agora", "Trava a sessão do computador na hora. No Mac, apaga a tela."],
     ["Foto da webcam", "agora", "Uma foto pela câmera do computador, entregue no seu Telegram."],
     ["Mandar um arquivo", "agora", "Um arquivo da pasta compartilhada do agente chega no Telegram, até o limite de tamanho."],
-    ["Saúde dos computadores", "agora", "CPU, memória, disco, temperatura e há quanto tempo está ligado, a cada minuto."],
+    ["Saúde dos computadores", "agora", "CPU, memória, disco, temperatura e há quanto tempo está ligado, medidos a cada minuto. No painel, com até 7 dias de histórico."],
     ["Alertas inteligentes", "agora", "Avisa quando o disco enche, a temperatura sobe ou um computador some, sem repetir o mesmo alerta."],
     ["Histórico", "agora", "Tudo o que foi pedido, aprovado, negado ou entregue, num registro que não se apaga."],
+    ["Varredura da rede", "em breve", "Descobrir os aparelhos ligados na sua rede, para saber o que está conectado em casa ou na empresa."],
     ["Foto de quem errar a senha", "em breve", "Quando alguém digitar a senha errada no computador, o Aval tira uma foto e avisa você."],
     ["Desligar e reiniciar", "em breve", "Desligar, reiniciar ou suspender, também com o seu PIN."]
   ];
