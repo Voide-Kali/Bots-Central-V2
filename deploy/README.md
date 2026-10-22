@@ -68,6 +68,10 @@ Nos dois aparelhos, com Tailscale ligado, compile e configure o agente apontando
 `https://SEU_SERVIDOR.tailXXXX.ts.net` (veja `agent/README.md`). O certificado é público
 (Let's Encrypt), então o agente confia nele sem configuração extra.
 
+## Diagnóstico
+
+Algo não funciona? Rode `./doctor.sh` nesta pasta. Ele confere `.env` (sem mostrar segredos), containers, login no Gmail, token do Telegram, modelo da IA e o painel, e diz como corrigir cada problema.
+
 ## Operação
 
 | Tarefa | Comando |
