@@ -46,7 +46,7 @@ const api: ApiClient = {
     login: async () => undefined,
     refresh: async () => { if (params.get("view") === "login") throw new (await import("../src/api")).UnauthenticatedError(); },
     logout: async () => undefined,
-    me: async () => ({ id: "u1", email: "voide.kali@gmail.com", role: user })
+    me: async () => ({ id: "u1", email: params.get("email") ?? "voide.kali@gmail.com", role: user })
   },
   devices: {
     list: async () => devices,
