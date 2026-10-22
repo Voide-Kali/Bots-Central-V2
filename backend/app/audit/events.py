@@ -88,18 +88,37 @@ LABELS = {
     "auth.password_reset_completed": "Senha redefinida",
     "auth.password_reset_failed": "Tentativa de redefinir senha falhou",
     "action.requested": "Ação pedida (aguardando aval)",
-    "action.approved": "Ação aprovada com código",
+    "action.approved": "Ação aprovada",
     "action.approval_failed": "Código de aprovação incorreto",
     "action.cancelled": "Ação cancelada",
     "action.dispatched": "Ação entregue ao agente",
     "action.failed": "Ação falhou no agente",
     "action.completed": "Ação concluída pelo agente",
-    "action.delivered": "Arquivo entregue no Telegram",
+    "action.delivered": "Resultado entregue no Telegram",
+    "pin.changed": "PIN criado ou trocado",
+    "pin.change_failed": "Senha errada ao trocar o PIN",
+    "pin.failed": "PIN incorreto",
+    "pin.locked": "PIN travado por 15 minutos",
+    "admin.role_changed": "Papel da conta alterado",
+    "admin.user_activated": "Conta ativada pelo administrador",
+}
+ACTION_NAMES = {
+    "send_file": "enviar arquivo",
+    "lock_screen": "bloquear tela",
+    "webcam_photo": "foto da webcam",
 }
 
 
 def label(event: AuditEvent) -> str:
     when: datetime = event.occurred_at
     name = LABELS.get(event.action, event.action)
-    extra = event.details.get("name") if isinstance(event.details, dict) else None
-    return f"{when:%d/%m %H:%M} · {name}" + (f" ({extra})" if isinstance(extra, str) else "")
+    details = event.details if isinstance(event.details, dict) else {}
+    parts = [ACTION_NAMES.get(str(details.get("action")), "")]
+    if isinstance(details.get("file"), str) and details["file"]:
+        parts.append(str(details["file"]))
+    if isinstance(details.get("name"), str):
+        parts.append(str(details["name"]))
+    if details.get("by") == "pin":
+        parts.append("com PIN")
+    extra = ", ".join(part for part in parts if part)
+    return f"{when:%d/%m %H:%M} · {name}" + (f" ({extra})" if extra else "")

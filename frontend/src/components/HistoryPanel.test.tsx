@@ -10,15 +10,19 @@ describe("HistoryPanel", () => {
       list: vi.fn(async () => [
         { occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: "MAC-DO-LUCAS" },
         { occurredAt: "2026-10-21T11:00:00+00:00", actor: "telegram", action: "action.approval_failed", outcome: "failure", name: null },
-        { occurredAt: "2026-10-21T10:00:00+00:00", actor: "system", action: "something.new", outcome: "success", name: null }
+        { occurredAt: "2026-10-21T10:00:00+00:00", actor: "system", action: "something.new", outcome: "success", name: null },
+        { occurredAt: "2026-10-21T09:00:00+00:00", actor: "telegram", action: "action.approved", outcome: "success", name: null, kind: "lock_screen", file: null, byPin: true },
+        { occurredAt: "2026-10-21T08:00:00+00:00", actor: "telegram", action: "pin.failed", outcome: "denied", name: null }
       ])
     };
     render(<HistoryPanel api={api} onUnauthenticated={vi.fn()} />);
     expect(await screen.findByText("Dispositivo aprovado")).toBeVisible();
     expect(screen.getByText("MAC-DO-LUCAS")).toBeVisible();
     expect(screen.getByText("Código de aprovação incorreto")).toBeVisible();
-    expect(screen.getByText("por Telegram · falhou")).toBeVisible();
+    expect(screen.getAllByText("por Telegram · falhou")).toHaveLength(2);
     expect(screen.getByText("something.new")).toBeVisible(); // unknown actions still shown
+    expect(screen.getByText("bloquear tela · com PIN")).toBeVisible();
+    expect(screen.getByText("PIN incorreto")).toBeVisible();
     expect(api.list).toHaveBeenCalledWith(50);
   });
 
