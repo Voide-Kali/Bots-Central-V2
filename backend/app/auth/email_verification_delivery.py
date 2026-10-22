@@ -1,5 +1,6 @@
 """Pure in-memory delivery contract for post-commit email-verification work."""
 
+import logging
 import smtplib
 import ssl
 import uuid
@@ -12,6 +13,8 @@ from typing import Protocol
 from pydantic import SecretStr
 
 from app.db.enums import EmailVerificationMaterialType
+
+logger = logging.getLogger("bots_central.email")
 
 
 class EmailVerificationDeliveryConfigurationError(ValueError):
@@ -100,17 +103,22 @@ class SmtpEmailVerificationDeliveryAdapter:
         message = EmailMessage()
         message["From"] = self._sender
         message["To"] = intent.recipient
-        message["Subject"] = "Email verification"
+        message["Subject"] = "Aval: confirme seu e-mail"
         if intent.material_type is EmailVerificationMaterialType.LINK:
             message.set_content(
-                "Open this verification page and confirm explicitly:\n\n"
-                f"{self._public_origin}/email-verification#token={material}\n"
+                "Olá! Para ativar sua conta no Aval, abra a página abaixo e confirme:\n\n"
+                f"{self._public_origin}/email-verification#token={material}\n\n"
+                "Se não foi você, ignore este e-mail.\n"
             )
         else:
+            # The challenge id is not secret; only the 8-digit code is. The link pre-fills
+            # the challenge so the person types just the code (the code never goes in a URL).
             message.set_content(
-                "Enter this email verification code with its challenge in the verification "
-                "page:\n\n"
-                f"Challenge ID: {intent.challenge_id}\nCode: {material[:4]} {material[4:]}\n"
+                "Olá! Para ativar sua conta no Aval:\n\n"
+                f"1. Abra: {self._public_origin}/verify?challenge={intent.challenge_id}\n"
+                f"2. Digite o código: {material[:4]} {material[4:]}\n\n"
+                "O código vale por pouco tempo. Se não foi você, ignore este e-mail.\n\n"
+                f"Identificador (se o link não abrir): {intent.challenge_id}\n"
             )
         return message
 
@@ -166,6 +174,8 @@ def dispatch_delivery(
     """Attempt delivery once, without retrying or exposing adapter failures."""
     try:
         adapter.deliver(intent)
-    except Exception:
+    except Exception as error:
+        # Only the exception type: provider messages may echo addresses or credentials.
+        logger.warning("verification e-mail delivery failed: %s", type(error).__name__)
         return DeliveryFailed()
     return DeliveryDispatched()

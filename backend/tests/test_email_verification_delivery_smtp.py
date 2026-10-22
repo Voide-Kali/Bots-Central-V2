@@ -206,3 +206,74 @@ def _intent() -> DeliveryIntent:
         material_type=Material.LINK,
         material=SecretStr("x" * 43),
     )
+
+
+def test_code_email_is_portuguese_and_links_only_the_challenge() -> None:
+    import uuid as _uuid
+    from datetime import UTC as _UTC
+    from datetime import datetime as _dt
+
+    from pydantic import SecretStr as _Secret
+
+    from app.auth.email_verification_delivery import (
+        DeliveryIntent,
+        SmtpEmailVerificationDeliveryAdapter,
+    )
+    from app.db.enums import EmailVerificationMaterialType
+
+    adapter = SmtpEmailVerificationDeliveryAdapter(
+        host="smtp.example.test",
+        port=587,
+        sender="aval@example.test",
+        public_origin="https://aval.example.ts.net",
+        username=None,
+        password=None,
+        timeout_seconds=5.0,
+    )
+    challenge = _uuid.uuid4()
+    message = adapter._message(
+        DeliveryIntent(
+            recipient="voce@example.test",
+            challenge_id=challenge,
+            expires_at=_dt.now(_UTC),
+            material_type=EmailVerificationMaterialType.CODE,
+            material=_Secret("12345678"),
+        )
+    )
+    body = message.get_content()
+    assert message["Subject"] == "Aval: confirme seu e-mail"
+    assert f"https://aval.example.ts.net/verify?challenge={challenge}" in body
+    assert "1234 5678" in body
+    assert "12345678" not in body.split("verify?")[1].split("\n")[0]  # code never in the URL
+
+
+def test_failed_delivery_logs_only_the_error_type() -> None:
+    import logging
+
+    from app.auth.email_verification_delivery import DeliveryFailed, dispatch_delivery
+
+    class _Broken:
+        def deliver(self, intent: object) -> None:
+            raise RuntimeError("535 bad password for secret@example.test")
+
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("bots_central.email")
+    # Alembic's fileConfig (migration tests) disables loggers created earlier.
+    handler, previous, was_disabled = _Capture(), logger.level, logger.disabled
+    logger.disabled = False
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        outcome = dispatch_delivery(_Broken(), object())  # type: ignore[arg-type]
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+        logger.disabled = was_disabled
+    assert isinstance(outcome, DeliveryFailed)
+    text = " ".join(record.getMessage() for record in records)
+    assert "RuntimeError" in text and "secret@example.test" not in text
