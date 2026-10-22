@@ -50,6 +50,9 @@ class _Admission:
     def admit_assistant(self, *, chat_id: int) -> bool:
         return self.admit_telegram_link(chat_id=chat_id)
 
+    def admit_telegram_action(self, *, chat_id: int) -> bool:
+        return self.admit_telegram_link(chat_id=chat_id)
+
 
 # --- pure ------------------------------------------------------------------------------
 
