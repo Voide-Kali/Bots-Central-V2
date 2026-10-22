@@ -3,7 +3,7 @@
 # and how to fix it. Never prints secrets (only lengths and yes/no).
 # Usage (from deploy/server):  ./doctor.sh
 set -uo pipefail
-cd "$(dirname "$0")"
+[ -f .env ] || cd "$(dirname "$0")"  # run from deploy/server or from anywhere via its path
 ok=0; bad=0
 pass() { printf '  ✅ %s\n' "$1"; ok=$((ok+1)); }
 fail() { printf '  ❌ %s\n     → %s\n' "$1" "$2"; bad=$((bad+1)); }
