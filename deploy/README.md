@@ -33,7 +33,6 @@ sudo mkdir -p /mnt/storage/bots-central-backups && sudo chmod 700 /mnt/storage/b
 ```bash
 git clone https://github.com/Voide-Kali/Bots-Central-V2.git ~/bots-central
 cd ~/bots-central
-git checkout deploy/home-server   # enquanto o PR do deploy não estiver na main
 cd deploy/server
 ./generate-env.sh          # cria .env com senhas e chaves aleatórias
 tailscale status --self    # nome completo: algo.tailXXXX.ts.net
@@ -44,6 +43,10 @@ nano .env                  # preencha os REPLACE_ME
 - `SMTP_*`: o Gmail do sistema, com verificação em 2 etapas e uma **senha de app**.
 - `TELEGRAM_*`: token e usuário do bot criado no @BotFather.
 - O `.env` fica só no servidor (`chmod 600`). Nunca no Git, nunca em chat de IA.
+
+> **Porta 443 ocupada?** Se `sudo tailscale serve status` ou `funnel status` mostrar algo,
+> o `tailscaled` já usa a 443 e o Caddy não sobe. Libere com `sudo tailscale funnel reset`
+> e `sudo tailscale serve reset` (isso tira do ar o que estava publicado).
 
 ## 2. Subir
 
@@ -67,6 +70,10 @@ Saúde: `https://SEU_SERVIDOR.tailXXXX.ts.net/api/v1/health`.
 Nos dois aparelhos, com Tailscale ligado, compile e configure o agente apontando para
 `https://SEU_SERVIDOR.tailXXXX.ts.net` (veja `agent/README.md`). O certificado é público
 (Let's Encrypt), então o agente confia nele sem configuração extra.
+
+## Diagnóstico
+
+Algo não funciona? Rode `./doctor.sh` nesta pasta. Ele confere `.env` (sem mostrar segredos), containers, login no Gmail, token do Telegram, modelo da IA e o painel, e diz como corrigir cada problema.
 
 ## Operação
 

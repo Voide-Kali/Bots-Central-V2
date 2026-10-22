@@ -1,5 +1,6 @@
-import type { ApiClient, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
+import type { ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
 import type {
+  AuditEvent,
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
@@ -18,6 +19,7 @@ import { accessTokenStore } from "./memoryAccessToken";
 
 const paths = {
   register: "/api/v1/auth/register",
+  resend: "/api/v1/auth/email-verification/resend",
   consumeCode: "/api/v1/auth/email-verification/consume-code",
   login: "/api/v1/auth/login",
   refresh: "/api/v1/auth/refresh",
@@ -27,7 +29,8 @@ const paths = {
   telegramLink: "/api/v1/telegram/link",
   telegramLinkCode: "/api/v1/telegram/link-code",
   resetRequest: "/api/v1/auth/password-reset/request",
-  resetConfirm: "/api/v1/auth/password-reset/confirm"
+  resetConfirm: "/api/v1/auth/password-reset/confirm",
+  audit: "/api/v1/audit"
 } as const;
 
 const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
@@ -142,6 +145,10 @@ function assertDevices(value: unknown, status: number): readonly Device[] {
 class HttpAuthApi implements AuthApi {
   public constructor(private readonly http: SameOriginHttpClient) {}
 
+  public async resendVerification(email: string): Promise<void> {
+    await this.http.postJson(paths.resend, { email }, { acceptedStatuses: [202], includeAccessToken: false });
+  }
+
   public async register(input: RegisterRequest): Promise<RegisterAcceptedResponse> {
     const response = await this.http.postJson(paths.register, input, { acceptedStatuses: [202], includeAccessToken: false });
     return assertMessage(await readKnownJson<unknown>(response), response.status);
@@ -249,9 +256,32 @@ class HttpPasswordResetApi implements PasswordResetApi {
   }
 }
 
+const MAX_AUDIT_ITEMS = 100; // backend MAX_LIST
+
+function parseAuditEvent(value: unknown, status: number): AuditEvent {
+  if (!isRecord(value) || typeof value.occurred_at !== "string" || !Number.isFinite(Date.parse(value.occurred_at)) || typeof value.actor !== "string" || typeof value.action !== "string" || typeof value.outcome !== "string") {
+    throw new ApiError("The API returned an invalid response.", status);
+  }
+  const details = value.details;
+  const name = isRecord(details) && typeof details.name === "string" ? details.name.slice(0, 120) : null;
+  return { occurredAt: value.occurred_at, actor: value.actor, action: value.action, outcome: value.outcome, name };
+}
+
+class HttpAuditApi implements AuditApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  public async list(limit = 50): Promise<readonly AuditEvent[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_AUDIT_ITEMS) throw new RangeError("limit out of range");
+    const response = await this.http.get(`${paths.audit}?limit=${limit}`, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || !Array.isArray(value.events) || value.events.length > MAX_AUDIT_ITEMS) throw new ApiError("The API returned an invalid response.", response.status);
+    return value.events.map((item) => parseAuditEvent(item, response.status));
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
   const http = new SameOriginHttpClient();
   const auth = new HttpAuthApi(http);
   http.setRefreshHandler(() => auth.refresh());
-  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http) };
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http), audit: new HttpAuditApi(http) };
 }
