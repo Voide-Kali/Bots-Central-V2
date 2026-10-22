@@ -21,7 +21,7 @@ const devices: Device[] = params.has("empty") ? [] : [
     telemetry: { recordedAt: ago(1), cpuPercent: 18, load1: 1.99, cpuCount: 10, memoryTotalBytes: 16 * GB, memoryUsedBytes: 11.8 * GB, diskTotalBytes: 460 * GB, diskUsedBytes: 115 * GB, temperatureC: null, uptimeSeconds: 2 * 86_400 + 7 * 3_600 } },
   { id: "c41d7e2f-0b6a-4f93-a8d1-7e2b9c5f3a18", name: "pc-sala", platform: "linux/amd64", status: "offline", lifecycleStatus: "active", lastSeenAt: ago(60 * 26), agentVersion: "0.3.2", fingerprint: null,
     telemetry: { recordedAt: ago(60 * 26), cpuPercent: 4, load1: 0.1, cpuCount: 2, memoryTotalBytes: 7.7 * GB, memoryUsedBytes: 2.3 * GB, diskTotalBytes: 110 * GB, diskUsedBytes: 41 * GB, temperatureC: 39, uptimeSeconds: 3 * 3_600 } },
-  { id: "e7a90c3b-5d2f-4e18-b6c4-1a8f0d7e9c25", name: "notebook-escola", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:k2Qf-9xTa-71Lm-pB4z", telemetry: null }
+  { id: "e7a90c3b-5d2f-4e18-b6c4-1a8f0d7e9c25", name: "notebook-escola", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "EXEMPLO-DE-IMPRESSAO", telemetry: null }
 ];
 
 const labels: Array<[number, string, string, string, string | null]> = [
@@ -50,7 +50,7 @@ const api: ApiClient = {
   },
   devices: {
     list: async () => devices,
-    createPairing: async () => ({ pairingId: "p1", pairingToken: "AVAL-7KQ2-M9XD-4TFP", expiresAt: new Date(now + 10 * 60_000).toISOString() }),
+    createPairing: async () => ({ pairingId: "p1", pairingToken: "EXEMPLO-CODIGO-AQUI", expiresAt: new Date(now + 10 * 60_000).toISOString() }),
     revokePairing: async () => undefined,
     approve: async () => undefined,
     reject: async () => undefined
