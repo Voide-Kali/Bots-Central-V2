@@ -17,6 +17,9 @@ API_BASE = "https://api.telegram.org"
 MAX_MESSAGE_CHARS = 4000
 
 
+ALLOWED_UPDATES = ["message", "callback_query"]
+
+
 class TelegramUnavailable(Exception):
     pass
 
@@ -48,7 +51,7 @@ class TelegramClient:
         return data.get("result")
 
     def get_updates(self, *, offset: int | None, timeout: int = 25) -> list[dict[str, Any]]:
-        payload: dict[str, Any] = {"timeout": timeout, "allowed_updates": ["message"]}
+        payload: dict[str, Any] = {"timeout": timeout, "allowed_updates": ALLOWED_UPDATES}
         if offset is not None:
             payload["offset"] = offset
         result = self._call("getUpdates", payload)
@@ -91,13 +94,19 @@ class TelegramClient:
         if not isinstance(data, dict) or data.get("ok") is not True:
             raise TelegramUnavailable
 
-    def send_message(self, chat_id: int, text: str) -> None:
+    def send_message(
+        self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None
+    ) -> None:
         # Plain text only (no parse_mode): device names come from agents.
-        self._call(
-            "sendMessage",
-            {
-                "chat_id": chat_id,
-                "text": text[:MAX_MESSAGE_CHARS],
-                "disable_web_page_preview": True,
-            },
-        )
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": text[:MAX_MESSAGE_CHARS],
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        self._call("sendMessage", payload)
+
+    def answer_callback(self, callback_id: str) -> None:
+        """Stops the button's loading spinner; the answer itself is a new message."""
+        self._call("answerCallbackQuery", {"callback_query_id": callback_id[:128]})
