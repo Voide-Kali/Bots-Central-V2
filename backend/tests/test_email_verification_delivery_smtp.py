@@ -247,7 +247,7 @@ def test_code_email_is_portuguese_and_links_only_the_challenge() -> None:
     assert "12345678" not in body.split("verify?")[1].split("\n")[0]  # code never in the URL
 
 
-def test_failed_delivery_logs_only_the_error_type(caplog: "pytest.LogCaptureFixture") -> None:
+def test_failed_delivery_logs_only_the_error_type() -> None:
     import logging
 
     from app.auth.email_verification_delivery import DeliveryFailed, dispatch_delivery
@@ -256,7 +256,24 @@ def test_failed_delivery_logs_only_the_error_type(caplog: "pytest.LogCaptureFixt
         def deliver(self, intent: object) -> None:
             raise RuntimeError("535 bad password for secret@example.test")
 
-    with caplog.at_level(logging.WARNING, logger="bots_central.email"):
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    logger = logging.getLogger("bots_central.email")
+    # Alembic's fileConfig (migration tests) disables loggers created earlier.
+    handler, previous, was_disabled = _Capture(), logger.level, logger.disabled
+    logger.disabled = False
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
         outcome = dispatch_delivery(_Broken(), object())  # type: ignore[arg-type]
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
+        logger.disabled = was_disabled
     assert isinstance(outcome, DeliveryFailed)
-    assert "RuntimeError" in caplog.text and "secret@example.test" not in caplog.text
+    text = " ".join(record.getMessage() for record in records)
+    assert "RuntimeError" in text and "secret@example.test" not in text
