@@ -135,3 +135,55 @@ def test_unlinked_chat_free_text_gets_link_instructions(factory: sessionmaker[Se
     )
     assert reply is not None and reply.text == commands.NOT_LINKED
     assert model.seen == []
+
+
+def test_conversations_are_bounded_per_chat_and_overall() -> None:
+    store = assistant.Conversations(turns=2, max_chats=2)
+    store.remember(1, "q1", "a1")
+    store.remember(1, "q2", "a2")
+    store.remember(1, "q3", "a3")
+    assert store.recent(1) == [("q2", "a2"), ("q3", "a3")]  # only the last 2 turns
+    store.remember(2, "qx", "ax")
+    store.remember(3, "qy", "ay")  # evicts chat 1 (least recently used)
+    assert store.recent(1) == []
+    assert store.recent(3) == [("qy", "ay")]
+    store.forget(2)
+    assert store.recent(2) == []
+
+
+def test_prompt_carries_recent_events_and_prior_turns() -> None:
+    messages = assistant.build_messages(
+        "e o Mac?",
+        [{"nome": "tropa", "presenca": "online"}],
+        datetime.now(UTC),
+        events=["22/10 09:30 - Senha errada no computador (gdm-password, tropa)"],
+        history=[("qual o mais quente?", "O tropa, com 48 graus.")],
+    )
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user"]
+    assert messages[1]["content"] == "qual o mais quente?"
+    assert "48 graus" in messages[2]["content"]
+    assert "eventos_recentes" in messages[3]["content"] and "Senha errada" in messages[3]["content"]
+
+
+@pytest.mark.postgresql
+def test_assistant_reads_recent_events_and_keeps_context(factory: sessionmaker[Session]) -> None:
+    user_id, device_id, private = _active_device(factory)
+    device_online.heartbeat(factory, device_id=device_id, jws=_beat(private, device_id, 1, VALID))
+    _link(factory, user_id)
+    store = assistant.Conversations()
+    model = _Model(reply="O telemetry-agent.")
+    first = commands.handle_update(
+        _msg("qual PC esta mais quente?"), session_factory=factory, admission=_Admission(),
+        model=model, conversations=store,
+    )
+    assert first is not None
+    assert "eventos_recentes" in model.seen[0][-1]["content"]  # events block is present
+    # The second question carries the first exchange as context.
+    commands.handle_update(
+        _msg("e a memoria dele?"), session_factory=factory, admission=_Admission(),
+        model=model, conversations=store,
+    )
+    roles = [m["role"] for m in model.seen[1]]
+    assert roles == ["system", "user", "assistant", "user"]
+    assert model.seen[1][1]["content"] == "qual PC esta mais quente?"
+    assert model.seen[1][2]["content"] == "O telemetry-agent."

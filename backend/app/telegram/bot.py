@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.assistant.assistant import Conversations
 from app.assistant.ollama import OllamaClient
 from app.auth.abuse_control import AbuseControlKey, AbuseController
 from app.auth.email_verification_delivery import SmtpEmailVerificationDeliveryAdapter
@@ -165,6 +166,7 @@ def run() -> None:
         else None
     )
     resources = ResourceAlerter()
+    conversations = Conversations()
     queue = ChatQueue()
     stopping = False
 
@@ -226,6 +228,7 @@ def run() -> None:
                         admission=admission,
                         model=model,
                         actions=actions,
+                        conversations=conversations,
                     )
                 except Exception:
                     logger.exception("telegram update handling failed")
