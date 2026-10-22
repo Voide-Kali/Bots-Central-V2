@@ -37,7 +37,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.audit import events as audit
-from app.auth import device_online
+from app.auth import action_pin, device_online
 from app.auth.abuse_control import AbuseControlKey
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import (
@@ -213,8 +213,14 @@ def request_action(
     device_name: str | None = None,
     device_id: uuid.UUID | None = None,
     argument: str = "",
+    by_pin: bool = False,
 ) -> ApprovalIntent:
-    """Create a pending command for one catalogue action (ADR-016)."""
+    """Create a pending command for one catalogue action (ADR-016).
+
+    ``by_pin``: approval will come from the owner's PIN in Telegram (no e-mail). Only
+    one PIN-approvable request is open at a time, so a PIN can never approve
+    something older than what the owner just asked for.
+    """
     if kind not in ACTIONS or (device_name is None) == (device_id is None):
         raise UnknownAction
     if kind != "send_file" and argument:
@@ -246,10 +252,19 @@ def request_action(
                 UserEmail.verified_at.is_not(None),
             )
         )
-        if email is None:
+        if email is None and not by_pin:
             raise NoEmail
         now = _now(session)
         _expire(session, now)
+        if by_pin:
+            session.execute(
+                update(DeviceCommand)
+                .where(
+                    DeviceCommand.user_id == user_id,
+                    DeviceCommand.status == "pending_approval",
+                )
+                .values(status="expired", approval_mac=None, finished_at=now, chat_id=None)
+            )
         open_count = session.scalar(
             select(func.count())
             .select_from(DeviceCommand)
@@ -269,7 +284,7 @@ def request_action(
                 kind=kind,
                 file_name=argument,
                 status="pending_approval",
-                approval_mac=_mac(key, command_id, code),
+                approval_mac=None if by_pin else _mac(key, command_id, code),
                 chat_id=chat_id,
                 created_at=now,
                 approval_expires_at=now + APPROVAL_TTL,
@@ -289,7 +304,7 @@ def request_action(
         )
         return ApprovalIntent(
             command_id=command_id,
-            recipient=email.email_display,
+            recipient=email.email_display if email is not None else "",
             code=SecretStr(code),
             device_name=device.name,
             file_name=argument,
@@ -387,6 +402,46 @@ def approve(
     if approved is None:
         raise InvalidApproval
     return approved
+
+
+def approve_with_pin(
+    session_factory: SessionFactory, key: AbuseControlKey, *, user_id: uuid.UUID, pin: str
+) -> tuple[DeviceCommand | None, action_pin.PinCheck]:
+    """Approve the owner's open PIN request. Returns (command or None, PIN check)."""
+    with session_factory() as session, session.begin():
+        now = _now(session)
+        _expire(session, now)
+        command = session.scalar(
+            select(DeviceCommand)
+            .where(
+                DeviceCommand.user_id == user_id,
+                DeviceCommand.status == "pending_approval",
+                DeviceCommand.approval_mac.is_(None),
+                DeviceCommand.approval_expires_at > now,
+            )
+            .order_by(DeviceCommand.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        if command is None:
+            return None, action_pin.PinCheck(ok=False)
+        check = action_pin.check_pin(session, key, user_id=user_id, pin=pin)
+        if not check.ok:
+            return None, check
+        command.status = "approved"
+        command.approved_at = now
+        audit.record(
+            session,
+            user_id=user_id,
+            action="action.approved",
+            actor="telegram",
+            target_type="command",
+            target_id=str(command.id),
+            details={"action": command.kind, "file": command.file_name, "by": "pin"},
+        )
+        session.flush()
+        session.expunge(command)
+        return command, check
 
 
 def _expire(session: Session, now: datetime) -> None:
