@@ -29,3 +29,16 @@ func TestParseFailsClosedForMalformedConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestSensorsAreValidated(t *testing.T) {
+	base := `{"state_dir":"/state","backend_base_url":"https://backend.example","heartbeat_interval":"30s","transport_timeout":"10s","backoff_initial":"1s","backoff_max":"1m",`
+	config, err := Parse([]byte(base + `"sensors":["failed_login_photo"]}`))
+	if err != nil || len(config.Sensors) != 1 || config.Sensors[0] != "failed_login_photo" {
+		t.Fatalf("config=%+v err=%v", config, err)
+	}
+	for _, bad := range []string{`"sensors":["keylogger"]}`, `"sensors":["failed_login_photo","failed_login_photo"]}`} {
+		if _, err := Parse([]byte(base + bad)); err == nil {
+			t.Fatalf("expected rejection for %s", bad)
+		}
+	}
+}

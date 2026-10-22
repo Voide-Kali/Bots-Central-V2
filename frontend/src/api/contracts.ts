@@ -128,4 +128,6 @@ export interface AuditEvent {
   readonly kind?: string | null;
   readonly file?: string | null;
   readonly byPin?: boolean;
+  /** ADR-019: the program where the wrong password was typed ("gdm-password"). */
+  readonly source?: string | null;
 }

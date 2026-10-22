@@ -3,6 +3,8 @@
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 # Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
 #   sudo AVAL_ACTIONS=lock_screen,webcam_photo ./install-linux.sh https://...
+# Optional ADR-019 sensor (a photo to your Telegram when someone types a wrong password):
+#   sudo AVAL_SENSORS=failed_login_photo ./install-linux.sh https://...
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
 SERVER="${1:-}"
@@ -19,6 +21,16 @@ for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
     lock_screen|webcam_photo) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
     "") ;;
     *) echo "Unknown action: $action (use lock_screen,webcam_photo)" >&2; exit 1;;
+  esac
+done
+
+SENSORS_JSON=""
+IFS=',' read -ra SENSORS <<< "${AVAL_SENSORS:-}"
+for sensor in "${SENSORS[@]+"${SENSORS[@]}"}"; do
+  case "$sensor" in
+    failed_login_photo) SENSORS_JSON="\"failed_login_photo\"";;
+    "") ;;
+    *) echo "Unknown sensor: $sensor (use failed_login_photo)" >&2; exit 1;;
   esac
 done
 
@@ -42,7 +54,8 @@ cat > /etc/aval-agent/config.json <<JSON
   "backoff_initial": "1s",
   "backoff_max": "1m",
   "shared_dir": "/srv/aval-compartilhado",
-  "allowed_actions": [$ACTIONS_JSON]
+  "allowed_actions": [$ACTIONS_JSON],
+  "sensors": [$SENSORS_JSON]
 }
 JSON
 chmod 0644 /etc/aval-agent/config.json
@@ -69,7 +82,7 @@ fi
 
 echo "==> Actions: ${AVAL_ACTIONS:-none}"
 DROPIN=/etc/systemd/system/aval-agent.service.d
-rm -f "$DROPIN/webcam.conf" /etc/polkit-1/rules.d/49-aval-agent-lock.rules
+rm -f "$DROPIN/webcam.conf" "$DROPIN/journal.conf" /etc/polkit-1/rules.d/49-aval-agent-lock.rules
 case ",${AVAL_ACTIONS:-}," in *,lock_screen,*)
   # Let only the aval-agent user ask logind to lock the sessions (nothing else).
   install -d -m 0755 /etc/polkit-1/rules.d
@@ -82,7 +95,7 @@ polkit.addRule(function (action, subject) {
 RULE
   ;;
 esac
-case ",${AVAL_ACTIONS:-}," in *,webcam_photo,*)
+case ",${AVAL_ACTIONS:-},${AVAL_SENSORS:-}," in *,webcam_photo,*|*,failed_login_photo,*)
   command -v fswebcam >/dev/null || apt-get install -y fswebcam
   install -d -m 0755 "$DROPIN"
   cat > "$DROPIN/webcam.conf" <<'CONF'
@@ -93,6 +106,18 @@ DevicePolicy=closed
 DeviceAllow=char-video4linux rw
 SupplementaryGroups=video
 CONF
+  ;;
+esac
+
+case ",${AVAL_SENSORS:-}," in *,failed_login_photo,*)
+  # The sensor reads the system journal (journalctl, read-only) to see wrong passwords.
+  install -d -m 0755 "$DROPIN"
+  cat > "$DROPIN/journal.conf" <<'CONF'
+# failed_login_photo (ADR-019): read-only access to the system journal.
+[Service]
+SupplementaryGroups=systemd-journal
+CONF
+  echo "==> Sensor: a photo goes to your Telegram when someone types a wrong password here."
   ;;
 esac
 

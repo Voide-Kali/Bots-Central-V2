@@ -18,12 +18,13 @@ def test_every_recorded_action_has_a_label() -> None:
 
 def test_label_names_the_action_device_and_method() -> None:
     row = AuditEvent(
-        occurred_at=datetime(2026, 10, 22, 9, 30, tzinfo=UTC),
+        occurred_at=datetime(2026, 10, 22, 13, 30, tzinfo=UTC),
         actor="telegram",
         action="action.approved",
         outcome="success",
         details={"action": "lock_screen", "by": "pin"},
     )
+    # 13:30 UTC is 09:30 in Campo Grande (UTC-4): texts use the owner's local time.
     assert events.label(row) == "22/10 09:30 · Ação aprovada (bloquear tela, com PIN)"
     row.details = {"name": "tropa", "action": "send_file", "file": "notas.pdf"}
     assert events.label(row).endswith("(enviar arquivo, notas.pdf, tropa)")

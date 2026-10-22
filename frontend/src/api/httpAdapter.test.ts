@@ -240,7 +240,7 @@ describe("HTTP API adapter", () => {
       .mockResolvedValueOnce(json({ events: [{ occurred_at: "not a date", actor: "user", action: "x", outcome: "success" }] }));
     vi.stubGlobal("fetch", fetchMock);
     const api = createHttpApiClient();
-    await expect(api.audit?.list(20)).resolves.toEqual([{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: "PC", kind: "lock_screen", file: null, byPin: true }]);
+    await expect(api.audit?.list(20)).resolves.toEqual([{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: "PC", kind: "lock_screen", file: null, byPin: true, source: null }]);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/audit?limit=20");
     await expect(api.audit?.list()).rejects.toBeInstanceOf(ApiError);
     await expect(api.audit?.list(101)).rejects.toBeInstanceOf(RangeError);
