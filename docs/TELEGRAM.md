@@ -18,9 +18,17 @@ nenhuma porta precisa ser aberta.
 
 1. No painel, card **Telegram** → **Vincular Telegram** → toque em **Abrir no Telegram**
    (ou envie `/vincular CODIGO` ao bot). O código vale 10 minutos e uma única vez.
-2. Comandos: `/status`, `/desvincular`, `/ajuda`.
+2. Comandos: `/status`, `/historico`, `/desvincular`, `/ajuda`.
 3. Alertas automáticos quando um dispositivo ativo fica offline ou volta (verificação a cada 30 s;
    offline = sem heartbeat aceito há 90 s).
+
+## Pedir um arquivo (ADR-015)
+
+1. No computador, coloque o arquivo na pasta compartilhada (`~/Aval-Compartilhado` no Mac,
+   `/srv/aval-compartilhado` no Linux).
+2. No Telegram: `/enviar NOME-DO-PC arquivo.pdf`.
+3. Chega um código no seu e-mail descrevendo a ação. Responda `/aprovar CÓDIGO`.
+4. Em até ~30 s o arquivo chega no chat. Limite: 10 MB.
 
 ## Perguntar para a IA (ADR-013)
 

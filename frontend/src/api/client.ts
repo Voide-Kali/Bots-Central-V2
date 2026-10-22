@@ -34,9 +34,15 @@ export interface TelegramApi {
   unlink(): Promise<void>;
 }
 
+export interface PasswordResetApi {
+  request(email: string): Promise<void>;
+  confirm(input: { readonly email: string; readonly code: string; readonly newPassword: string }): Promise<void>;
+}
+
 export interface ApiClient {
   readonly auth: AuthApi;
   readonly devices: DevicesApi;
   /** Optional so test fakes and older builds keep working without the Telegram card. */
   readonly telegram?: TelegramApi;
+  readonly passwordReset?: PasswordResetApi;
 }

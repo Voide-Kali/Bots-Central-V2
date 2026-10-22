@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/app"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/config"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/enrollment"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
@@ -110,7 +111,18 @@ func main() {
 		}
 		logger.Info("enrollment state persisted", logging.Field{Key: "device_id", Value: result.DeviceID}, logging.Field{Key: "status", Value: result.LifecycleStatus})
 	}
-	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, app.Dependencies{Collector: hostinfo.SystemCollector(), Telemetry: telemetry.NewSystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger})
+	dependencies := app.Dependencies{Collector: hostinfo.SystemCollector(), Telemetry: telemetry.NewSystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger}
+	if fileConfig.SharedDir != "" {
+		executor, err := commands.NewExecutor(fileConfig.SharedDir)
+		if err != nil {
+			logger.Error("agent startup failed", logging.ErrorField(err))
+			os.Exit(2)
+		}
+		dependencies.Commands = httpTransport
+		dependencies.Executor = executor
+		logger.Info("approved file sending is enabled for the shared folder")
+	}
+	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, dependencies)
 	if err != nil {
 		logger.Error("agent startup failed", logging.ErrorField(err))
 		os.Exit(2)
