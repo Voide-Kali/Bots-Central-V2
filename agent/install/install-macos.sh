@@ -3,7 +3,7 @@
 # Usage: ./install-macos.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 # Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
 #   AVAL_ACTIONS=lock_screen,webcam_photo ./install-macos.sh https://...
-#   (webcam_photo needs: brew install imagesnap)
+#   (webcam_photo needs: brew install imagesnap; network_scan needs: brew install nmap)
 set -euo pipefail
 SERVER="${1:-}"
 case "$SERVER" in https://*) ;; *) echo "Usage: $0 https://SERVER.tailXXXX.ts.net" >&2; exit 1;; esac
@@ -15,9 +15,9 @@ ACTIONS_JSON=""
 IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
 for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
   case "$action" in
-    lock_screen|webcam_photo) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    lock_screen|webcam_photo|network_scan) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
     "") ;;
-    *) echo "Unknown action: $action (use lock_screen,webcam_photo)" >&2; exit 1;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan)" >&2; exit 1;;
   esac
 done
 

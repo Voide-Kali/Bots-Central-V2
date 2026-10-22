@@ -111,3 +111,20 @@ def test_agent_errors_become_friendly_notices(setup: Any) -> None:
     assert texts == [
         "Não foi possível bloquear a tela: falta o programa ou o aparelho no computador."
     ]
+
+
+@pytest.mark.postgresql
+def test_network_scan_is_delivered_as_text_and_reported_once(setup: Any) -> None:
+    factory, _, device_id, private = setup
+    command_id, command = _approve_and_poll(setup, "network_scan")
+    assert command["type"] == "network_scan" and command["file_name"] == ""
+    scan = b"2 aparelhos ligados na sua rede local:\n192.168.1.1 - gw\n192.168.1.5"
+    _result(factory, private, device_id, command_id, 102, scan)
+    deliveries, notices = commands.pending_deliveries(factory)
+    assert [d for d in deliveries if d.chat_id == CHAT] == []  # text, not a document
+    mine = [n.text for n in notices if n.chat_id == CHAT]
+    assert len(mine) == 1
+    assert mine[0].startswith("Rede de telemetry-agent verificada.")
+    assert "192.168.1.1 - gw" in mine[0]
+    # Reported once; the scan text is dropped from the database afterwards.
+    assert [n for n in commands.pending_deliveries(factory)[1] if n.chat_id == CHAT] == []

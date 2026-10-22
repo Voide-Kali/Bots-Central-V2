@@ -95,9 +95,11 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 }
 
 type fakeSystem struct {
-	locked int
-	photo  []byte
-	err    error
+	locked  int
+	photo   []byte
+	scanRaw []byte
+	scanned int
+	err     error
 }
 
 func (f *fakeSystem) LockScreen(context.Context) error {
@@ -110,6 +112,14 @@ func (f *fakeSystem) TakePhoto(_ context.Context, path string) error {
 		return f.err
 	}
 	return os.WriteFile(path, f.photo, 0o600)
+}
+
+func (f *fakeSystem) NetworkScan(context.Context) ([]byte, error) {
+	f.scanned++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.scanRaw, nil
 }
 
 func TestDigestMismatchIsRefusedBeforeAnything(t *testing.T) {
