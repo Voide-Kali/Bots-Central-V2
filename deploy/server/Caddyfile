@@ -21,6 +21,10 @@
 	}
 
 	handle {
+		# The panel loads only its own files (no inline scripts or styles, fonts self-hosted).
+		# Kept off the backend routes: /email-verification sends its own nonce-based policy.
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+		header Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		root * /srv
 		try_files {path} /index.html
 		file_server

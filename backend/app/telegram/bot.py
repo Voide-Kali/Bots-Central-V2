@@ -40,6 +40,15 @@ def _send(client: TelegramClient, replies: list[Reply]) -> None:
                 client.delete_message(reply.chat_id, reply.delete_message_id)
             except TelegramUnavailable:
                 logger.warning("telegram delete failed")
+        if reply.edit_message_id is not None:
+            try:
+                client.edit_message(
+                    reply.chat_id, reply.edit_message_id, reply.text, reply.keyboard
+                )
+            except TelegramUnavailable:
+                # Usually "message is not modified" (Atualizar with nothing new).
+                logger.info("telegram edit skipped")
+            continue
         try:
             client.send_message(reply.chat_id, reply.text, reply.keyboard)
         except TelegramUnavailable:
