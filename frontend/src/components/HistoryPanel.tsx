@@ -59,16 +59,22 @@ export function HistoryPanel({ api, onUnauthenticated }: { readonly api: AuditAp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
-  return <section aria-labelledby="history-heading" className="panel">
-    <div className="panel__head"><div><h1 id="history-heading">Histórico</h1><p>Tudo o que aconteceu na sua conta. Este registro não pode ser apagado nem alterado.</p></div><button className="button" disabled={state.kind === "loading"} onClick={() => void load()} type="button">Atualizar</button></div>
-    {state.kind === "loading" ? <p className="panel__body">Carregando…</p> : null}
-    {state.kind === "unavailable" ? <p className="panel__body" role="alert">Não foi possível carregar o histórico agora.</p> : null}
-    {state.kind === "ready" && state.events.length === 0 ? <p className="panel__body">Nenhuma ação registrada ainda.</p> : null}
-    {state.kind === "ready" && state.events.length > 0 ? <ol className="history-list">{state.events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
-      <time dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
-      <strong>{ACTION_LABELS[event.action] ?? event.action}</strong>
-      {event.name !== null ? <span>{event.name}</span> : null}
-      <small>por {ACTORS[event.actor] ?? event.actor}{event.outcome === "success" ? "" : " · falhou"}</small>
-    </li>)}</ol> : null}
-  </section>;
+  return <>
+    <section aria-labelledby="history-heading" className="title-row">
+      <div><h1 id="history-heading">Histórico</h1><p className="title-row__sub">Tudo o que aconteceu na sua conta. Este registro não pode ser apagado nem alterado.</p></div>
+      <div className="title-row__actions"><button className="button" disabled={state.kind === "loading"} onClick={() => void load()} type="button">Atualizar</button></div>
+    </section>
+    <section aria-label="Eventos" className="panel">
+      <div className="panel__head"><h2>Últimos eventos</h2><p className="panel__meta">{state.kind === "ready" ? `${state.events.length} ${state.events.length === 1 ? "evento" : "eventos"}` : "\u2014"}</p></div>
+      {state.kind === "loading" ? <p className="panel__body">Carregando…</p> : null}
+      {state.kind === "unavailable" ? <p className="panel__body" role="alert">Não foi possível carregar o histórico agora.</p> : null}
+      {state.kind === "ready" && state.events.length === 0 ? <p className="panel__body">Nenhuma ação registrada ainda.</p> : null}
+      {state.kind === "ready" && state.events.length > 0 ? <ol className="history-list">{state.events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
+        <time className="num" dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
+        <strong>{ACTION_LABELS[event.action] ?? event.action}</strong>
+        <span className="history-item__name">{event.name ?? "\u2014"}</span>
+        <small>por {ACTORS[event.actor] ?? event.actor}{event.outcome === "success" ? "" : " · falhou"}</small>
+      </li>)}</ol> : null}
+    </section>
+  </>;
 }
