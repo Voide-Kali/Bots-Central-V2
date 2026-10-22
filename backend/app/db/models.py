@@ -178,8 +178,7 @@ class UserEmail(Base):
 
     def __repr__(self) -> str:
         return (
-            f"UserEmail(id={self.id!s}, user_id={self.user_id!s}, "
-            f"is_primary={self.is_primary!r})"
+            f"UserEmail(id={self.id!s}, user_id={self.user_id!s}, is_primary={self.is_primary!r})"
         )
 
 
@@ -598,6 +597,7 @@ class AuditEvent(Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
 
+
 class PasswordResetCode(Base):
     """One-time 8-digit reset code; only its keyed HMAC is stored (ADR-014)."""
 
@@ -687,3 +687,27 @@ class CommandPayload(Base):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ActionPin(Base):
+    """Personal PIN that approves catalogue actions from Telegram (ADR-016 addendum).
+
+    Only an HMAC with the server key is stored, so a database leak alone does not
+    allow brute-forcing the 10^6 possible PINs offline.
+    """
+
+    __tablename__ = "action_pins"
+    __table_args__ = (
+        CheckConstraint("octet_length(pin_mac) = 32", name="ck_action_pins_mac_length"),
+        CheckConstraint("failed_attempts >= 0", name="ck_action_pins_attempts"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    pin_mac: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
