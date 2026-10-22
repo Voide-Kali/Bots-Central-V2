@@ -240,6 +240,21 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .device__details { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px var(--card-pad) 20px; background: var(--raised); border-top: 1px solid var(--rule); }
 .facts, .telemetry-panel dl { display: grid; gap: 0; }
 
+/* ---------- Actions from the panel (ADR-021) ---------- */
+.device__details > .action-panel { grid-column: 1 / -1; }
+.action-panel { display: grid; gap: 12px; padding: 12px var(--card-pad); border: 1px solid var(--border); border-radius: var(--radius-card); background: linear-gradient(180deg, var(--surface), var(--raised)); box-shadow: var(--shadow-1); }
+.action-panel--hint { color: var(--muted); font-size: var(--fs-small); }
+.action-panel__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.action-panel__title { font-weight: 600; }
+.action-panel__note { color: var(--faint); font-size: var(--fs-small); }
+.action-panel__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.action-panel__pin input { width: 120px; min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-body); letter-spacing: .25em; box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
+.action-panel__buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-panel__result { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-small); }
+.action-panel__result--error { border-color: color-mix(in srgb, var(--negative) 30%, var(--border)); color: var(--negative); }
+.action-panel__scan { margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-small); color: var(--muted); }
+.action-panel__photo { display: block; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius-control); }
+
 /* ---------- Live chart (ADR-018) ---------- */
 .device__details > .charts { grid-column: 1 / -1; }
 .charts { display: grid; gap: 12px; }

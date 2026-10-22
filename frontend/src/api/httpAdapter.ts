@@ -1,5 +1,6 @@
 import type { ActionPinApi, AdminApi, ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
 import type {
+  ActionKind,
   AdminEvent,
   AdminFailure,
   AdminOverview,
@@ -14,8 +15,10 @@ import type {
   LoginRequest,
   RegisterAcceptedResponse,
   RegisterRequest,
+  StartActionResult,
   TelegramLinkCode,
-  TelegramStatus
+  TelegramStatus,
+  WebActionStatus
 } from "./contracts";
 import { ApiError } from "./errors";
 import { SameOriginHttpClient, readKnownJson } from "./http";
@@ -235,6 +238,39 @@ class HttpDevicesApi implements DevicesApi {
 
   public async watch(id: string): Promise<void> {
     await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/watch`, {}, { acceptedStatuses: [204] });
+  }
+
+  public async startAction(id: string, kind: ActionKind, pin: string): Promise<StartActionResult> {
+    const response = await this.http.postJson(
+      `${paths.devices}/${encodeURIComponent(id)}/actions`,
+      { kind, pin },
+      { acceptedStatuses: [202, 404, 409, 422, 423] }
+    );
+    if (response.status === 202) {
+      const value = await readKnownJson<unknown>(response);
+      const commandId = isRecord(value) ? value.command_id : undefined;
+      if (typeof commandId !== "string") throw new ApiError("The API returned an invalid response.", response.status);
+      return { ok: true, commandId };
+    }
+    const reason = response.status === 423 ? "locked" : response.status === 409 ? "busy" : response.status === 404 ? "not_found" : response.status === 422 ? "wrong_pin" : "failed";
+    return { ok: false, reason };
+  }
+
+  public async actionStatus(id: string, commandId: string): Promise<WebActionStatus> {
+    const response = await this.http.get(`${paths.devices}/${encodeURIComponent(id)}/actions/${encodeURIComponent(commandId)}`, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || typeof value.status !== "string") throw new ApiError("The API returned an invalid response.", response.status);
+    return {
+      status: value.status,
+      message: typeof value.message === "string" ? value.message : null,
+      text: typeof value.text === "string" ? value.text : null,
+      hasPhoto: value.has_photo === true
+    };
+  }
+
+  public async actionPhoto(id: string, commandId: string): Promise<Blob> {
+    const response = await this.http.get(`${paths.devices}/${encodeURIComponent(id)}/actions/${encodeURIComponent(commandId)}/photo`, { acceptedStatuses: [200] });
+    return response.blob();
   }
 }
 
