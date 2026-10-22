@@ -495,6 +495,37 @@ func (c *HTTPClient) SubmitResult(ctx context.Context, deviceID string, command 
 	return nil
 }
 
+// LiveAudience separates live samples (ADR-018) from heartbeats: a heartbeat token is
+// never accepted on the live route and vice versa.
+const LiveAudience = "bots-central:live:v1"
+
+// SendLive delivers one signed telemetry sample and returns whether the owner is
+// still watching. It shares the heartbeat sequence, so it cannot be replayed.
+func (c *HTTPClient) SendLive(ctx context.Context, deviceID string, sample telemetry.Sample) (bool, error) {
+	if !isCanonicalUUID(deviceID) {
+		return false, errors.New("transport: invalid device ID")
+	}
+	token, err := c.signNext(map[string]any{"aud": LiveAudience, "sub": deviceID, "tel": sample})
+	if err != nil {
+		return false, err
+	}
+	response, err := c.postJSON(ctx, "/api/v1/devices/"+deviceID+"/live", map[string]any{"jws": token})
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return false, responseError(response, c.now())
+	}
+	var result struct {
+		Live bool `json:"live"`
+	}
+	if err := decodeJSON(response.Body, &result); err != nil {
+		return false, errors.New("transport: invalid live response")
+	}
+	return result.Live, nil
+}
+
 func (c *HTTPClient) signNext(claims map[string]any) (string, error) {
 	sequence, err := c.sequence.Next()
 	if err != nil {

@@ -8,6 +8,7 @@ import type {
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
   Device,
+  DeviceTelemetry,
   LoginRequest,
   PairingResponse,
   RegisterAcceptedResponse,
@@ -33,6 +34,10 @@ export interface DevicesApi {
   revokePairing(pairingId: string): Promise<void>;
   approve(id: string, fingerprint: string): Promise<void>;
   reject(id: string, fingerprint: string): Promise<void>;
+  /** Samples of the last `minutes` (oldest first). Optional so older fakes keep compiling. */
+  history?(id: string, minutes: number): Promise<readonly DeviceTelemetry[]>;
+  /** ADR-018: keep this computer reporting every second for the next 60 s. */
+  watch?(id: string): Promise<void>;
 }
 
 export interface TelegramApi {

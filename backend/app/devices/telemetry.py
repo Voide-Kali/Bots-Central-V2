@@ -19,7 +19,7 @@ from app.db.models import Device, DeviceTelemetrySample
 TELEMETRY_VERSION = 1
 RETENTION = timedelta(days=7)
 MAX_HISTORY_MINUTES = 24 * 60
-MAX_HISTORY_ROWS = 3000
+MAX_HISTORY_ROWS = 4000
 _MAX_BIGINT = (1 << 63) - 1
 _ALLOWED_KEYS = frozenset(
     {

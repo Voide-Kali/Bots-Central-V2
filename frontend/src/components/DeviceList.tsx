@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactElement } from "react";
+import type { KeyboardEvent, ReactElement, ReactNode } from "react";
 import type { Device, DeviceLifecycleStatus, DeviceTelemetry } from "../api/contracts";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { TelemetryPanel } from "./TelemetryPanel";
@@ -7,6 +7,8 @@ interface DeviceListProps {
   readonly devices: readonly Device[];
   readonly selectedId: string | undefined;
   onSelect(id: string): void;
+  /** Extra content at the top of an open computer (the live chart). */
+  renderChart?(device: Device): ReactNode;
 }
 
 function selectWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, select: () => void): void {
@@ -66,7 +68,7 @@ function Metric({ label, percent }: { readonly label: string; readonly percent: 
   </span>;
 }
 
-export function DeviceList({ devices, selectedId, onSelect }: DeviceListProps): ReactElement {
+export function DeviceList({ devices, selectedId, onSelect, renderChart }: DeviceListProps): ReactElement {
   return <div className="device-table">
     <div aria-hidden="true" className="device-table__head">
       <span>Computador</span><span>Situação</span><span>Conexão</span><span className="num">CPU</span><span className="num">Memória</span><span className="num">Disco</span><span className="num">Temp.</span><span className="num">Visto</span>
@@ -87,6 +89,7 @@ export function DeviceList({ devices, selectedId, onSelect }: DeviceListProps): 
           <span className="device__seen num">{recency(device.lastSeenAt)}</span>
         </button>
         {selected ? <div aria-label={`Detalhes de ${device.name}`} className="device__details">
+          {renderChart ? renderChart(device) : null}
           {device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}
           <dl className="facts">
             <div><dt>Situação</dt><dd>{lifecycleLabel(device.lifecycleStatus)}</dd></div>

@@ -6,6 +6,7 @@ import type { Device } from "../api/contracts";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
+import { DeviceChart } from "../components/DeviceChart";
 import { DeviceList } from "../components/DeviceList";
 import { AdminPanel } from "../components/AdminPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
@@ -233,14 +234,14 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
         {requiresLogin ? <section className="panel panel--state"><h2>Acesso necessário</h2><p>Entre para ver seus computadores.</p><button className="button button--primary" onClick={() => navigate("/login")} type="button">Ir para o login</button></section> : null}
         {unavailable ? <section className="panel panel--state panel--warning"><h2>Não foi possível atualizar seus computadores.</h2><p>O servidor não respondeu. Confira se o Tailscale está ligado e tente de novo.</p><button className="button" onClick={session.kind === "unavailable" ? () => void retryBootstrap() : refresh} type="button">Tentar novamente</button></section> : null}
         {deviceState.kind === "ready" ? <section aria-labelledby="devices-heading" className="panel">
-          <div className="panel__head"><h2 id="devices-heading">Saúde agora</h2><p className="panel__meta">{devices.length === 1 ? "1 computador" : `${devices.length} computadores`} · medições a cada minuto</p></div>
+          <div className="panel__head"><h2 id="devices-heading">Saúde agora</h2><p className="panel__meta">{devices.length === 1 ? "1 computador" : `${devices.length} computadores`} · medições a cada 30 s, ao vivo ao abrir</p></div>
           {devices.length > 0 ? <div className="list-controls">
             <label className="list-controls__search"><span className="sr-only">Buscar computadores</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou sistema" type="search" value={search} /></label>
             <div aria-label="Filtrar" className="segmented" role="group">{(["all", "online", "offline"] as const).map((nextFilter) => <button aria-pressed={filter === nextFilter} key={nextFilter} onClick={() => setFilter(nextFilter)} type="button">{nextFilter === "all" ? "Todos" : nextFilter === "online" ? "Online" : "Offline"}</button>)}</div>
           </div> : null}
           {filteredDevices.length === 0 ? <div className="empty">
             {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
-          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} selectedId={selectedId} />}
+          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} selectedId={selectedId} />}
         </section> : null}
       </div>
       {authenticated && (api.telegram || api.actionPin) ? <aside aria-labelledby="aval-heading" className="workspace__aside">
