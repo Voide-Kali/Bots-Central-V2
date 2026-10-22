@@ -51,23 +51,23 @@ export function TelegramCard({ api, onUnauthenticated }: { readonly api: Telegra
     await load();
   });
 
-  return <section aria-label="Telegram" className="pairing-notice telegram-card">
+  return <section aria-label="Telegram" className="card">
     <h2>Telegram</h2>
     {state.kind === "loading" ? <p>Carregando…</p> : null}
-    {state.kind === "unavailable" ? <><p>Não foi possível consultar o Telegram agora.</p><button onClick={() => void load()} type="button">Tentar novamente</button></> : null}
+    {state.kind === "unavailable" ? <><p>Não foi possível consultar o Telegram agora.</p><button className="button" onClick={() => void load()} type="button">Tentar novamente</button></> : null}
     {state.kind === "linked" ? <>
-      <p>✅ Telegram vinculado. Alertas e o comando /status já funcionam.</p>
-      <button disabled={busy} onClick={() => void unlink()} type="button">Desvincular</button>
+      <p className="card__ok">Vinculado. Você recebe alertas e pode conversar com o bot.</p>
+      <button className="button" disabled={busy} onClick={() => void unlink()} type="button">Desvincular</button>
     </> : null}
     {state.kind === "unlinked" ? <>
       {state.code ? <>
         <p>Envie este código ao bot{state.botUsername ? <> <strong>@{state.botUsername}</strong></> : null} antes de <time dateTime={state.code.expiresAt}>{new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date(state.code.expiresAt))}</time>:</p>
-        <code>/vincular {state.code.code}</code>
-        {state.botUsername ? <p><a href={`https://t.me/${state.botUsername}?start=${state.code.code}`} rel="noreferrer" target="_blank">Abrir no Telegram</a></p> : null}
-        <button disabled={busy} onClick={() => void load()} type="button">Já enviei</button>
+        <code className="callout__code">/vincular {state.code.code}</code>
+        {state.botUsername ? <p><a href={`https://t.me/${state.botUsername}?start=${state.code.code}`} className="button button--primary" rel="noreferrer" target="_blank">Abrir no Telegram</a></p> : null}
+        <button className="button" disabled={busy} onClick={() => void load()} type="button">Já enviei</button>
       </> : <>
-        <p>Receba alertas e consulte seus dispositivos pelo Telegram.</p>
-        <button disabled={busy} onClick={() => void generate()} type="button">Vincular Telegram</button>
+        <p>Receba alertas, veja seus computadores e aprove ações pelo Telegram.</p>
+        <button className="button button--primary" disabled={busy} onClick={() => void generate()} type="button">Vincular Telegram</button>
       </>}
     </> : null}
   </section>;
