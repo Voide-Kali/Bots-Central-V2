@@ -25,7 +25,7 @@ import (
 const DigestPrefix = "aval-action-v1"
 
 // Actions that need explicit opt-in through allowed_actions.
-var KnownActions = map[string]bool{"lock_screen": true, "webcam_photo": true}
+var KnownActions = map[string]bool{"lock_screen": true, "webcam_photo": true, "network_scan": true}
 
 // MaxFileBytes mirrors the backend limit.
 const MaxFileBytes = 10 * 1024 * 1024
@@ -115,6 +115,14 @@ func (e *Executor) Execute(command Command) Result {
 			return e.lockScreen()
 		}
 		return e.webcamPhoto()
+	case "network_scan":
+		if command.FileName != "" {
+			return Result{Error: "digest"}
+		}
+		if !e.allowed[command.Type] {
+			return Result{Error: "disabled"}
+		}
+		return e.networkScan()
 	default:
 		return Result{Error: "disabled"}
 	}

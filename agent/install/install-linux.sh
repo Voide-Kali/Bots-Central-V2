@@ -2,7 +2,7 @@
 # Install the Aval agent as a hardened systemd service (Kali/Debian/Ubuntu).
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 # Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
-#   sudo AVAL_ACTIONS=lock_screen,webcam_photo ./install-linux.sh https://...
+#   sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan ./install-linux.sh https://...
 # Optional ADR-019 sensor (a photo to your Telegram when someone types a wrong password):
 #   sudo AVAL_SENSORS=failed_login_photo ./install-linux.sh https://...
 set -euo pipefail
@@ -18,9 +18,9 @@ ACTIONS_JSON=""
 IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
 for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
   case "$action" in
-    lock_screen|webcam_photo) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    lock_screen|webcam_photo|network_scan) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
     "") ;;
-    *) echo "Unknown action: $action (use lock_screen,webcam_photo)" >&2; exit 1;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan)" >&2; exit 1;;
   esac
 done
 
@@ -82,7 +82,8 @@ fi
 
 echo "==> Actions: ${AVAL_ACTIONS:-none}"
 DROPIN=/etc/systemd/system/aval-agent.service.d
-rm -f "$DROPIN/webcam.conf" "$DROPIN/journal.conf" /etc/polkit-1/rules.d/49-aval-agent-lock.rules
+rm -f "$DROPIN/webcam.conf" "$DROPIN/journal.conf" "$DROPIN/scan.conf" \
+  /etc/polkit-1/rules.d/49-aval-agent-lock.rules
 case ",${AVAL_ACTIONS:-}," in *,lock_screen,*)
   # Let only the aval-agent user ask logind to lock the sessions (nothing else).
   install -d -m 0755 /etc/polkit-1/rules.d
@@ -105,6 +106,19 @@ PrivateDevices=no
 DevicePolicy=closed
 DeviceAllow=char-video4linux rw
 SupplementaryGroups=video
+CONF
+  ;;
+esac
+
+case ",${AVAL_ACTIONS:-}," in *,network_scan,*)
+  # network_scan (ADR-020): host discovery on the own local network with nmap -sn.
+  command -v nmap >/dev/null || apt-get install -y nmap
+  install -d -m 0755 "$DROPIN"
+  cat > "$DROPIN/scan.conf" <<'CONF'
+# network_scan (ADR-020): raw sockets let nmap -sn send ICMP/ARP probes.
+[Service]
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
 CONF
   ;;
 esac

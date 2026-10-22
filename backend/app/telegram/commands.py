@@ -35,7 +35,7 @@ HELP = (
     "- bloqueia o Mac / tira uma foto do servidor\n"
     "- manda o relatorio.pdf do Mac\n\n"
     "Toda acao pede o seu PIN (crie no painel do Aval). Sem PIN, o codigo vai por e-mail.\n\n"
-    "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC "
+    "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC /scan PC "
     "/enviar PC arquivo /desvincular /ajuda"
 )
 NOT_LINKED = (
@@ -99,7 +99,7 @@ MENU_ALIASES = {
     MENU_HELP: "/ajuda",
     MENU_FILE: "/arquivo",
 }
-ACTION_BUTTONS = {"lock": "lock_screen", "photo": "webcam_photo"}
+ACTION_BUTTONS = {"lock": "lock_screen", "photo": "webcam_photo", "scan": "network_scan"}
 CALLBACKS = {
     "menu:home": "/painel",
     "menu:status": "/computadores",
@@ -267,6 +267,7 @@ def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> R
                 _button("Foto", f"act:photo:{device.id}"),
             ]
         )
+        rows.append([_button("Rede", f"act:scan:{device.id}")])
     rows.append(
         [
             _button("Atualizar", f"dev:{device.id}"),
@@ -379,7 +380,7 @@ def _dispatch(
     if not body.startswith("/") and action_pin.looks_like_pin(body):
         return _pin_reply(chat_id, user_id, body, session_factory, actions)
     intent = None if body.startswith("/") else intents.parse(body, device_names)
-    action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/_acao"}
+    action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/scan", "/_acao"}
     if intent is None and not body.startswith("/"):
         return _ask(chat_id, user_id, body, session_factory, admission, model)
     if intent is not None or name in action_names:
@@ -401,10 +402,12 @@ def _dispatch(
             except ValueError:
                 return Reply(chat_id, "Computador não encontrado.")
             return _start_action(chat_id, user_id, kind, session_factory, actions, device_id=target)
-        if name in {"/bloquear", "/foto"}:
+        if name in {"/bloquear", "/foto", "/scan"}:
             if not argument:
                 return Reply(chat_id, f"Use: {name} NOME-DO-PC")
-            kind = "lock_screen" if name == "/bloquear" else "webcam_photo"
+            kind = {"/bloquear": "lock_screen", "/foto": "webcam_photo", "/scan": "network_scan"}[
+                name
+            ]
             return _start_action(
                 chat_id, user_id, kind, session_factory, actions, device_name=argument
             )

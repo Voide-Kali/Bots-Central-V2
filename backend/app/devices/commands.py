@@ -82,8 +82,9 @@ class ActionSpec:
 
     verb: str  # "bloquear a tela"
     done: str  # message after success, {name} = computer
-    returns_file: bool
+    returns_file: bool  # result comes back as a file (delivered as a document)
     risk: str  # sentence shown in the approval e-mail
+    returns_text: bool = False  # result comes back as text (delivered as a message)
 
 
 ACTIONS: dict[str, ActionSpec] = {
@@ -105,7 +106,24 @@ ACTIONS: dict[str, ActionSpec] = {
         returns_file=True,
         risk="A câmera do computador tira UMA foto, que vem só para o seu Telegram.",
     ),
+    "network_scan": ActionSpec(
+        verb="ver quem está na rede",
+        done="Rede de {name} verificada.",
+        returns_file=False,
+        returns_text=True,
+        risk=(
+            "O computador lista os aparelhos ligados na sua rede local (nmap -sn). "
+            "Nada é alterado no computador nem na rede."
+        ),
+    ),
 }
+
+MAX_TEXT_RESULT_CHARS = 3500  # scan output shown in one Telegram message
+
+
+def _returns_payload(kind: str) -> bool:
+    spec = ACTIONS.get(kind)
+    return spec is not None and (spec.returns_file or spec.returns_text)
 
 
 def action_digest(kind: str, device_id: uuid.UUID, argument: str) -> str:
@@ -631,7 +649,7 @@ def submit_result(
                 details={"action": command.kind, "error": command.error_code},
             )
             return
-        if command.kind in ACTIONS and not ACTIONS[command.kind].returns_file:
+        if command.kind in ACTIONS and not _returns_payload(command.kind):
             if status != "ok" or claims.get("size", 0) != 0 or content_b64:
                 raise device_online.InvalidProof
             command.status = "completed"
@@ -708,6 +726,43 @@ class Notice:
     text: str
 
 
+def _collect_text_results(session: Session, now: datetime, notices: list[Notice]) -> None:
+    """Actions whose result is text (e.g. network_scan): deliver as a message, then drop it."""
+    text_kinds = [kind for kind, spec in ACTIONS.items() if spec.returns_text]
+    rows = session.execute(
+        select(DeviceCommand, CommandPayload, Device.name)
+        .join(CommandPayload, CommandPayload.command_id == DeviceCommand.id)
+        .join(Device, Device.id == DeviceCommand.device_id)
+        .join(
+            TelegramLink,
+            (TelegramLink.chat_id == DeviceCommand.chat_id)
+            & (TelegramLink.user_id == DeviceCommand.user_id),
+        )
+        .where(
+            DeviceCommand.status == "completed",
+            DeviceCommand.chat_id.is_not(None),
+            DeviceCommand.kind.in_(text_kinds),
+        )
+        .with_for_update(of=DeviceCommand, skip_locked=True)
+    ).all()
+    for command, payload, device_name in rows:
+        assert command.chat_id is not None
+        header = ACTIONS[command.kind].done.format(name=device_name)
+        body = payload.content.decode("utf-8", "replace")[:MAX_TEXT_RESULT_CHARS].strip()
+        notices.append(Notice(command.chat_id, f"{header}\n\n{body}" if body else header))
+        command.status = "delivered"
+        session.execute(delete(CommandPayload).where(CommandPayload.command_id == command.id))
+        audit.record(
+            session,
+            user_id=command.user_id,
+            action="action.delivered",
+            actor="system",
+            target_type="command",
+            target_id=str(command.id),
+            details={"action": command.kind},
+        )
+
+
 def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery], list[Notice]]:
     """Completed files to send, plus failure/expiry notices (each reported once)."""
     deliveries: list[Delivery] = []
@@ -724,7 +779,11 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
                 (TelegramLink.chat_id == DeviceCommand.chat_id)
                 & (TelegramLink.user_id == DeviceCommand.user_id),
             )
-            .where(DeviceCommand.status == "completed", DeviceCommand.chat_id.is_not(None))
+            .where(
+                DeviceCommand.status == "completed",
+                DeviceCommand.chat_id.is_not(None),
+                DeviceCommand.kind.in_([k for k, s in ACTIONS.items() if s.returns_file]),
+            )
             .order_by(DeviceCommand.finished_at)
             .limit(5)
             .with_for_update(of=DeviceCommand, skip_locked=True)
@@ -738,7 +797,12 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
             deliveries.append(
                 Delivery(command.id, command.chat_id, name, device_name, payload.content)
             )
-        status_only = [kind for kind, spec in ACTIONS.items() if not spec.returns_file]
+        _collect_text_results(session, now, notices)
+        status_only = [
+            kind
+            for kind, spec in ACTIONS.items()
+            if not spec.returns_file and not spec.returns_text
+        ]
         done = session.execute(
             select(DeviceCommand, Device.name)
             .join(Device, Device.id == DeviceCommand.device_id)
@@ -810,6 +874,9 @@ def _closed_text(command: DeviceCommand) -> str:
         reasons["failed"] = "a câmera não respondeu ou está em uso"
     if command.kind == "lock_screen":
         reasons["failed"] = "não há uma sessão gráfica para bloquear ou o sistema recusou"
+    if command.kind == "network_scan":
+        reasons["unsupported"] = "falta o programa nmap no computador"
+        reasons["failed"] = "a varredura não terminou ou não há rede local"
     if command.kind == "send_file":
         reasons["too_large"] = "o arquivo passa de 10 MB"
         reasons["disabled"] = "o envio de arquivos está desligado nesse computador"
