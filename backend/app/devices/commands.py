@@ -582,6 +582,7 @@ def next_command(
             actor="device",
             target_type="command",
             target_id=str(command.id),
+            details={"action": command.kind},
         )
         return {
             "id": str(command.id),
@@ -626,7 +627,7 @@ def submit_result(
                 target_type="command",
                 target_id=str(command.id),
                 outcome="failure",
-                details={"error": command.error_code},
+                details={"action": command.kind, "error": command.error_code},
             )
             return
         if command.kind in ACTIONS and not ACTIONS[command.kind].returns_file:

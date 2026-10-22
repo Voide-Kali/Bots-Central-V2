@@ -60,6 +60,7 @@ class Reply:
     keyboard: dict[str, Any] | None = None
     callback_id: str | None = None
     delete_message_id: int | None = None  # e.g. the owner's PIN message
+    edit_message_id: int | None = None  # navigation buttons update their own message
 
 
 MENU_PANEL = "Computadores"
@@ -126,6 +127,8 @@ def _private_message(
         if body is None:
             return None
         callback_id = raw_id
+        raw_message_id = message.get("message_id")
+        message_id = raw_message_id if isinstance(raw_message_id, int) else None
     else:
         message = update.get("message")
         if not isinstance(message, dict):
@@ -266,7 +269,11 @@ def handle_update(
     chat_id, telegram_user_id, body, callback_id, message_id = parsed
     reply = _dispatch(chat_id, telegram_user_id, body, session_factory, admission, model, actions)
     if callback_id is not None:
-        return Reply(reply.chat_id, reply.text, reply.keyboard, callback_id)
+        # Panel, card and history buttons redraw the same message instead of piling up
+        # new ones; action buttons still answer with a new message.
+        navigation = body.startswith(("/status", "/pc ", "/historico", "/ajuda"))
+        edit = message_id if navigation and reply.keyboard is not None else None
+        return Reply(reply.chat_id, reply.text, reply.keyboard, callback_id, edit_message_id=edit)
     if reply.delete_message_id == -1:  # placeholder: delete the message just received
         return Reply(reply.chat_id, reply.text, reply.keyboard, None, message_id)
     return reply

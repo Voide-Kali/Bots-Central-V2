@@ -107,10 +107,24 @@ class TelegramClient:
             payload["reply_markup"] = reply_markup
         self._call("sendMessage", payload)
 
+    def edit_message(
+        self, chat_id: int, message_id: int, text: str, reply_markup: dict[str, Any] | None
+    ) -> None:
+        """Redraw a message the bot sent (the panel and device cards)."""
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text[:MAX_MESSAGE_CHARS],
+            "disable_web_page_preview": True,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        self._call("editMessageText", payload)
+
     def delete_message(self, chat_id: int, message_id: int) -> None:
         """Remove a message from the private chat (used for the owner's PIN)."""
         self._call("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
     def answer_callback(self, callback_id: str) -> None:
-        """Stops the button's loading spinner; the answer itself is a new message."""
+        """Stops the button's loading spinner."""
         self._call("answerCallbackQuery", {"callback_query_id": callback_id[:128]})
