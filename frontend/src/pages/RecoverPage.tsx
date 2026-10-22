@@ -48,25 +48,25 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
 
   if (!reset) return <PageStatus kind="error">A recuperação de senha não está disponível.</PageStatus>;
 
-  return <section className="auth-layout" aria-labelledby="recover-title">
-    <div className="page-intro"><p className="eyebrow">Recuperar acesso</p><h1 id="recover-title">Redefinir senha</h1>
-      <p>Enviamos um código de 8 dígitos para o e-mail da conta. Ele vale 15 minutos. Ao trocar a senha, todas as sessões abertas são encerradas.</p></div>
-    {done ? <div className="panel form-panel"><PageStatus kind="notice">Senha alterada. Entre de novo com a senha nova.</PageStatus>
-      <button className="primary-button" onClick={() => navigate("/login")} type="button">Ir para o login</button></div>
-    : email === undefined ? <form className="panel form-panel" onSubmit={requestCode} noValidate>
+  return <section className="auth-card" aria-labelledby="recover-title">
+    <h1 id="recover-title">Trocar a senha</h1>
+    <p className="auth-card__lead">Enviamos um código de 8 números para o e-mail da conta. Ele vale 15 minutos. Ao trocar a senha, você sai de todos os aparelhos.</p>
+    {done ? <div className="form"><PageStatus kind="notice">Senha alterada. Entre de novo com a senha nova.</PageStatus>
+      <button className="button button--primary" onClick={() => navigate("/login")} type="button">Ir para o login</button></div>
+    : email === undefined ? <form className="form" onSubmit={requestCode} noValidate>
       <FormField id="recover-email" name="email" type="email" label="E-mail da conta" autoComplete="email" inputMode="email" maxLength={320} required />
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}
-      <button className="primary-button" disabled={pending} type="submit">{pending ? "Enviando…" : "Enviar código"}</button>
-      <p className="form-footnote">Lembrou? <a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></p>
+      <button className="button button--primary" disabled={pending} type="submit">{pending ? "Enviando…" : "Enviar código"}</button>
+      <p className="auth-card__links">Lembrou? <a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></p>
     </form>
-    : <form className="panel form-panel" onSubmit={confirm} noValidate>
+    : <form className="form" onSubmit={confirm} noValidate>
       <PageStatus kind="notice">Se a conta existir, um código foi enviado para {email}.</PageStatus>
       <FormField id="recover-code" name="code" label="Código de 8 dígitos" autoComplete="one-time-code" inputMode="numeric" maxLength={9} required />
       <FormField id="recover-password" name="password" type="password" label="Senha nova" autoComplete="new-password" minLength={15} maxLength={1024} hint="Use pelo menos 15 caracteres." required />
       <FormField id="recover-password-confirmation" name="password-confirmation" type="password" label="Confirmar senha nova" autoComplete="new-password" minLength={15} maxLength={1024} required />
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}
-      <button className="primary-button" disabled={pending} type="submit">{pending ? "Alterando…" : "Alterar senha"}</button>
-      <p className="form-footnote"><button className="text-button" onClick={() => { setEmail(undefined); setError(undefined); }} type="button">Pedir outro código</button></p>
+      <button className="button button--primary" disabled={pending} type="submit">{pending ? "Alterando…" : "Alterar senha"}</button>
+      <p className="auth-card__links"><button className="text-button" onClick={() => { setEmail(undefined); setError(undefined); }} type="button">Pedir outro código</button></p>
     </form>}
   </section>;
 }
