@@ -51,13 +51,14 @@ export function TelegramCard({ api, onUnauthenticated }: { readonly api: Telegra
     await load();
   });
 
-  return <section aria-label="Telegram" className="card">
-    <h2>Telegram</h2>
+  return <section aria-label="Telegram" className="card seal-row">
+    <span aria-hidden="true" className={state.kind === "linked" ? "seal seal--on" : "seal"} />
+    <div>
+    <div className="seal-row__head"><h3>Telegram</h3>{state.kind === "linked" ? <button className="link-button" disabled={busy} onClick={() => void unlink()} type="button">Desvincular</button> : null}</div>
     {state.kind === "loading" ? <p>Carregando…</p> : null}
     {state.kind === "unavailable" ? <><p>Não foi possível consultar o Telegram agora.</p><button className="button" onClick={() => void load()} type="button">Tentar novamente</button></> : null}
     {state.kind === "linked" ? <>
-      <p className="card__ok">Vinculado. Você recebe alertas e pode conversar com o bot.</p>
-      <button className="button" disabled={busy} onClick={() => void unlink()} type="button">Desvincular</button>
+      <p>Vinculado{state.botUsername ? <> a <strong>@{state.botUsername}</strong></> : null}. Você recebe alertas e aprova ações por lá.</p>
     </> : null}
     {state.kind === "unlinked" ? <>
       {state.code ? <>
@@ -70,5 +71,6 @@ export function TelegramCard({ api, onUnauthenticated }: { readonly api: Telegra
         <button className="button button--primary" disabled={busy} onClick={() => void generate()} type="button">Vincular Telegram</button>
       </>}
     </> : null}
+    </div>
   </section>;
 }

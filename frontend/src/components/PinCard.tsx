@@ -51,8 +51,10 @@ export function PinCard({ api, onUnauthenticated }: { readonly api: ActionPinApi
     } finally { if (mounted.current) setBusy(false); }
   }
 
-  return <section aria-label="PIN de aprovação" className="card">
-    <h2>PIN de aprovação</h2>
+  return <section aria-label="PIN de aprovação" className="card seal-row">
+    <span aria-hidden="true" className={state.kind === "ready" && state.configured && !state.lockedUntil ? "seal seal--on" : "seal"} />
+    <div>
+    <div className="seal-row__head"><h3>PIN de aprovação</h3>{state.kind === "ready" && state.configured && !editing ? <button className="link-button" onClick={() => { setEditing(true); setMessage(undefined); }} type="button">Trocar PIN</button> : null}</div>
     {state.kind === "loading" ? <p>Carregando…</p> : null}
     {state.kind === "unavailable" ? <p>Não foi possível consultar o PIN agora.</p> : null}
     {state.kind === "ready" ? <p>
@@ -60,12 +62,13 @@ export function PinCard({ api, onUnauthenticated }: { readonly api: ActionPinApi
       {state.lockedUntil ? <> <strong>Travado</strong> por tentativas erradas até {new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date(state.lockedUntil))}.</> : null}
     </p> : null}
     {message ? <p className={message.ok ? "card__ok" : "notice notice--error"} role={message.ok ? "status" : "alert"}>{message.text}</p> : null}
-    {state.kind === "ready" && !editing ? <button className={state.configured ? "button" : "button button--primary"} onClick={() => { setEditing(true); setMessage(undefined); }} type="button">{state.configured ? "Trocar PIN" : "Criar PIN"}</button> : null}
+    {state.kind === "ready" && !state.configured && !editing ? <button className="button button--primary" onClick={() => { setEditing(true); setMessage(undefined); }} type="button">Criar PIN</button> : null}
     {editing ? <form className="form" onSubmit={(event) => void submit(event)} noValidate>
       <div className="form-field"><label htmlFor="pin-new">PIN (6 números)</label><input autoComplete="off" className="input--code" id="pin-new" inputMode="numeric" maxLength={6} name="pin" type="password" /></div>
       <div className="form-field"><label htmlFor="pin-confirmation">Repita o PIN</label><input autoComplete="off" className="input--code" id="pin-confirmation" inputMode="numeric" maxLength={6} name="pin-confirmation" type="password" /></div>
       <div className="form-field"><label htmlFor="pin-password">Senha da conta</label><input autoComplete="current-password" id="pin-password" name="password" type="password" /></div>
       <div className="callout__actions"><button className="button button--primary" disabled={busy} type="submit">{busy ? "Salvando…" : "Salvar PIN"}</button><button className="button" onClick={() => setEditing(false)} type="button">Cancelar</button></div>
     </form> : null}
+    </div>
   </section>;
 }
