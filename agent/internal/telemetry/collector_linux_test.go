@@ -51,3 +51,30 @@ func TestLinuxCollectorRealSystemNeverPanics(t *testing.T) {
 		t.Fatalf("sample=%+v", s)
 	}
 }
+
+func TestTemperaturePrefersCPUDriverOverBogusVendorSensor(t *testing.T) {
+	root := t.TempDir()
+	// Dell laptop seen in the field: dell_smm exposes a fake constant 126 °C.
+	write(t, root, "/sys/class/hwmon/hwmon2/name", "dell_smm\n")
+	write(t, root, "/sys/class/hwmon/hwmon2/temp4_input", "126000\n")
+	write(t, root, "/sys/class/hwmon/hwmon2/temp1_input", "49000\n")
+	write(t, root, "/sys/class/hwmon/hwmon3/name", "coretemp\n")
+	write(t, root, "/sys/class/hwmon/hwmon3/temp1_input", "50000\n")
+	write(t, root, "/sys/class/hwmon/hwmon3/temp2_input", "48000\n")
+	write(t, root, "/sys/class/thermal/thermal_zone0/temp", "27800\n")
+	c := &SystemCollector{root: root}
+	if got := c.temperature(); got == nil || *got != 50 {
+		t.Fatalf("temp=%v, want 50 from coretemp", got)
+	}
+}
+
+func TestTemperatureFallbackSkipsImplausibleValues(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "/sys/class/hwmon/hwmon2/name", "dell_smm\n")
+	write(t, root, "/sys/class/hwmon/hwmon2/temp4_input", "126000\n")
+	write(t, root, "/sys/class/hwmon/hwmon2/temp1_input", "49000\n")
+	c := &SystemCollector{root: root}
+	if got := c.temperature(); got == nil || *got != 49 {
+		t.Fatalf("temp=%v, want 49", got)
+	}
+}
