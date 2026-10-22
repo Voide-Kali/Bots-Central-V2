@@ -30,16 +30,19 @@ type Config struct {
 	// SharedDir enables human-approved file sending from this one folder (ADR-015).
 	// Empty disables commands entirely.
 	SharedDir string
+	// AllowedActions lists the ADR-016 actions this computer accepts (empty = none).
+	AllowedActions []string
 }
 
 type diskConfig struct {
-	StateDir          string `json:"state_dir"`
-	BackendBaseURL    string `json:"backend_base_url"`
-	HeartbeatInterval string `json:"heartbeat_interval"`
-	TransportTimeout  string `json:"transport_timeout"`
-	BackoffInitial    string `json:"backoff_initial"`
-	BackoffMax        string `json:"backoff_max"`
-	SharedDir         string `json:"shared_dir,omitempty"`
+	StateDir          string   `json:"state_dir"`
+	BackendBaseURL    string   `json:"backend_base_url"`
+	HeartbeatInterval string   `json:"heartbeat_interval"`
+	TransportTimeout  string   `json:"transport_timeout"`
+	BackoffInitial    string   `json:"backoff_initial"`
+	BackoffMax        string   `json:"backoff_max"`
+	SharedDir         string   `json:"shared_dir,omitempty"`
+	AllowedActions    []string `json:"allowed_actions,omitempty"`
 }
 
 // Load reads one bounded configuration file. It does not fall back to defaults: a
@@ -113,7 +116,17 @@ func Parse(data []byte) (Config, error) {
 			return Config{}, errors.New("config: shared_dir must be a dedicated folder")
 		}
 	}
-	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax, SharedDir: sharedDir}, nil
+	seen := map[string]bool{}
+	for _, action := range raw.AllowedActions {
+		if action != "lock_screen" && action != "webcam_photo" {
+			return Config{}, fmt.Errorf("config: unknown action %q in allowed_actions", action)
+		}
+		if seen[action] {
+			return Config{}, fmt.Errorf("config: duplicate action %q in allowed_actions", action)
+		}
+		seen[action] = true
+	}
+	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax, SharedDir: sharedDir, AllowedActions: raw.AllowedActions}, nil
 }
 
 func positiveDuration(name, raw string) (time.Duration, error) {

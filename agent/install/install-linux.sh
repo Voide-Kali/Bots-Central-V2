@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Install the Aval agent as a hardened systemd service (Kali/Debian/Ubuntu).
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
+# Optional ADR-016 actions (each still needs your e-mail code every time):
+#   sudo AVAL_ACTIONS=lock_screen,webcam_photo ./install-linux.sh https://...
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
 SERVER="${1:-}"
@@ -9,6 +11,16 @@ SERVER="${SERVER%/}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$(cd "$HERE/.." && pwd)"
 command -v go >/dev/null || { echo "Go not found: sudo apt install -y golang" >&2; exit 1; }
+
+ACTIONS_JSON=""
+IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
+for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
+  case "$action" in
+    lock_screen|webcam_photo) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    "") ;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo)" >&2; exit 1;;
+  esac
+done
 
 echo "==> Building"
 (cd "$AGENT_DIR" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/aval-agent ./cmd/bots-central-agent)
@@ -29,7 +41,8 @@ cat > /etc/aval-agent/config.json <<JSON
   "transport_timeout": "10s",
   "backoff_initial": "1s",
   "backoff_max": "1m",
-  "shared_dir": "/srv/aval-compartilhado"
+  "shared_dir": "/srv/aval-compartilhado",
+  "allowed_actions": [$ACTIONS_JSON]
 }
 JSON
 chmod 0644 /etc/aval-agent/config.json
@@ -54,10 +67,40 @@ if [ ! -e "$ENROLLED" ]; then
   echo "Compare the fingerprint printed above with the one shown in the panel, then approve it there."
 fi
 
+echo "==> Actions: ${AVAL_ACTIONS:-none}"
+DROPIN=/etc/systemd/system/aval-agent.service.d
+rm -f "$DROPIN/webcam.conf" /etc/polkit-1/rules.d/49-aval-agent-lock.rules
+case ",${AVAL_ACTIONS:-}," in *,lock_screen,*)
+  # Let only the aval-agent user ask logind to lock the sessions (nothing else).
+  install -d -m 0755 /etc/polkit-1/rules.d
+  cat > /etc/polkit-1/rules.d/49-aval-agent-lock.rules <<'RULE'
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.login1.lock-sessions" && subject.user == "aval-agent") {
+    return polkit.Result.YES;
+  }
+});
+RULE
+  ;;
+esac
+case ",${AVAL_ACTIONS:-}," in *,webcam_photo,*)
+  command -v fswebcam >/dev/null || apt-get install -y fswebcam
+  install -d -m 0755 "$DROPIN"
+  cat > "$DROPIN/webcam.conf" <<'CONF'
+# webcam_photo (ADR-016): expose only video devices to the agent.
+[Service]
+PrivateDevices=no
+DevicePolicy=closed
+DeviceAllow=char-video4linux rw
+SupplementaryGroups=video
+CONF
+  ;;
+esac
+
 echo "==> Service"
 install -m 0644 "$HERE/aval-agent.service" /etc/systemd/system/aval-agent.service
 systemctl daemon-reload
-systemctl enable --now aval-agent
+systemctl enable aval-agent
+systemctl restart aval-agent
 systemctl --no-pager --lines=5 status aval-agent || true
 echo "Done. Logs: journalctl -u aval-agent -f"
 echo "Files you allow Aval to send (after e-mail approval) go in: /srv/aval-compartilhado"
