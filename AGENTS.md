@@ -14,6 +14,8 @@ Leia antes: `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODE
 
 ## Mudanças
 
+- **Sem emojis** em código, mensagens do bot, painel e documentação (decisão do Voide, 21/10/2026).
+
 - Só o escopo pedido. Mudança de arquitetura ou de segurança (auth, identidade, autorização,
   revogação, protocolo, auditoria) exige ADR em `docs/ADR/` ou aprovação explícita.
 - Descreva a mudança no PR. Atualize `docs/CURRENT_STATE.md` **só** se o estado do sistema

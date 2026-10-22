@@ -160,7 +160,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     <header className="topbar">
       <a aria-label="Aval" className="brand-link" href="/devices" onClick={(event) => { event.preventDefault(); setView("devices"); }}><Brand /></a>
       <nav aria-label="Seções" className="tabs">{tabs.map((tab) => <button aria-current={view === tab.id ? "page" : undefined} className="tabs__tab" key={tab.id} onClick={() => { setView(tab.id); setFeedback(undefined); }} type="button">{tab.label}</button>)}</nav>
-      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span className="profile-menu__name">{profileName}</span><span aria-hidden="true">▾</span></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
+      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span className="profile-menu__name">{profileName}</span><span aria-hidden="true"></span></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
     </header>
     <main className="workspace" id="main-content">
       {feedback ? <p className="notice" role="status">{feedback}</p> : null}

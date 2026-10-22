@@ -60,10 +60,10 @@ class Reply:
     delete_message_id: int | None = None  # e.g. the owner's PIN message
 
 
-MENU_PANEL = "🖥️ Computadores"
-MENU_HISTORY = "🧾 Histórico"
-MENU_FILE = "📎 Arquivo"
-MENU_HELP = "❓ Ajuda"
+MENU_PANEL = "Computadores"
+MENU_HISTORY = "Histórico"
+MENU_FILE = "Arquivo"
+MENU_HELP = "Ajuda"
 MENU_KEYBOARD: dict[str, Any] = {
     "keyboard": [
         [{"text": MENU_PANEL}, {"text": MENU_FILE}],
@@ -77,20 +77,20 @@ MENU_ALIASES = {
     MENU_HISTORY: "/historico",
     MENU_HELP: "/ajuda",
     MENU_FILE: "/arquivo",
-    "📊 Painel": "/status",  # keyboards sent by older versions
-    "🤖 IA": "/ia",
+    "Painel": "/status",  # keyboards sent by older versions
+    "IA": "/ia",
 }
 ACTION_BUTTONS = {"lock": "lock_screen", "photo": "webcam_photo"}
 CALLBACKS = {"menu:status": "/status", "menu:hist": "/historico", "menu:help": "/ajuda"}
 AI_HINT = (
-    "🤖 Escreva sua pergunta em texto livre, por exemplo:\n"
+    "Escreva sua pergunta em texto livre, por exemplo:\n"
     "• qual computador está mais quente?\n"
     "• quanto de memória o Mac está usando?\n"
     "• algum computador está offline?\n\n"
     "A IA só lê os dados dos seus computadores. Ela não consegue executar nada."
 )
 FILE_HINT = (
-    "📎 Para receber um arquivo de um computador:\n"
+    "Para receber um arquivo de um computador:\n"
     "1. Coloque o arquivo na pasta compartilhada do computador "
     "(Mac: ~/Aval-Compartilhado · Linux: /srv/aval-compartilhado).\n"
     "2. Escreva aqui, por exemplo: “manda o relatorio.pdf do Mac”.\n"
@@ -192,9 +192,9 @@ def status_text(session: Session, user_id: Any) -> str:
     waiting = sum(1 for item in devices if item.lifecycle_status.value == "pending")
     safe = online == active and waiting == 0
     header = (
-        f"🛡️ AVAL — {'PROTEGIDO' if safe else 'ATENÇÃO'}\n"
-        f"🖥️ Computadores online: {online} de {active}"
-        + (f"\n🟡 Aguardando aprovação no painel: {waiting}" if waiting else "")
+        f"AVAL — {'PROTEGIDO' if safe else 'ATENÇÃO'}\n"
+        f"Computadores online: {online} de {active}"
+        + (f"\nAguardando aprovação no painel: {waiting}" if waiting else "")
     )
     lines = [
         device_line(item, presence, latest.get(item.id))
@@ -205,8 +205,8 @@ def status_text(session: Session, user_id: Any) -> str:
 
 def status_keyboard(session: Session, user_id: Any) -> dict[str, Any]:
     _, devices = _user_devices(session, user_id)
-    rows = [[_button(f"🔍 {item.name}", f"dev:{item.id}")] for item in devices[:20]]
-    rows.append([_button("🔄 Atualizar", "menu:status"), _button("🧾 Histórico", "menu:hist")])
+    rows = [[_button(f"{item.name}", f"dev:{item.id}")] for item in devices[:20]]
+    rows.append([_button("Atualizar", "menu:status"), _button("Histórico", "menu:hist")])
     return {"inline_keyboard": rows}
 
 
@@ -225,13 +225,13 @@ def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> R
     if device.lifecycle_status.value == "active":
         rows.append(
             [
-                _button("🔒 Bloquear tela", f"act:lock:{device.id}"),
-                _button("📷 Foto", f"act:photo:{device.id}"),
+                _button("Bloquear tela", f"act:lock:{device.id}"),
+                _button("Foto", f"act:photo:{device.id}"),
             ]
         )
     rows.append(
         [
-            _button("🔄 Atualizar", f"dev:{device.id}"),
+            _button("Atualizar", f"dev:{device.id}"),
             _button("‹ Voltar ao painel", "menu:status"),
         ]
     )
@@ -294,7 +294,7 @@ def _dispatch(
             )
         except (linking.InvalidLinkCode, linking.AlreadyLinked):
             return Reply(chat_id, "Código inválido ou expirado. Gere um novo no painel.")
-        return Reply(chat_id, "✅ Chat vinculado à sua conta.\n\n" + HELP, MENU_KEYBOARD)
+        return Reply(chat_id, "Chat vinculado à sua conta.\n\n" + HELP, MENU_KEYBOARD)
 
     with session_factory() as session:
         user_id = linking.linked_user_id(
@@ -316,7 +316,7 @@ def _dispatch(
             body_text = "\n".join(audit.label(row) for row in rows) or "Nenhuma ação registrada."
             return Reply(
                 chat_id,
-                "🧾 Últimas ações:\n" + body_text,
+                "Últimas ações:\n" + body_text,
                 {"inline_keyboard": [[_button("‹ Voltar ao painel", "menu:status")]]},
             )
     if name == "/ia":
@@ -392,7 +392,7 @@ def _ask(
         text_reply = assistant.answer(session_factory, model, user_id=user_id, question=question)
     except AssistantUnavailable:
         return Reply(chat_id, "A IA não respondeu a tempo. Tente de novo em instantes.")
-    return Reply(chat_id, "🤖 " + text_reply)
+    return Reply(chat_id, text_reply)
 
 
 def _intent_reply(
@@ -463,7 +463,7 @@ def _start_action(
     if has_pin:
         return Reply(
             chat_id,
-            f"🔐 Para {what} no {intent.device_name}, digite seu PIN (6 números).\n"
+            f"Para {what} no {intent.device_name}, digite seu PIN (6 números).\n"
             "Vale 5 minutos. A mensagem com o PIN é apagada em seguida.",
         )
     subject, body = commands.approval_email(intent)
@@ -474,7 +474,7 @@ def _start_action(
         return Reply(chat_id, "Não consegui enviar o e-mail com o código. Tente de novo.")
     return Reply(
         chat_id,
-        f"📧 Enviei um código para o seu e-mail para {what} no {intent.device_name}. "
+        f"Enviei um código para o seu e-mail para {what} no {intent.device_name}. "
         "Responda aqui: /aprovar CÓDIGO (vale 5 minutos).\n"
         "Dica: crie um PIN no painel do Aval para aprovar sem e-mail.",
     )
@@ -496,13 +496,13 @@ def _pin_reply(
         what = _what(command.kind, command.file_name)
         return Reply(
             chat_id,
-            f"✅ Aprovado: {what}. O computador faz isso em até 1 minuto.",
+            f"Aprovado: {what}. O computador faz isso em até 1 minuto.",
             delete_message_id=-1,
         )
     if check.locked_until is not None:
         return Reply(
             chat_id,
-            "⛔ PIN errado demais vezes. As ações ficam travadas por 15 minutos.",
+            "PIN errado demais vezes. As ações ficam travadas por 15 minutos.",
             delete_message_id=-1,
         )
     if check.remaining:
@@ -523,5 +523,5 @@ def _approve(
         return Reply(chat_id, error.message)
     return Reply(
         chat_id,
-        f"✅ Aprovado. O computador vai enviar {command.file_name} em até 1 minuto.",
+        f"Aprovado. O computador vai enviar {command.file_name} em até 1 minuto.",
     )

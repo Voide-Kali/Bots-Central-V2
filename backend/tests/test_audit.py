@@ -100,7 +100,7 @@ def test_rejected_device_and_historico_command(factory: sessionmaker[Session]) -
     reply = commands.handle_update(
         _msg("/historico"), session_factory=factory, admission=_Admission()
     )
-    assert reply is not None and reply.text.startswith("🧾 Últimas ações:")
+    assert reply is not None and reply.text.startswith("Últimas ações:")
     assert "Dispositivo aprovado (telemetry-agent)" in reply.text
     assert "Telegram vinculado" in reply.text
     assert second_user != user_id

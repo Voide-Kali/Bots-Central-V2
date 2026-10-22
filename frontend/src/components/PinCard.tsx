@@ -56,7 +56,7 @@ export function PinCard({ api, onUnauthenticated }: { readonly api: ActionPinApi
     {state.kind === "loading" ? <p>Carregando…</p> : null}
     {state.kind === "unavailable" ? <p>Não foi possível consultar o PIN agora.</p> : null}
     {state.kind === "ready" ? <p>
-      {state.configured ? "✅ PIN criado. No Telegram, as ações (bloquear, foto, arquivo) pedem esse PIN." : "Crie um PIN de 6 números para aprovar ações no Telegram sem precisar do e-mail."}
+      {state.configured ? "PIN criado. No Telegram, as ações (bloquear, foto, arquivo) pedem esse PIN." : "Crie um PIN de 6 números para aprovar ações no Telegram sem precisar do e-mail."}
       {state.lockedUntil ? <> <strong>Travado</strong> por tentativas erradas até {new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date(state.lockedUntil))}.</> : null}
     </p> : null}
     {message ? <p className={message.ok ? "card__ok" : "notice notice--error"} role={message.ok ? "status" : "alert"}>{message.text}</p> : null}

@@ -73,9 +73,7 @@ def test_lock_screen_completes_without_bytes_and_notifies_once(setup: Any) -> No
     _result(factory, private, device_id, command_id, 103, b"")
     deliveries, notices = commands.pending_deliveries(factory)
     assert [d for d in deliveries if d.chat_id == CHAT] == []
-    assert [n.text for n in notices if n.chat_id == CHAT] == [
-        "🔒 Tela de telemetry-agent bloqueada."
-    ]
+    assert [n.text for n in notices if n.chat_id == CHAT] == ["Tela de telemetry-agent bloqueada."]
     assert [n for n in commands.pending_deliveries(factory)[1] if n.chat_id == CHAT] == []
 
 
@@ -110,4 +108,4 @@ def test_agent_errors_become_friendly_notices(setup: Any) -> None:
         content_b64=None,
     )
     texts = [n.text for n in commands.pending_deliveries(factory)[1] if n.chat_id == CHAT]
-    assert texts == ["❌ Não foi possível bloquear a tela: esse computador não suporta essa ação."]
+    assert texts == ["Não foi possível bloquear a tela: esse computador não suporta essa ação."]

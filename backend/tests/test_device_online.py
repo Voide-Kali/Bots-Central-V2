@@ -226,7 +226,7 @@ def test_consumed_and_expired_pairing_revocation_is_idempotent(
         assert session.get(DevicePairingToken, expired.id).revoked_at is None  # type: ignore[union-attr]
 
 
-@pytest.mark.parametrize("claimed_token", [None, 1, [], {}, "é", "🔒"])
+@pytest.mark.parametrize("claimed_token", [None, 1, [], {}, "é", ""])
 def test_enrollment_rejects_invalid_pairing_token_claim(
     migrated_postgresql_engine: Engine, claimed_token: object
 ) -> None:

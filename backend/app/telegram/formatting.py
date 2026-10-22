@@ -37,12 +37,12 @@ def friendly_platform(platform: str) -> str:
     return PLATFORMS.get(platform.split("/", 1)[0].lower(), platform)
 
 
-def _state(device: Device, presence: str) -> tuple[str, str]:
+def _state(device: Device, presence: str) -> str:
     if device.lifecycle_status.value == "pending":
-        return "🟡", "aguardando aprovação"
+        return "aguardando aprovação"
     if device.lifecycle_status.value == "revoked":
-        return "⚫", "desativado"
-    return ("🟢", "online") if presence == "online" else ("🔴", "offline")
+        return "desativado"
+    return presence
 
 
 def _metrics(sample: DeviceTelemetrySample) -> list[str]:
@@ -61,8 +61,8 @@ def _metrics(sample: DeviceTelemetrySample) -> list[str]:
 
 
 def device_line(device: Device, presence: str, sample: DeviceTelemetrySample | None) -> str:
-    icon, state = _state(device, presence)
-    lines = [f"{icon} {device.name} — {state}"]
+    state = _state(device, presence)
+    lines = [f"{device.name} — {state}"]
     if sample is not None and device.lifecycle_status.value == "active":
         parts = _metrics(sample)
         if parts:
@@ -74,11 +74,11 @@ def device_card(
     device: Device, presence: str, sample: DeviceTelemetrySample | None, now: datetime
 ) -> str:
     """Detailed card for one computer (the "Detalhes" button)."""
-    icon, state = _state(device, presence)
+    state = _state(device, presence)
     lines = [
-        f"🖥️ {device.name}",
+        device.name,
         "",
-        f"{icon} {state.upper()} · {_ago(now, device.last_seen_at)}",
+        f"{state.upper()} · {_ago(now, device.last_seen_at)}",
         f"Sistema: {friendly_platform(device.platform)} ({device.platform})",
         f"Agente: {device.agent_version or 'não informado'}",
     ]

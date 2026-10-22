@@ -224,9 +224,7 @@ def test_denied_after_five_wrong_codes_and_expiry_and_failure_notices(setup: Any
         _send(factory, f"/aprovar {wrong}", mailer)
     assert "inválido" in _send(factory, f"/aprovar {code}", mailer)
     _, notices = commands.pending_deliveries(factory)
-    assert [n.text for n in notices] == [
-        "⛔ Pedido de x.txt bloqueado: código errado demais vezes."
-    ]
+    assert [n.text for n in notices] == ["Pedido de x.txt bloqueado: código errado demais vezes."]
     assert commands.pending_deliveries(factory)[1] == []  # reported once
 
     _send(factory, "/enviar telemetry-agent y.txt", mailer)
@@ -238,7 +236,7 @@ def test_denied_after_five_wrong_codes_and_expiry_and_failure_notices(setup: Any
         )
     assert "inválido" in _send(factory, f"/aprovar {mailer.last_code()}", mailer)
     assert [n.text for n in commands.pending_deliveries(factory)[1]] == [
-        "⌛ Pedido de y.txt expirou sem ser concluído."
+        "Pedido de y.txt expirou sem ser concluído."
     ]
 
     _send(factory, "/enviar telemetry-agent z.txt", mailer)
@@ -263,7 +261,7 @@ def test_denied_after_five_wrong_codes_and_expiry_and_failure_notices(setup: Any
         content_b64=None,
     )
     assert [n.text for n in commands.pending_deliveries(factory)[1]] == [
-        "❌ Não foi possível enviar z.txt: o arquivo não está na pasta compartilhada."
+        "Não foi possível enviar z.txt: o arquivo não está na pasta compartilhada."
     ]
 
 
