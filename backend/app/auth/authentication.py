@@ -64,6 +64,7 @@ class AuthenticatedPrincipal:
     user_id: uuid.UUID
     session_id: uuid.UUID
     email: str
+    role: str = "user"
 
 
 # Calculated at process initialization: unknown-login requests perform one verify,
@@ -297,7 +298,7 @@ def authenticate_access(session_factory: SessionFactory, token: str) -> Authenti
             raise InvalidAccessToken
         db_session.last_seen_at = now
         db_session.idle_expires_at = min(now + IDLE_TTL, db_session.expires_at)
-        return AuthenticatedPrincipal(user.id, db_session.id, email.email_canonical)
+        return AuthenticatedPrincipal(user.id, db_session.id, email.email_canonical, user.role)
 
 
 def refresh(session_factory: SessionFactory, token: str) -> RefreshResult:

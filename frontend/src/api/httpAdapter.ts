@@ -1,5 +1,9 @@
-import type { ActionPinApi, ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
+import type { ActionPinApi, AdminApi, ApiClient, AuditApi, AuthApi, DevicesApi, PasswordResetApi, TelegramApi } from "./client";
 import type {
+  AdminEvent,
+  AdminFailure,
+  AdminOverview,
+  AdminUser,
   AuditEvent,
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
@@ -31,7 +35,8 @@ const paths = {
   resetRequest: "/api/v1/auth/password-reset/request",
   resetConfirm: "/api/v1/auth/password-reset/confirm",
   audit: "/api/v1/audit",
-  actionPin: "/api/v1/me/action-pin"
+  actionPin: "/api/v1/me/action-pin",
+  admin: "/api/v1/admin"
 } as const;
 
 const botUsernamePattern = /^[A-Za-z0-9_]{5,32}$/;
@@ -75,7 +80,7 @@ function assertUser(value: unknown, status: number): AuthenticatedUser {
     || typeof value.email !== "string" || value.email.length === 0) {
     throw new ApiError("The API returned an invalid response.", status);
   }
-  return { id: value.id, email: value.email };
+  return { id: value.id, email: value.email, role: value.role === "admin" ? "admin" : "user" };
 }
 
 const telemetryNumberKeys = [
@@ -297,9 +302,74 @@ class HttpActionPinApi implements ActionPinApi {
   }
 }
 
+function counts(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+class HttpAdminApi implements AdminApi {
+  public constructor(private readonly http: SameOriginHttpClient) {}
+
+  private async read(path: string, key: string): Promise<unknown> {
+    const response = await this.http.get(`${paths.admin}/${path}`, { acceptedStatuses: [200] });
+    const value = await readKnownJson<unknown>(response);
+    if (!isRecord(value) || !(key in value)) throw new ApiError("The API returned an invalid response.", response.status);
+    return value[key];
+  }
+
+  public async overview(): Promise<AdminOverview> {
+    const value = await this.read("overview", "overview");
+    if (!isRecord(value)) throw new ApiError("The API returned an invalid response.", 200);
+    const devices = isRecord(value.devices) ? value.devices : {};
+    return {
+      checkedAt: text(value.checked_at),
+      users: counts(value.users),
+      devicesByLifecycle: counts(devices.by_lifecycle),
+      devicesOnline: typeof devices.online === "number" ? devices.online : 0,
+      commands24h: counts(value.commands_24h),
+      telegramLinks: typeof value.telegram_links === "number" ? value.telegram_links : 0
+    };
+  }
+
+  public async users(): Promise<readonly AdminUser[]> {
+    const value = await this.read("users", "users");
+    if (!Array.isArray(value)) throw new ApiError("The API returned an invalid response.", 200);
+    return value.filter(isRecord).map((item) => ({
+      id: text(item.id), email: text(item.email), status: text(item.status), role: text(item.role), createdAt: text(item.created_at),
+      devices: typeof item.devices === "number" ? item.devices : 0, telegram: item.telegram === true, pin: item.pin === true
+    }));
+  }
+
+  public async failures(): Promise<readonly AdminFailure[]> {
+    const value = await this.read("failures", "failures");
+    if (!Array.isArray(value)) throw new ApiError("The API returned an invalid response.", 200);
+    return value.filter(isRecord).map((item) => ({
+      at: text(item.at), user: text(item.user), device: text(item.device), action: text(item.action), status: text(item.status),
+      error: typeof item.error === "string" ? item.error : null
+    }));
+  }
+
+  public async events(): Promise<readonly AdminEvent[]> {
+    const value = await this.read("audit", "events");
+    if (!Array.isArray(value)) throw new ApiError("The API returned an invalid response.", 200);
+    return value.filter(isRecord).map((item) => ({
+      occurredAt: text(item.occurred_at), user: typeof item.user === "string" ? item.user : null, action: text(item.action), outcome: text(item.outcome)
+    }));
+  }
+
+  public async activate(userId: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(userId)) throw new RangeError("invalid user id");
+    await this.http.postJson(`${paths.admin}/users/${userId}/activate`, undefined, { acceptedStatuses: [204] });
+  }
+}
+
 export function createHttpApiClient(): ApiClient {
   const http = new SameOriginHttpClient();
   const auth = new HttpAuthApi(http);
   http.setRefreshHandler(() => auth.refresh());
-  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http), audit: new HttpAuditApi(http), actionPin: new HttpActionPinApi(http) };
+  return { auth, devices: new HttpDevicesApi(http), telegram: new HttpTelegramApi(http), passwordReset: new HttpPasswordResetApi(http), audit: new HttpAuditApi(http), actionPin: new HttpActionPinApi(http), admin: new HttpAdminApi(http) };
 }

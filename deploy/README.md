@@ -71,6 +71,16 @@ Nos dois aparelhos, com Tailscale ligado, compile e configure o agente apontando
 `https://SEU_SERVIDOR.tailXXXX.ts.net` (veja `agent/README.md`). O certificado é público
 (Let's Encrypt), então o agente confia nele sem configuração extra.
 
+## Administrador (ADR-017)
+
+Depois de criar a sua conta no painel, torne-a administradora (só por comando no servidor):
+
+```bash
+docker compose exec backend python -m app.admin promote seu@email.com
+```
+
+Saia e entre de novo no painel: aparece a aba **Admin** (saúde, contas, falhas, histórico de todos).
+
 ## Diagnóstico
 
 Algo não funciona? Rode `./doctor.sh` nesta pasta. Ele confere `.env` (sem mostrar segredos), containers, login no Gmail, token do Telegram, modelo da IA e o painel, e diz como corrigir cada problema.

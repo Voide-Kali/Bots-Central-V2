@@ -1,4 +1,8 @@
 import type {
+  AdminEvent,
+  AdminFailure,
+  AdminOverview,
+  AdminUser,
   AuditEvent,
   AuthenticatedUser,
   ConsumeVerificationCodeRequest,
@@ -37,6 +41,14 @@ export interface TelegramApi {
   unlink(): Promise<void>;
 }
 
+export interface AdminApi {
+  overview(): Promise<AdminOverview>;
+  users(): Promise<readonly AdminUser[]>;
+  failures(): Promise<readonly AdminFailure[]>;
+  events(): Promise<readonly AdminEvent[]>;
+  activate(userId: string): Promise<void>;
+}
+
 export interface ActionPinApi {
   status(): Promise<{ readonly configured: boolean; readonly lockedUntil: string | null }>;
   set(password: string, pin: string): Promise<void>;
@@ -59,4 +71,5 @@ export interface ApiClient {
   readonly passwordReset?: PasswordResetApi;
   readonly audit?: AuditApi;
   readonly actionPin?: ActionPinApi;
+  readonly admin?: AdminApi;
 }

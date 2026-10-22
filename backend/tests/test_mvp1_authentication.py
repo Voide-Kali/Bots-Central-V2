@@ -813,7 +813,7 @@ async def test_me_accepts_only_current_valid_access(migrated_postgresql_engine: 
                 "/api/v1/auth/me", headers={"Authorization": "Bearer " + "A" * 43}
             )
         assert valid.status_code == 200
-        assert valid.json() == {"id": str(user_id), "email": email}
+        assert valid.json() == {"id": str(user_id), "email": email, "role": "user"}
         assert invalid.status_code == 401
         assert "security_version" not in valid.text
         assert "digest" not in valid.text
