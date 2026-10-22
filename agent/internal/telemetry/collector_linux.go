@@ -67,11 +67,8 @@ func (c *SystemCollector) Collect() Sample {
 	if c.root == "" {
 		var fs syscall.Statfs_t
 		if err := syscall.Statfs("/", &fs); err == nil && fs.Bsize > 0 {
-			bsize := uint64(fs.Bsize)
-			total := fs.Blocks * bsize
-			free := fs.Bfree * bsize
-			if free <= total {
-				s.DiskTotal, s.DiskUsed = ptr(total), ptr(total-free)
+			if total, used, ok := diskUsage(fs.Blocks, fs.Bfree, fs.Bavail, uint64(fs.Bsize)); ok {
+				s.DiskTotal, s.DiskUsed = ptr(total), ptr(used)
 			}
 		}
 	}
