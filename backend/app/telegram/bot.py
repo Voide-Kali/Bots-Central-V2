@@ -21,6 +21,7 @@ from app.devices import commands
 from app.telegram.alerts import collect_presence_alerts
 from app.telegram.client import TelegramClient, TelegramUnavailable
 from app.telegram.commands import ActionDeps, Reply, handle_update
+from app.telegram.resource_alerts import ResourceAlerter
 
 ALERT_INTERVAL_SECONDS = 15
 logger = logging.getLogger("bots_central.telegram")
@@ -76,6 +77,7 @@ def run() -> None:
         if settings.assistant_ollama_url
         else None
     )
+    resources = ResourceAlerter()
     stopping = False
 
     def stop(_signum: int, _frame: FrameType | None) -> None:
@@ -94,6 +96,10 @@ def run() -> None:
                 _send(client, collect_presence_alerts(factory))
             except Exception:
                 logger.exception("presence alert pass failed")
+            try:
+                _send(client, resources.collect(factory))
+            except Exception:
+                logger.exception("resource alert pass failed")
             try:
                 _deliver_files(client, factory)
             except Exception:
