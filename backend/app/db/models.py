@@ -625,7 +625,9 @@ class DeviceCommand(Base):
 
     __tablename__ = "device_commands"
     __table_args__ = (
-        CheckConstraint("kind IN ('send_file')", name="ck_device_commands_kind"),
+        CheckConstraint(
+            "kind IN ('send_file', 'lock_screen', 'webcam_photo')", name="ck_device_commands_kind"
+        ),
         CheckConstraint(
             "status IN ('pending_approval', 'approved', 'dispatched', 'completed', 'failed', "
             "'denied', 'expired', 'delivered')",
