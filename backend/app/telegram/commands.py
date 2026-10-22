@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 
 from app.assistant import assistant
 from app.assistant.ollama import AssistantUnavailable
+from app.audit import events as audit
 from app.auth import device_online
-from app.auth.abuse_control import AbuseControlUnavailable
+from app.auth.abuse_control import AbuseControlKey, AbuseControlUnavailable
 from app.db.models import Device
-from app.devices import telemetry
+from app.devices import commands, telemetry
 from app.telegram import linking
 from app.telegram.formatting import device_line
 
@@ -27,6 +28,9 @@ HELP = (
     "Pergunte em texto livre (ex.: “qual PC está mais quente?”) e a IA responde.\n\n"
     "Comandos:\n"
     "/status — estado e telemetria dos seus dispositivos\n"
+    "/historico — últimas ações na sua conta\n"
+    "/enviar PC arquivo — pede um arquivo da pasta compartilhada (código no e-mail)\n"
+    "/aprovar 12345678 — confirma o pedido com o código do e-mail\n"
     "/desvincular — desliga este chat da sua conta\n"
     "/ajuda — esta mensagem"
 )
@@ -87,12 +91,23 @@ def status_text(session: Session, user_id: Any) -> str:
     return "\n".join(lines)
 
 
+class Mailer(Protocol):
+    def send_plain(self, *, recipient: str, subject: str, body: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class ActionDeps:
+    key: AbuseControlKey
+    mailer: Mailer
+
+
 def handle_update(
     update: dict[str, Any],
     *,
     session_factory: SessionFactory,
     admission: LinkAdmission,
     model: assistant.ChatModel | None = None,
+    actions: ActionDeps | None = None,
 ) -> Reply | None:
     parsed = _private_message(update)
     if parsed is None:
@@ -125,8 +140,23 @@ def handle_update(
             return Reply(chat_id, NOT_LINKED)
         if name == "/status":
             return Reply(chat_id, status_text(session, user_id))
+        if name == "/historico":
+            rows = audit.list_for_user(session, user_id=user_id, limit=10)
+            body_text = "\n".join(audit.label(row) for row in rows) or "Nenhuma ação registrada."
+            return Reply(chat_id, "🧾 Últimas ações:\n" + body_text)
     if not body.startswith("/"):
         return _ask(chat_id, user_id, body, session_factory, admission, model)
+    if name in {"/enviar", "/aprovar"}:
+        if actions is None:
+            return Reply(chat_id, "Ações não estão ativadas neste servidor.")
+        try:
+            if not admission.admit_telegram_link(chat_id=chat_id):
+                return Reply(chat_id, "Muitas tentativas. Aguarde alguns minutos.")
+        except AbuseControlUnavailable:
+            return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
+        if name == "/enviar":
+            return _request_file(chat_id, user_id, argument, session_factory, actions)
+        return _approve(chat_id, user_id, argument, session_factory, actions)
     if name == "/desvincular":
         linking.unlink_chat(session_factory, chat_id=chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
@@ -149,9 +179,62 @@ def _ask(
     except AbuseControlUnavailable:
         return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
     try:
-        text_reply = assistant.answer(
-            session_factory, model, user_id=user_id, question=question
-        )
+        text_reply = assistant.answer(session_factory, model, user_id=user_id, question=question)
     except AssistantUnavailable:
         return Reply(chat_id, "A IA não respondeu a tempo. Tente de novo em instantes.")
     return Reply(chat_id, "🤖 " + text_reply)
+
+
+def _request_file(
+    chat_id: int, user_id: Any, argument: str, session_factory: SessionFactory, actions: ActionDeps
+) -> Reply:
+    device_name, _, file_name = argument.partition(" ")
+    if not device_name or not file_name.strip():
+        return Reply(chat_id, "Use: /enviar NOME-DO-PC nome-do-arquivo.pdf")
+    try:
+        intent = commands.request_send_file(
+            session_factory,
+            actions.key,
+            user_id=user_id,
+            chat_id=chat_id,
+            device_name=device_name,
+            file_name=file_name.strip(),
+        )
+    except commands.CommandError as error:
+        return Reply(chat_id, error.message)
+    code = intent.code.get_secret_value()
+    try:
+        actions.mailer.send_plain(
+            recipient=intent.recipient,
+            subject=f"Aval — aprovar envio de {intent.file_name}",
+            body=(
+                "Pedido no Aval:\n\n"
+                f"  Ação: enviar o arquivo {intent.file_name}\n"
+                f"  Do computador: {intent.device_name}\n"
+                "  Para: o seu Telegram vinculado\n\n"
+                f"Código de aprovação: {code[:4]} {code[4:]}\n"
+                "Vale 5 minutos e só para esta ação. Responda ao bot: /aprovar CÓDIGO\n\n"
+                "Se não foi você, NÃO use o código e desvincule o Telegram no painel.\n"
+            ),
+        )
+    except Exception:
+        commands.cancel_request(session_factory, command_id=intent.command_id)
+        return Reply(chat_id, "Não consegui enviar o e-mail com o código. Tente de novo.")
+    return Reply(
+        chat_id,
+        f"📧 Enviei um código para o seu e-mail para aprovar o envio de {intent.file_name} "
+        f"do {intent.device_name}. Responda aqui: /aprovar CÓDIGO (vale 5 minutos).",
+    )
+
+
+def _approve(
+    chat_id: int, user_id: Any, argument: str, session_factory: SessionFactory, actions: ActionDeps
+) -> Reply:
+    try:
+        command = commands.approve(session_factory, actions.key, user_id=user_id, code=argument)
+    except commands.CommandError as error:
+        return Reply(chat_id, error.message)
+    return Reply(
+        chat_id,
+        f"✅ Aprovado. O computador vai enviar {command.file_name} em até 1 minuto.",
+    )

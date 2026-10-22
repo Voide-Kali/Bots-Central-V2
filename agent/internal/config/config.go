@@ -27,6 +27,9 @@ type Config struct {
 	TransportTimeout  time.Duration
 	BackoffInitial    time.Duration
 	BackoffMax        time.Duration
+	// SharedDir enables human-approved file sending from this one folder (ADR-015).
+	// Empty disables commands entirely.
+	SharedDir string
 }
 
 type diskConfig struct {
@@ -36,6 +39,7 @@ type diskConfig struct {
 	TransportTimeout  string `json:"transport_timeout"`
 	BackoffInitial    string `json:"backoff_initial"`
 	BackoffMax        string `json:"backoff_max"`
+	SharedDir         string `json:"shared_dir,omitempty"`
 }
 
 // Load reads one bounded configuration file. It does not fall back to defaults: a
@@ -99,7 +103,17 @@ func Parse(data []byte) (Config, error) {
 	if backoffMax < backoffInitial {
 		return Config{}, errors.New("config: backoff_max must be greater than or equal to backoff_initial")
 	}
-	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax}, nil
+	sharedDir := ""
+	if raw.SharedDir != "" {
+		if !filepath.IsAbs(raw.SharedDir) {
+			return Config{}, errors.New("config: shared_dir must be an absolute path")
+		}
+		sharedDir = filepath.Clean(raw.SharedDir)
+		if sharedDir == filepath.Clean(raw.StateDir) || sharedDir == "/" {
+			return Config{}, errors.New("config: shared_dir must be a dedicated folder")
+		}
+	}
+	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax, SharedDir: sharedDir}, nil
 }
 
 func positiveDuration(name, raw string) (time.Duration, error) {

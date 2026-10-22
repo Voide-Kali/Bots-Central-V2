@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 
-export type AppPath = "/register" | "/verify" | "/login" | "/devices";
+export type AppPath = "/register" | "/verify" | "/login" | "/devices" | "/recover";
 
-const paths: readonly AppPath[] = ["/register", "/verify", "/login", "/devices"];
+const paths: readonly AppPath[] = ["/register", "/verify", "/login", "/devices", "/recover"];
 
 function currentPath(): AppPath {
   const pathname = window.location.pathname as AppPath;

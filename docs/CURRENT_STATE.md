@@ -1,5 +1,17 @@
 # Current State
 
+## Envio de arquivo aprovado por e-mail v0.1 (2026-10-21, em revisão — exige aprovação)
+
+- ADR-015: `/enviar` → código no e-mail vinculado à ação → `/aprovar` → agente busca o comando com JWS (sequência compartilhada com o heartbeat), lê só da pasta compartilhada (sem symlink, ≤ 10 MB) e devolve bytes com tamanho e SHA-256 assinados → bot entrega e apaga. Migration `0012_device_commands`. Instaladores criam a pasta compartilhada. Validação: backend PostgreSQL 16 completo verde; agente `go test -race` e `go vet` (linux e darwin); **teste ponta a ponta local com o agente Go real e o backend real via HTTP** (pareamento, heartbeat com telemetria, arquivo de 65 KB com hash conferido, erro `not_found`).
+
+## Recuperação de senha v0.1 (2026-10-21, em revisão — exige aprovação)
+
+- ADR-014: código de 8 dígitos por e-mail (15 min, uso único, só HMAC guardado, 5 tentativas), respostas genéricas, limites fail-closed, troca invalida todas as sessões (`security_version`). Migration `0011_password_reset`; tela `/recover` no painel. Validação local: backend PostgreSQL 16 `410 passed`; frontend 63 testes, lint, typecheck, build.
+
+## Auditoria v0.1 (2026-10-21, em revisão)
+
+- Tabela `audit_events` append-only (trigger PostgreSQL bloqueia UPDATE/DELETE; só `ON DELETE SET NULL` do usuário é permitido), migration `0010_audit_events`. Registrados na mesma transação da ação: login, pareamento criado/cancelado, enrollment, aprovação/rejeição de dispositivo, vínculo/desvínculo do Telegram. Detalhes nunca contêm segredos (chaves suspeitas são recusadas). Leitura: `GET /api/v1/audit` (só os próprios eventos) e `/historico` no Telegram. Validação local: PostgreSQL 16 `404 passed`.
+
 ## Assistente de IA local v0.1 (2026-10-21, em revisão)
 
 - Texto livre no Telegram (chat vinculado) é respondido por um modelo local via Ollama com um snapshot somente leitura dos dispositivos do próprio usuário; sem ferramentas nem ações (ADR-013). Limite de 20 perguntas/10 min por chat. Validação local: backend com PostgreSQL 16 `397 passed`. Não testado contra um Ollama real.
