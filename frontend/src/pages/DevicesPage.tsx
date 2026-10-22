@@ -48,6 +48,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [view, setView] = useState<"devices" | "history" | "admin">("devices");
 
   const listRequest = useRef<Promise<void> | undefined>(undefined);
+  /** True only for a refresh the person asked for; automatic polling stays silent. */
+  const manualRefresh = useRef(false);
+  /** Pending devices that already existed when the pairing code was created. */
+  const pendingAtPairing = useRef<ReadonlySet<string>>(new Set());
   const actionLock = useRef(false);
   const mounted = useRef(false);
   const sessionGeneration = useRef(0);
@@ -73,7 +77,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
       const devices = await api.devices.list();
       if (!active) return;
       setDeviceState({ kind: "ready", devices, lastChecked: new Date().toISOString() });
-      if (reload > 0) setFeedback("Lista atualizada.");
+      if (manualRefresh.current) { manualRefresh.current = false; setFeedback("Lista atualizada."); }
     })().catch((requestError: unknown) => {
       if (!active) return;
       if (requestError instanceof UnauthenticatedError) invalidate();
@@ -87,9 +91,26 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   useEffect(() => {
     if (pairing === undefined) return undefined;
     const expiry = window.setTimeout(() => { setPairing(undefined); setFeedback("O código expirou. Gere outro quando for instalar."); }, Math.max(0, new Date(pairing.expiresAt).valueOf() - Date.now()));
-    const poll = window.setInterval(() => { if (listRequest.current === undefined) setReload((current) => current + 1); }, 5_000);
-    return () => { window.clearTimeout(expiry); window.clearInterval(poll); };
+    return () => { window.clearTimeout(expiry); };
   }, [pairing]);
+
+  // Live view: the agents report every 30 s; the panel asks every 10 s (5 s while a
+  // computer is being added) and only while the tab is visible.
+  useEffect(() => {
+    if (session.kind !== "authenticated") return undefined;
+    const every = pairing === undefined ? 10_000 : 5_000;
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible" && listRequest.current === undefined) setReload((current) => current + 1);
+    }, every);
+    return () => { window.clearInterval(poll); };
+  }, [pairing, session.kind]);
+
+  // When the computer being added shows up, close the code and open its approval.
+  useEffect(() => {
+    if (pairing === undefined || deviceState.kind !== "ready") return;
+    const arrived = deviceState.devices.find((device) => device.lifecycleStatus === "pending" && !pendingAtPairing.current.has(device.id));
+    if (arrived) { setPairing(undefined); setFingerprintInput(""); setSelectedId(arrived.id); }
+  }, [deviceState, pairing]);
 
   const devices = deviceState.kind === "ready" ? deviceState.devices : noDevices;
   const online = devices.filter((device) => device.status === "online").length;
@@ -99,7 +120,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     return devices.filter((device) => (filter === "all" || device.status === filter) && (term === "" || [device.id, device.name, device.platform].some((value) => value.toLocaleLowerCase().includes(term))));
   }, [devices, filter, search]);
 
-  function refresh(): void { setFeedback(undefined); setReload((current) => current + 1); }
+  function refresh(): void { manualRefresh.current = true; setFeedback(undefined); setReload((current) => current + 1); }
   function clearFilters(): void { setSearch(""); setFilter("all"); }
   function selectDevice(id: string): void { setFingerprintInput(""); setSelectedId((current) => current === id ? undefined : id); }
   async function signOut(): Promise<void> { await logout(); }
@@ -109,6 +130,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     setActionBusy(true);
     const generation = sessionGeneration.current;
     try {
+      pendingAtPairing.current = new Set(devices.filter((device) => device.lifecycleStatus === "pending").map((device) => device.id));
       const created = await api.devices.createPairing();
       if (mounted.current && generation === sessionGeneration.current) setPairing({ id: created.pairingId, token: created.pairingToken, expiresAt: created.expiresAt });
     } catch (error) { if (error instanceof UnauthenticatedError) invalidate(); else setFeedback("Não foi possível gerar o código. Tente de novo."); }
