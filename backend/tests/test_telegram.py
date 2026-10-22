@@ -233,6 +233,13 @@ def test_presence_alerts_fire_once_per_transition(factory: sessionmaker[Session]
     assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []
     _link(factory, user_id)
     assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []  # first sight
+    with factory() as session, session.begin():  # two lost heartbeats: no alert yet
+        session.execute(
+            update(Device)
+            .where(Device.id == device_id)
+            .values(last_seen_at=Device.last_seen_at - timedelta(seconds=100))
+        )
+    assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []
     with factory() as session, session.begin():
         session.execute(
             update(Device)
@@ -393,3 +400,32 @@ def test_send_edits_navigation_messages_and_never_duplicates_them() -> None:
     plain = _Client(fail_edit=False)
     bot._send(plain, [commands.Reply(CHAT, "oi")])  # type: ignore[arg-type]
     assert plain.calls == ["send"]
+
+
+def test_chat_queue_keeps_order_per_chat_and_does_not_block_others() -> None:
+    import threading
+
+    from app.telegram.bot import ChatQueue, _chat_of
+
+    assert _chat_of({"message": {"chat": {"id": 7}}}) == 7
+    assert _chat_of({"callback_query": {"message": {"chat": {"id": 8}}}}) == 8
+    assert _chat_of({"weird": 1}) is None
+
+    queue = ChatQueue(workers=4)
+    order: list[str] = []
+    release = threading.Event()
+
+    def slow() -> None:  # e.g. the AI answering chat 1
+        release.wait(5)
+        order.append("chat1-question")
+
+    first = queue.submit(1, slow)
+    second = queue.submit(1, lambda: order.append("chat1-pin"))
+    other = queue.submit(2, lambda: order.append("chat2"))
+    other.result(timeout=5)
+    assert order == ["chat2"]  # another chat is not held back
+    release.set()
+    first.result(timeout=5)
+    second.result(timeout=5)
+    assert order == ["chat2", "chat1-question", "chat1-pin"]  # same chat stays in order
+    queue.shutdown()
