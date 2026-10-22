@@ -59,11 +59,11 @@ export function HistoryPanel({ api, onUnauthenticated }: { readonly api: AuditAp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
-  return <section aria-labelledby="history-heading" className="device-panel history-panel">
-    <div className="device-toolbar"><div><h2 id="history-heading">Histórico</h2><p>Tudo o que aconteceu na sua conta. O registro não pode ser apagado nem alterado.</p></div><button disabled={state.kind === "loading"} onClick={() => void load()} type="button">Atualizar</button></div>
-    {state.kind === "loading" ? <p>Carregando…</p> : null}
-    {state.kind === "unavailable" ? <p role="alert">Não foi possível carregar o histórico agora.</p> : null}
-    {state.kind === "ready" && state.events.length === 0 ? <p>Nenhuma ação registrada ainda.</p> : null}
+  return <section aria-labelledby="history-heading" className="panel">
+    <div className="panel__head"><div><h1 id="history-heading">Histórico</h1><p>Tudo o que aconteceu na sua conta. Este registro não pode ser apagado nem alterado.</p></div><button className="button" disabled={state.kind === "loading"} onClick={() => void load()} type="button">Atualizar</button></div>
+    {state.kind === "loading" ? <p className="panel__body">Carregando…</p> : null}
+    {state.kind === "unavailable" ? <p className="panel__body" role="alert">Não foi possível carregar o histórico agora.</p> : null}
+    {state.kind === "ready" && state.events.length === 0 ? <p className="panel__body">Nenhuma ação registrada ainda.</p> : null}
     {state.kind === "ready" && state.events.length > 0 ? <ol className="history-list">{state.events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
       <time dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
       <strong>{ACTION_LABELS[event.action] ?? event.action}</strong>
