@@ -13,7 +13,8 @@ import (
 )
 
 // SystemCollector uses sysctl, statfs and the fixed system binaries
-// /usr/bin/vm_stat and /usr/bin/top (no shell, fixed arguments). One
+// /usr/bin/vm_stat, /usr/bin/top and /usr/bin/pmset (no shell, fixed
+// arguments; pmset -g batt reads only the aggregate battery level). One
 // `top -l 0 -s 1 -n 0` keeps running and reports the CPU share every second
 // (ADR-018), so each sample is instant. macOS only exposes the CPU temperature
 // to root (powermetrics), so it is omitted.
@@ -94,6 +95,14 @@ func (c *SystemCollector) Collect() Sample {
 	if fs.Bsize > 0 {
 		if total, used, ok := diskUsage(fs.Blocks, fs.Bfree, fs.Bavail, uint64(fs.Bsize)); ok {
 			s.DiskTotal, s.DiskUsed = ptr(total), ptr(used)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	out, err := exec.CommandContext(ctx, "/usr/bin/pmset", "-g", "batt").Output()
+	cancel()
+	if err == nil {
+		if level, charging, ok := parseBatteryPmset(string(out)); ok {
+			s.BatteryPercent, s.BatteryCharging = ptr(level), ptr(charging)
 		}
 	}
 	return Sanitize(s)

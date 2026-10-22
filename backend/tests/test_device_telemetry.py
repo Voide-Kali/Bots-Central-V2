@@ -56,6 +56,14 @@ def test_minimal_claim_and_nulls_are_accepted() -> None:
     assert telemetry.parse_claim({"v": 1, "temp_c": None, "cpu_pct": None}).temperature_c is None
 
 
+def test_battery_fields_parse() -> None:
+    sample = telemetry.parse_claim({"v": 1, "battery_pct": 42, "battery_charging": True})
+    assert sample.battery_percent == 42
+    assert sample.battery_charging is True
+    absent = telemetry.parse_claim({"v": 1})
+    assert absent.battery_percent is None and absent.battery_charging is None
+
+
 @pytest.mark.parametrize(
     "claim",
     [
@@ -78,6 +86,12 @@ def test_minimal_claim_and_nulls_are_accepted() -> None:
         {"v": 1, "disk_total": 1 << 63, "disk_used": 0},
         {"v": 1, "temp_c": 151},
         {"v": 1, "uptime_s": -1},
+        {"v": 1, "battery_pct": 101},
+        {"v": 1, "battery_pct": -1},
+        {"v": 1, "battery_pct": 50.0},
+        {"v": 1, "battery_pct": True},
+        {"v": 1, "battery_charging": 1},
+        {"v": 1, "battery_charging": "yes"},
     ],
 )
 def test_invalid_claims_are_rejected(claim: object) -> None:
