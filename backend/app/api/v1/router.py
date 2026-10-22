@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.routes.action_pin import action_pin_router
 from app.api.v1.routes.audit import audit_router
 from app.api.v1.routes.auth import auth_router, devices_router
 from app.api.v1.routes.device_commands import device_commands_router
@@ -12,6 +13,7 @@ router.include_router(health_router)
 router.include_router(auth_router)
 router.include_router(devices_router)
 router.include_router(telegram_router)
+router.include_router(action_pin_router)
 router.include_router(audit_router)
 router.include_router(password_reset_router)
 router.include_router(device_commands_router)
