@@ -117,3 +117,43 @@ def test_pin_without_open_request_does_nothing(pinned: Any) -> None:
     action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
     approved, check = commands.approve_with_pin(factory, KEY, user_id=user_id, pin="482913")
     assert approved is None and not check.ok
+
+
+def _say(factory: Any, text_: str, mailer: Any, message_id: int = 77) -> Any:
+    from test_telegram import _Admission, _msg
+
+    from app.telegram.commands import ActionDeps, handle_update
+
+    update = _msg(text_)
+    update["message"]["message_id"] = message_id
+    reply = handle_update(
+        update,
+        session_factory=factory,
+        admission=_Admission(),
+        actions=ActionDeps(key=KEY, mailer=mailer),
+    )
+    assert reply is not None
+    return reply
+
+
+@pytest.mark.postgresql
+def test_plain_portuguese_request_and_pin_in_telegram(pinned: Any) -> None:
+    from test_device_commands import _Mailer
+
+    factory, user_id, _, _ = pinned
+    mailer = _Mailer()
+    # Without a PIN the code goes by e-mail and the owner is told to create one.
+    no_pin = _say(factory, "bloqueia o telemetry-agent", mailer)
+    assert "/aprovar" in no_pin.text and "crie um PIN" in no_pin.text and len(mailer.sent) == 1
+
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    asked = _say(factory, "tira uma foto do telemetry-agent", mailer)
+    assert "digite seu PIN" in asked.text and len(mailer.sent) == 1  # no new e-mail
+    wrong = _say(factory, "111222", mailer, message_id=90)
+    assert "Restam 4" in wrong.text and wrong.delete_message_id == 90
+    done = _say(factory, "482913", mailer, message_id=91)
+    assert done.text.startswith("✅ Aprovado: tirar uma foto") and done.delete_message_id == 91
+    again = _say(factory, "482913", mailer, message_id=92)
+    assert again.text == "Nenhum pedido esperando PIN agora."
+    question = _say(factory, "qual computador está mais quente?", mailer)
+    assert "IA" in question.text  # questions still go to the assistant (disabled here)

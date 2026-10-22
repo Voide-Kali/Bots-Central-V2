@@ -323,7 +323,8 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     panel = commands.handle_update(
         _msg(commands.MENU_PANEL), session_factory=factory, admission=_Admission()
     )
-    assert panel is not None and panel.text.startswith("📊 Seus computadores — 1 de 1 online")
+    assert panel is not None and panel.text.startswith("🛡️ AVAL — PROTEGIDO")
+    assert "Computadores online: 1 de 1" in panel.text
     assert panel.keyboard is not None
     buttons = [b for row in panel.keyboard["inline_keyboard"] for b in row]
     assert {"text": "🔍 telemetry-agent", "callback_data": f"dev:{device_id}"} in buttons
@@ -334,6 +335,9 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     assert card is not None and card.callback_id == "cb-1"
     assert card.text.startswith("🖥️ telemetry-agent") and "ONLINE" in card.text
     assert "RAM: 6,0 de 16,0 GB" in card.text and "Temperatura: 48 °C" in card.text
+    assert card.keyboard is not None
+    card_buttons = [b["callback_data"] for row in card.keyboard["inline_keyboard"] for b in row]
+    assert f"act:lock:{device_id}" in card_buttons and f"act:photo:{device_id}" in card_buttons
 
     other_user, other_device, _ = _active_device(factory)
     foreign = commands.handle_update(
@@ -343,6 +347,6 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     assert other_user != user_id
 
     hint = commands.handle_update(
-        _msg(commands.MENU_AI), session_factory=factory, admission=_Admission()
-    )
+        _msg("🤖 IA"), session_factory=factory, admission=_Admission()
+    )  # button from an older keyboard still answers
     assert hint is not None and "Escreva sua pergunta" in hint.text
