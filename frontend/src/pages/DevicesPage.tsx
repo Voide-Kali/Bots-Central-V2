@@ -8,6 +8,7 @@ import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
 import { DeviceList } from "../components/DeviceList";
 import { HistoryPanel } from "../components/HistoryPanel";
+import { PinCard } from "../components/PinCard";
 import { TelegramCard } from "../components/TelegramCard";
 
 type DeviceState =
@@ -211,7 +212,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
               </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} selectedId={selectedId} />}
             </section> : null}
           </div>
-          {authenticated && api.telegram ? <aside className="workspace__aside"><TelegramCard api={api.telegram} onUnauthenticated={invalidate} /></aside> : null}
+          {authenticated && (api.telegram || api.actionPin) ? <aside className="workspace__aside">{api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}{api.actionPin ? <PinCard api={api.actionPin} onUnauthenticated={invalidate} /> : null}</aside> : null}
         </div>
       </>}
     </main>
