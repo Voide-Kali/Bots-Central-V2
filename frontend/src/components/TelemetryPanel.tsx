@@ -44,7 +44,7 @@ export function TelemetryPanel({ telemetry }: { readonly telemetry: DeviceTeleme
   const cpuText = telemetry.cpuPercent !== null
     ? `${bytes.format(telemetry.cpuPercent)}%`
     : telemetry.load1 !== null ? `carga ${bytes.format(telemetry.load1)}${telemetry.cpuCount ? ` / ${telemetry.cpuCount} núcleos` : ""}` : "Não informado";
-  const cpuPercent = telemetry.cpuPercent ?? (telemetry.load1 !== null && telemetry.cpuCount ? (telemetry.load1 / telemetry.cpuCount) * 100 : null);
+  const cpuPercent = telemetry.cpuPercent;
   const recorded = new Date(telemetry.recordedAt);
   return <section aria-label="Telemetria" className="telemetry-panel">
     <dl>
