@@ -282,3 +282,67 @@ def test_send_document_builds_a_safe_multipart_upload(monkeypatch: pytest.Monkey
     assert body.endswith(f"--{boundary}--\r\n".encode())
     assert b'filename="rel\'atorio.pdf"' in body  # quotes and CR/LF neutralized
     assert b"\x00PDF-bytes" in body and b"42" in body
+
+
+def _press(data: str, *, chat: int = CHAT, sender: int | None = None) -> dict[str, Any]:
+    return {
+        "update_id": 2,
+        "callback_query": {
+            "id": "cb-1",
+            "from": {"id": chat if sender is None else sender, "is_bot": False},
+            "message": {"chat": {"id": chat, "type": "private"}},
+            "data": data,
+        },
+    }
+
+
+@pytest.mark.parametrize("data", ["", "rm -rf", "dev:not-a-uuid", "menu:unknown", "x" * 70])
+def test_unknown_button_data_is_ignored_without_database(data: str) -> None:
+    def no_db() -> Session:
+        raise AssertionError("database must not be reached")
+
+    assert (
+        commands.handle_update(_press(data), session_factory=no_db, admission=_Admission()) is None
+    )
+
+
+def test_button_from_another_telegram_user_is_ignored() -> None:
+    def no_db() -> Session:
+        raise AssertionError("database must not be reached")
+
+    update = _press("menu:status", sender=CHAT + 1)
+    assert commands.handle_update(update, session_factory=no_db, admission=_Admission()) is None
+
+
+@pytest.mark.postgresql
+def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> None:
+    user_id, device_id, private = _active_device(factory)
+    device_online.heartbeat(factory, device_id=device_id, jws=_beat(private, device_id, 1, VALID))
+    _link(factory, user_id)
+
+    panel = commands.handle_update(
+        _msg(commands.MENU_PANEL), session_factory=factory, admission=_Admission()
+    )
+    assert panel is not None and panel.text.startswith("📊 Seus computadores — 1 de 1 online")
+    assert panel.keyboard is not None
+    buttons = [b for row in panel.keyboard["inline_keyboard"] for b in row]
+    assert {"text": "🔍 telemetry-agent", "callback_data": f"dev:{device_id}"} in buttons
+
+    card = commands.handle_update(
+        _press(f"dev:{device_id}"), session_factory=factory, admission=_Admission()
+    )
+    assert card is not None and card.callback_id == "cb-1"
+    assert card.text.startswith("🖥️ telemetry-agent") and "ONLINE" in card.text
+    assert "RAM: 6,0 de 16,0 GB" in card.text and "Temperatura: 48 °C" in card.text
+
+    other_user, other_device, _ = _active_device(factory)
+    foreign = commands.handle_update(
+        _press(f"dev:{other_device}"), session_factory=factory, admission=_Admission()
+    )
+    assert foreign is not None and foreign.text == "Computador não encontrado."
+    assert other_user != user_id
+
+    hint = commands.handle_update(
+        _msg(commands.MENU_AI), session_factory=factory, admission=_Admission()
+    )
+    assert hint is not None and "Escreva sua pergunta" in hint.text
