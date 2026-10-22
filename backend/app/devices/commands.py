@@ -797,10 +797,17 @@ def _closed_text(command: DeviceCommand) -> str:
         "not_regular": "não é um arquivo comum",
         "too_large": "o resultado passa de 10 MB",
         "disabled": "essa ação está desligada nesse computador",
-        "unsupported": "esse computador não suporta essa ação",
+        "unsupported": "falta o programa ou o aparelho no computador",
         "failed": "o computador tentou e não conseguiu",
         "digest": "o computador recusou: o pedido não confere com o aprovado",
     }
+    if command.kind == "webcam_photo":
+        reasons["unsupported"] = (
+            "falta a câmera ou o programa de foto (fswebcam no Linux, imagesnap no Mac)"
+        )
+        reasons["failed"] = "a câmera não respondeu ou está em uso"
+    if command.kind == "lock_screen":
+        reasons["failed"] = "não há uma sessão gráfica para bloquear ou o sistema recusou"
     if command.kind == "send_file":
         reasons["too_large"] = "o arquivo passa de 10 MB"
         reasons["disabled"] = "o envio de arquivos está desligado nesse computador"

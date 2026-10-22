@@ -108,4 +108,6 @@ def test_agent_errors_become_friendly_notices(setup: Any) -> None:
         content_b64=None,
     )
     texts = [n.text for n in commands.pending_deliveries(factory)[1] if n.chat_id == CHAT]
-    assert texts == ["Não foi possível bloquear a tela: esse computador não suporta essa ação."]
+    assert texts == [
+        "Não foi possível bloquear a tela: falta o programa ou o aparelho no computador."
+    ]

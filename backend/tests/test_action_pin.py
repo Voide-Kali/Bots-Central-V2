@@ -212,7 +212,7 @@ async def test_reading_the_pin_status_is_not_blocked_by_the_body_check(
         def __exit__(self, *_: object) -> None:
             return None
 
-    app = _client_app(lambda: _Session())  # type: ignore[arg-type,return-value]
+    app = _client_app(lambda: _Session())  # type: ignore[arg-type]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         response = await client.get(
             "/api/v1/me/action-pin", headers={"Authorization": "Bearer " + "A" * 43}

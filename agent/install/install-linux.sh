@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the Aval agent as a hardened systemd service (Kali/Debian/Ubuntu).
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
-# Optional ADR-016 actions (each still needs your e-mail code every time):
+# Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
 #   sudo AVAL_ACTIONS=lock_screen,webcam_photo ./install-linux.sh https://...
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
@@ -30,7 +30,7 @@ echo "==> User and folders"
 id aval-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin aval-agent
 install -d -m 0700 -o aval-agent -g aval-agent /var/lib/aval-agent
 install -d -m 0755 /etc/aval-agent
-# Folder whose files may be sent after e-mail approval (ADR-015). Add yourself to the
+# Folder whose files may be sent after your approval (ADR-015/016). Add yourself to the
 # aval-agent group to drop files here:  sudo usermod -aG aval-agent "$SUDO_USER"
 install -d -m 2770 -o root -g aval-agent /srv/aval-compartilhado
 cat > /etc/aval-agent/config.json <<JSON
@@ -103,4 +103,4 @@ systemctl enable aval-agent
 systemctl restart aval-agent
 systemctl --no-pager --lines=5 status aval-agent || true
 echo "Done. Logs: journalctl -u aval-agent -f"
-echo "Files you allow Aval to send (after e-mail approval) go in: /srv/aval-compartilhado"
+echo "Files you allow Aval to send (after your approval with the PIN) go in: /srv/aval-compartilhado"

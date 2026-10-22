@@ -348,6 +348,10 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     )
     assert foreign is not None and foreign.text == "Computador não encontrado."
     assert other_user != user_id
+    by_name = commands.handle_update(
+        _msg("/pc Telemetry-Agent"), session_factory=factory, admission=_Admission()
+    )
+    assert by_name is not None and by_name.text.startswith("telemetry-agent")
 
     hint = commands.handle_update(
         _msg("IA"), session_factory=factory, admission=_Admission()
