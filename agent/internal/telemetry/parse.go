@@ -177,3 +177,43 @@ func decodeUint64(raw string) (uint64, bool) {
 	v := binary.LittleEndian.Uint64(buf)
 	return v, v > 0
 }
+
+// parseTopCPU reads the CPU busy share from macOS `top -l 2 -n 0 -s 1` output.
+// The first sample is an average since boot, so the LAST "CPU usage" line wins:
+//
+//	CPU usage: 7.12% user, 10.40% sys, 82.47% idle
+func parseTopCPU(content string) (float64, bool) {
+	idle, found := 0.0, false
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(strings.TrimSpace(line), "CPU usage:") {
+			continue
+		}
+		for _, part := range strings.Split(line, ",") {
+			part = strings.TrimSpace(part)
+			if !strings.HasSuffix(part, "idle") {
+				continue
+			}
+			number := strings.TrimSuffix(strings.Fields(part)[0], "%")
+			if value, err := strconv.ParseFloat(number, 64); err == nil && value >= 0 && value <= 100 {
+				idle, found = value, true
+			}
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	return 100 - idle, true
+}
+
+// diskUsage matches `df`: used = total - free, and the percentage is
+// used / (used + available to normal users). The reported total is therefore
+// used + available, so the panel's percentage equals df's "Use%".
+func diskUsage(blocks, free, available, blockSize uint64) (total, used uint64, ok bool) {
+	if blockSize == 0 || free > blocks || available > free {
+		return 0, 0, false
+	}
+	used = (blocks - free) * blockSize
+	return used + available*blockSize, used, true
+}
