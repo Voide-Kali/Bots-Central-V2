@@ -46,11 +46,32 @@ describe("Register and verify", () => {
     window.history.pushState({}, "", `/verify?challenge=${challenge}`);
     const client = api();
     render(<VerifyPage api={client} />);
-    expect(screen.queryByLabelText("Identificador do e-mail")).toBeNull();
+    expect(screen.queryByLabelText("Link do e-mail ou identificador")).toBeNull();
     fireEvent.change(screen.getByLabelText("Código de 8 números"), { target: { value: "1234 5678" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar e-mail" }));
     expect(await screen.findByRole("heading", { name: "E-mail confirmado" })).toBeVisible();
     expect(client.auth.consumeVerificationCode).toHaveBeenCalledWith({ challenge_id: challenge, code: "1234 5678" });
+  });
+
+  it("explains a missing link instead of sending an empty identifier to the server", async () => {
+    window.history.pushState({}, "", "/verify");
+    const client = api();
+    render(<VerifyPage api={client} />);
+    fireEvent.change(screen.getByLabelText("Código de 8 números"), { target: { value: "1234 5678" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar e-mail" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Falta o link do e-mail");
+    expect(client.auth.consumeVerificationCode).not.toHaveBeenCalled();
+  });
+
+  it("accepts the whole e-mail link pasted in the identifier field", async () => {
+    window.history.pushState({}, "", "/verify");
+    const client = api();
+    render(<VerifyPage api={client} />);
+    fireEvent.change(screen.getByLabelText("Link do e-mail ou identificador"), { target: { value: "https://aval.tail5e5757.ts.net/verify?challenge=3F2A9C1E-1111-4222-8333-444455556666" } });
+    fireEvent.change(screen.getByLabelText("Código de 8 números"), { target: { value: "12345678" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar e-mail" }));
+    expect(await screen.findByRole("heading", { name: "E-mail confirmado" })).toBeVisible();
+    expect(client.auth.consumeVerificationCode).toHaveBeenCalledWith({ challenge_id: "3f2a9c1e-1111-4222-8333-444455556666", code: "12345678" });
   });
 
   it("offers to resend the code to the e-mail just registered", async () => {
