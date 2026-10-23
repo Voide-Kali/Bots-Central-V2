@@ -634,7 +634,7 @@ async def me(request: Request) -> Response:
         return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     return JSONResponse(
         status_code=200,
-        content={"id": str(principal.user_id), "email": principal.email},
+        content={"id": str(principal.user_id), "email": principal.email, "role": principal.role},
         headers=_NO_STORE_HEADERS,
     )
 

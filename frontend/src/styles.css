@@ -253,3 +253,16 @@ code { font-family: var(--mono); }
   .history-item time { grid-row: auto; }
 }
 .workspace__aside { display: grid; gap: 1.25rem; align-content: start; }
+
+/* Admin (ADR-017) */
+.admin { display: grid; gap: 1.25rem; }
+.admin__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; margin: 0; padding: 1.25rem; }
+.admin__stats dt { color: var(--ink-faint); font-size: .85rem; }
+.admin__stats dd { margin: .2rem 0; font-size: 1.6rem; font-weight: 700; }
+.admin__stats small { color: var(--ink-faint); font-size: .85rem; }
+.admin__bad { color: var(--danger) !important; }
+.table-scroll { overflow-x: auto; }
+.admin__table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.admin__table th { padding: .6rem 1.25rem; color: var(--ink-faint); font-weight: 600; text-align: left; white-space: nowrap; }
+.admin__table td { padding: .6rem 1.25rem; border-top: 1px solid var(--line); vertical-align: middle; }
+.admin__table td small { color: var(--ink-faint); }

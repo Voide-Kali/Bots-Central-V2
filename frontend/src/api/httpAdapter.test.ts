@@ -32,7 +32,7 @@ describe("HTTP API adapter", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/auth/login");
     expect(headersFor(fetchMock).get("Authorization")).toBeNull();
 
-    await expect(api.auth.me()).resolves.toEqual({ id: "user-1", email: "person@example.test" });
+    await expect(api.auth.me()).resolves.toEqual({ id: "user-1", email: "person@example.test", role: "user" });
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/auth/me");
     expect(headersFor(fetchMock, 1).get("Authorization")).toBe("Bearer access-from-login");
   });
