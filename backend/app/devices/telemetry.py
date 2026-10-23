@@ -33,6 +33,8 @@ _ALLOWED_KEYS = frozenset(
         "disk_used",
         "temp_c",
         "uptime_s",
+        "battery_pct",
+        "battery_charging",
     }
 )
 
@@ -52,6 +54,8 @@ class TelemetrySample:
     disk_used_bytes: int | None = None
     temperature_c: float | None = None
     uptime_seconds: int | None = None
+    battery_percent: int | None = None
+    battery_charging: bool | None = None
 
 
 def _float(claim: dict[str, Any], key: str, low: float, high: float) -> float | None:
@@ -73,6 +77,15 @@ def _int(claim: dict[str, Any], key: str, low: int, high: int) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
         raise InvalidTelemetry
     return int(value)
+
+
+def _bool(claim: dict[str, Any], key: str) -> bool | None:
+    value = claim.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise InvalidTelemetry
+    return value
 
 
 def _pair(total: int | None, used: int | None) -> None:
@@ -98,6 +111,8 @@ def parse_claim(value: object) -> TelemetrySample:
         disk_used_bytes=_int(value, "disk_used", 0, _MAX_BIGINT),
         temperature_c=_float(value, "temp_c", -50.0, 150.0),
         uptime_seconds=_int(value, "uptime_s", 0, _MAX_BIGINT),
+        battery_percent=_int(value, "battery_pct", 0, 100),
+        battery_charging=_bool(value, "battery_charging"),
     )
     _pair(sample.memory_total_bytes, sample.memory_used_bytes)
     _pair(sample.disk_total_bytes, sample.disk_used_bytes)
@@ -120,6 +135,8 @@ def store(session: Session, *, device_id: uuid.UUID, sample: TelemetrySample) ->
             disk_used_bytes=sample.disk_used_bytes,
             temperature_c=sample.temperature_c,
             uptime_seconds=sample.uptime_seconds,
+            battery_percent=sample.battery_percent,
+            battery_charging=sample.battery_charging,
         )
     )
     session.execute(
@@ -142,6 +159,8 @@ def to_json(row: DeviceTelemetrySample) -> dict[str, Any]:
         "disk_used_bytes": row.disk_used_bytes,
         "temperature_c": row.temperature_c,
         "uptime_seconds": row.uptime_seconds,
+        "battery_percent": row.battery_percent,
+        "battery_charging": row.battery_charging,
     }
 
 
