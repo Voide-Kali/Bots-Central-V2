@@ -59,8 +59,17 @@ class TelegramClient:
             raise TelegramUnavailable
         return [item for item in result if isinstance(item, dict)]
 
+    def send_photo(self, chat_id: int, content: bytes, caption: str) -> None:
+        """A picture shown inline in the chat (ADR-019 wrong-password photo)."""
+        self._upload("sendPhoto", "photo", chat_id, "foto.jpg", content, caption)
+
     def send_document(self, chat_id: int, file_name: str, content: bytes, caption: str) -> None:
         """Upload a file as multipart/form-data (Bot API limit is 50 MB; we cap at 10 MB)."""
+        self._upload("sendDocument", "document", chat_id, file_name, content, caption)
+
+    def _upload(
+        self, method: str, field: str, chat_id: int, file_name: str, content: bytes, caption: str
+    ) -> None:
         boundary = "aval" + secrets.token_hex(16)
         safe_name = file_name.replace('"', "'").replace("\r", "").replace("\n", "")
         parts = [
@@ -70,14 +79,14 @@ class TelegramClient:
                 + caption[: MAX_MESSAGE_CHARS // 4]
             ).encode(),
             (
-                f'Content-Disposition: form-data; name="document"; filename="{safe_name}"\r\n'
+                f'Content-Disposition: form-data; name="{field}"; filename="{safe_name}"\r\n'
                 "Content-Type: application/octet-stream\r\n\r\n"
             ).encode()
             + content,
         ]
         body = b"".join(f"--{boundary}\r\n".encode() + part + b"\r\n" for part in parts)
         body += f"--{boundary}--\r\n".encode()
-        url = f"{API_BASE}/bot{self._token.get_secret_value()}/sendDocument"
+        url = f"{API_BASE}/bot{self._token.get_secret_value()}/{method}"
         request = urllib.request.Request(
             url,
             data=body,

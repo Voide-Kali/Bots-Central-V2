@@ -29,7 +29,14 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   "pin.failed": "PIN incorreto",
   "pin.locked": "PIN travado por 15 minutos",
   "admin.role_changed": "Papel da conta alterado",
-  "admin.user_activated": "Conta ativada pelo administrador"
+  "admin.user_activated": "Conta ativada pelo administrador",
+  "sensor.failed_login": "Senha errada no computador"
+};
+
+const SOURCES: Readonly<Record<string, string>> = {
+  "gdm-password": "tela de login", "gdm-autologin": "tela de login", lightdm: "tela de login", sddm: "tela de login",
+  "gnome-screensaver": "tela de bloqueio", "xfce4-screensaver": "tela de bloqueio", kscreenlocker: "tela de bloqueio", "cinnamon-screensaver": "tela de bloqueio",
+  login: "login no terminal", sudo: "sudo", su: "su", sshd: "acesso remoto (SSH)", "polkit-agent-helper-1": "pedido de senha do sistema"
 };
 
 const KINDS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", webcam_photo: "foto da webcam" };
@@ -37,7 +44,8 @@ const KINDS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", l
 /** "bloquear tela · com PIN", "enviar arquivo relatorio.pdf · tropa"; a dash when the event has nothing to add. */
 export function eventDetail(event: AuditEvent): string {
   const what = [event.kind ? KINDS[event.kind] ?? event.kind : null, event.file].filter(Boolean).join(" ");
-  const parts = [what, event.name, event.byPin ? "com PIN" : null].filter((part): part is string => Boolean(part));
+  const where = event.source ? SOURCES[event.source] ?? event.source : null;
+  const parts = [what, event.name, where, event.byPin ? "com PIN" : null].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : "\u2014";
 }
 
