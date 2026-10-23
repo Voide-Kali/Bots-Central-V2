@@ -415,3 +415,51 @@ func TestRunnerPollsCommandsOnlyAfterActiveHeartbeats(t *testing.T) {
 		t.Fatalf("polls=%d submitted=%+v", channel.polls, channel.submitted)
 	}
 }
+
+type fakeLive struct {
+	answers []bool
+	sent    int
+}
+
+func (f *fakeLive) SendLive(context.Context, string, telemetry.Sample) (bool, error) {
+	f.sent++
+	if f.sent <= len(f.answers) {
+		return f.answers[f.sent-1], nil
+	}
+	return false, nil
+}
+
+func TestRunnerSendsLiveSamplesEverySecondWhileWatched(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{nil, nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
+	dependencies := testDependencies(fake, state)
+	dependencies.Telemetry = &testTelemetry{}
+	live := &fakeLive{answers: []bool{true, true, true, false}}
+	dependencies.Live = live
+	var waits []time.Duration
+	dependencies.Wait = func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }
+	fake.OnSend = func(_ heartbeat.Model) {
+		if len(fake.Calls()) == 2 {
+			cancel()
+		}
+	}
+	runner, err := New(testConfig(), dependencies)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := runner.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	// First heartbeat: asks, the owner is watching, 3 more samples a second apart, then
+	// "not watching" ends live mode; during each 30 s wait the agent asks twice more
+	// (at 10 s and 20 s). Two heartbeat cycles: 4 + 2, then 1 + 2.
+	if live.sent != 9 {
+		t.Fatalf("live samples = %d, want 9", live.sent)
+	}
+	// Then the 30 s wait is split in 10 s steps, asking "watching?" in between.
+	if len(waits) < 4 || waits[0] != time.Second || waits[1] != time.Second || waits[2] != time.Second || waits[3] != 10*time.Second {
+		t.Fatalf("waits = %v", waits)
+	}
+}

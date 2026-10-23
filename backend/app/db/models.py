@@ -67,6 +67,8 @@ class Device(Base):
         server_default=DeviceLifecycleStatus.PENDING.value,
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ADR-018: while the owner has this device open, the agent reports every second.
+    live_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     public_key: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
     public_key_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)

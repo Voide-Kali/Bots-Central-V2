@@ -112,7 +112,7 @@ func main() {
 		}
 		logger.Info("enrollment state persisted", logging.Field{Key: "device_id", Value: result.DeviceID}, logging.Field{Key: "status", Value: result.LifecycleStatus})
 	}
-	dependencies := app.Dependencies{Collector: hostinfo.SystemCollector(), Telemetry: telemetry.NewSystemCollector(), Enrollment: enrollmentState, Transport: httpTransport, Logger: logger}
+	dependencies := app.Dependencies{Collector: hostinfo.SystemCollector(), Telemetry: telemetry.NewSystemCollector(), Live: httpTransport, Enrollment: enrollmentState, Transport: httpTransport, Logger: logger}
 	if fileConfig.SharedDir != "" || len(fileConfig.AllowedActions) > 0 {
 		executor, err := commands.NewExecutor(fileConfig.SharedDir, fileConfig.AllowedActions)
 		if err != nil {

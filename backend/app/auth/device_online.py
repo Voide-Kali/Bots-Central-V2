@@ -27,6 +27,8 @@ PAIRING_TOKEN_BYTES = 32
 PAIRING_TTL = timedelta(minutes=5)
 ENROLLMENT_AUDIENCE = "bots-central:enrollment:v1"
 HEARTBEAT_AUDIENCE = "bots-central:heartbeat:v1"
+LIVE_AUDIENCE = "bots-central:live:v1"
+LIVE_WINDOW = timedelta(seconds=60)
 ONLINE_WINDOW = timedelta(seconds=90)
 MAX_SEQUENCE = (1 << 64) - 1
 
@@ -364,7 +366,7 @@ def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
 
 
 def _verify_heartbeat_claims(
-    *, device: Device, device_id: uuid.UUID, jws: str
+    *, device: Device, device_id: uuid.UUID, jws: str, audience: str = HEARTBEAT_AUDIENCE
 ) -> tuple[int, telemetry.TelemetrySample | None]:
     if device.lifecycle_status is DeviceLifecycleStatus.REVOKED:
         raise DeviceRevoked
@@ -372,7 +374,7 @@ def _verify_heartbeat_claims(
         raise DevicePending
     if device.public_key is None:
         raise InvalidProof
-    claims = _verify_jws(jws, device.public_key, audience=HEARTBEAT_AUDIENCE)
+    claims = _verify_jws(jws, device.public_key, audience=audience)
     if claims.get("sub") != str(device_id):
         raise InvalidProof
     sequence = claims.get("seq")
@@ -400,6 +402,63 @@ def authenticate_heartbeat(
         if device is None:
             raise DeviceNotFound
         verify_heartbeat(device=device, device_id=device_id, jws=jws)
+
+
+def authenticate_live(session_factory: SessionFactory, *, device_id: uuid.UUID, jws: str) -> None:
+    """Like authenticate_heartbeat, for the live audience (ADR-018)."""
+    with session_factory() as session:
+        device = session.scalar(select(Device).where(Device.id == device_id))
+        if device is None:
+            raise DeviceNotFound
+        _verify_heartbeat_claims(
+            device=device, device_id=device_id, jws=jws, audience=LIVE_AUDIENCE
+        )
+
+
+def live(session_factory: SessionFactory, *, device_id: uuid.UUID, jws: str) -> bool:
+    """Accept a signed live sample. Returns whether the owner is still watching.
+
+    It counts as presence (same sequence as the heartbeat); the sample is stored only
+    while the live window is open, so an agent asking "should I go live?" stores nothing.
+    """
+    with session_factory() as session, session.begin():
+        device = session.scalar(select(Device).where(Device.id == device_id))
+        if device is None:
+            raise DeviceNotFound
+        sequence, sample = _verify_heartbeat_claims(
+            device=device, device_id=device_id, jws=jws, audience=LIVE_AUDIENCE
+        )
+        row = session.execute(
+            update(Device)
+            .where(
+                Device.id == device_id,
+                Device.lifecycle_status == DeviceLifecycleStatus.ACTIVE,
+                Device.public_key == device.public_key,
+                (Device.last_heartbeat_seq.is_(None)) | (Device.last_heartbeat_seq < sequence),
+            )
+            .values(last_heartbeat_seq=sequence, last_seen_at=text("clock_timestamp()"))
+            .returning(Device.live_until, Device.last_seen_at)
+        ).one_or_none()
+        if row is None:
+            current = session.scalar(select(Device.lifecycle_status).where(Device.id == device_id))
+            if current is DeviceLifecycleStatus.REVOKED:
+                raise DeviceRevoked
+            raise StaleHeartbeat
+        live_until, now = row
+        watching = live_until is not None and live_until > now
+        if watching and sample is not None:
+            telemetry.store(session, device_id=device_id, sample=sample)
+        return watching
+
+
+def watch(session_factory: SessionFactory, *, user_id: uuid.UUID, device_id: uuid.UUID) -> None:
+    """The owner opened this device in the panel: ask its agent for 1 s samples for 60 s."""
+    with session_factory() as session, session.begin():
+        device = _owned_device(session, user_id=user_id, device_id=device_id)
+        if device.lifecycle_status is not DeviceLifecycleStatus.ACTIVE:
+            raise DevicePending
+        now = cast(datetime, session.scalar(text("SELECT clock_timestamp()")))
+        device.live_until = now + LIVE_WINDOW
 
 
 def heartbeat(

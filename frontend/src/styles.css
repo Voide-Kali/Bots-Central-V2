@@ -239,6 +239,34 @@ input:disabled { background: var(--raised); color: var(--faint); }
 
 .device__details { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 16px var(--card-pad) 20px; background: var(--raised); border-top: 1px solid var(--rule); }
 .facts, .telemetry-panel dl { display: grid; gap: 0; }
+
+/* ---------- Live chart (ADR-018) ---------- */
+.device__details > .charts { grid-column: 1 / -1; }
+.charts { display: grid; gap: 12px; }
+.charts__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.charts__live { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--fs-small); }
+.charts__live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--control); }
+.charts__live--on { color: var(--text); }
+.charts__live--on::before { background: var(--positive); box-shadow: 0 0 0 0 rgb(63 192 122 / .6); animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 8px rgb(63 192 122 / 0); } 100% { box-shadow: 0 0 0 0 rgb(63 192 122 / 0); } }
+.charts__error { color: var(--negative); font-size: var(--fs-small); }
+.charts__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.chart { margin: 0; padding: 12px 12px 6px; border: 1px solid var(--border); border-radius: var(--radius-card); background: linear-gradient(180deg, var(--surface), var(--raised)); box-shadow: var(--shadow-1); }
+.chart__head { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 12px; }
+.chart__label { color: var(--muted); font-size: var(--fs-small); }
+.chart__value { justify-self: end; font-size: 22px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.chart__value small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.chart__meta { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
+.chart__svg { display: block; width: 100%; height: 150px; margin-top: 6px; overflow: visible; touch-action: none; }
+.chart__grid { stroke: var(--rule); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart__tick { fill: var(--faint); font-size: 10px; font-family: var(--font); }
+.chart__line { fill: none; stroke: var(--pen); stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px rgb(91 149 240 / .55)); }
+.chart__now { fill: var(--pen); stroke: var(--surface); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart__mark circle { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.chart__mark--peak circle { stroke: var(--warning); }
+.chart__mark text { fill: var(--warning); font-size: 10px; font-family: var(--font); }
+.chart__cursor line { stroke: var(--muted); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.chart__cursor circle { fill: var(--text); }
 .device__details > .facts:only-child { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; column-gap: 24px; }
 .facts > div, .telemetry-item { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
 .facts dt, .telemetry-item dt { color: var(--muted); }
