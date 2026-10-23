@@ -24,6 +24,7 @@ from app.telegram.commands import ActionDeps, Reply, handle_update
 from app.telegram.resource_alerts import ResourceAlerter
 
 ALERT_INTERVAL_SECONDS = 15
+CLEANUP_INTERVAL_SECONDS = 3600
 logger = logging.getLogger("bots_central.telegram")
 
 
@@ -93,6 +94,7 @@ def run() -> None:
     signal.signal(signal.SIGINT, stop)
     offset: int | None = None
     next_alert = 0.0
+    next_cleanup = 0.0
     backoff = 1.0
     logger.info("telegram bot started")
     while not stopping:
@@ -110,6 +112,13 @@ def run() -> None:
             except Exception:
                 logger.exception("file delivery pass failed")
             next_alert = time.monotonic() + ALERT_INTERVAL_SECONDS
+        if time.monotonic() >= next_cleanup:
+            # Expired rate-limit rows are never read again; drop them once an hour.
+            try:
+                admission.cleanup_expired()
+            except Exception:
+                logger.warning("rate-limit cleanup failed")
+            next_cleanup = time.monotonic() + CLEANUP_INTERVAL_SECONDS
         try:
             updates = client.get_updates(offset=offset, timeout=20)
             backoff = 1.0

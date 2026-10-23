@@ -65,6 +65,7 @@ _AUTH_BODY_LIMITS = {
     "/api/v1/devices/enrollments": 16 * 1024,
     "/api/v1/me/action-pin": 8 * 1024,
 }
+_BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _ACCEPTED_MESSAGE = "If eligible, verification instructions will be sent."
 _INVALID_MESSAGE = "Invalid request."
@@ -97,7 +98,8 @@ class AuthRequestSecurityMiddleware:
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         limit = _body_limit(scope["path"])
-        if scope["type"] != "http" or limit is None:
+        # Only requests that carry a body are checked; GET /me/action-pin has none.
+        if scope["type"] != "http" or limit is None or scope.get("method") not in _BODY_METHODS:
             await self.app(scope, receive, send)
             return
         headers = {

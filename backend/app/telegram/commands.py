@@ -50,6 +50,8 @@ class LinkAdmission(Protocol):
 
     def admit_assistant(self, *, chat_id: int) -> bool: ...
 
+    def admit_telegram_action(self, *, chat_id: int) -> bool: ...
+
 
 @dataclass(frozen=True)
 class Reply:
@@ -211,12 +213,14 @@ def status_keyboard(session: Session, user_id: Any) -> dict[str, Any]:
 
 
 def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> Reply:
+    """The card of one of the owner's computers, by id (buttons) or by name (/pc tropa)."""
+    now, devices = _user_devices(session, user_id)
     try:
         device_id = uuid.UUID(raw_id)
+        device = next((item for item in devices if item.id == device_id), None)
     except ValueError:
-        return Reply(chat_id, "Computador não encontrado.")
-    now, devices = _user_devices(session, user_id)
-    device = next((item for item in devices if item.id == device_id), None)
+        wanted = raw_id.strip().casefold()
+        device = next((item for item in devices if item.name.casefold() == wanted), None)
     if device is None:  # never reveal other users' devices
         return Reply(chat_id, "Computador não encontrado.")
     sample = telemetry.latest_for_devices(session, [device.id]).get(device.id)
@@ -333,7 +337,7 @@ def _dispatch(
         if actions is None:
             return Reply(chat_id, "Ações não estão ativadas neste servidor.")
         try:
-            if not admission.admit_telegram_link(chat_id=chat_id):
+            if not admission.admit_telegram_action(chat_id=chat_id):
                 return Reply(chat_id, "Muitas tentativas. Aguarde alguns minutos.")
         except AbuseControlUnavailable:
             return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
@@ -460,10 +464,11 @@ def _start_action(
     except commands.CommandError as error:
         return Reply(chat_id, error.message)
     what = _what(kind, argument)
+    where = ("do " if kind == "send_file" else "no ") + intent.device_name
     if has_pin:
         return Reply(
             chat_id,
-            f"Para {what} no {intent.device_name}, digite seu PIN (6 números).\n"
+            f"Para {what} {where}, digite seu PIN (6 números).\n"
             "Vale 5 minutos. A mensagem com o PIN é apagada em seguida.",
         )
     subject, body = commands.approval_email(intent)
@@ -474,7 +479,7 @@ def _start_action(
         return Reply(chat_id, "Não consegui enviar o e-mail com o código. Tente de novo.")
     return Reply(
         chat_id,
-        f"Enviei um código para o seu e-mail para {what} no {intent.device_name}. "
+        f"Enviei um código para o seu e-mail para {what} {where}. "
         "Responda aqui: /aprovar CÓDIGO (vale 5 minutos).\n"
         "Dica: crie um PIN no painel do Aval para aprovar sem e-mail.",
     )

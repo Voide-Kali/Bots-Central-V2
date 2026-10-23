@@ -11,7 +11,9 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-_LOCK = re.compile(r"\b(bloque\w*|trav\w*)\b")
+# Commands only ("bloqueia", "trava", "tranca"); "travou" or "bloqueado" describe a
+# problem and go to the assistant instead.
+_LOCK = re.compile(r"\b(bloqueia|bloquear|bloqueie|trava|travar|trave|tranca|trancar|tranque)\b")
 _PHOTO = re.compile(r"\b(foto\w*|webcam|camera)\b")
 _SEND = re.compile(r"\b(mand\w*|envi\w*|passa\w*|traz\w*|traga)\b")
 _FILE = re.compile(r"^(.+?\.[a-z0-9]{1,8})(?![\w])", re.IGNORECASE)

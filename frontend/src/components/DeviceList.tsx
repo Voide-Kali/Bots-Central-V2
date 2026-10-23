@@ -51,10 +51,9 @@ function ratio(used: number | null, total: number | null): number | null {
   return used === null || total === null || total <= 0 ? null : Math.min(100, Math.max(0, (used / total) * 100));
 }
 
+/** Only a measured CPU percentage; the load average is not a percentage and is shown as text in the details. */
 export function cpuShare(telemetry: DeviceTelemetry): number | null {
-  if (telemetry.cpuPercent !== null) return telemetry.cpuPercent;
-  if (telemetry.load1 !== null && telemetry.cpuCount) return Math.min(100, (telemetry.load1 / telemetry.cpuCount) * 100);
-  return null;
+  return telemetry.cpuPercent;
 }
 
 /** One figure and a 3px bar at its true ratio; the bar turns to the warning colour from 90%. */

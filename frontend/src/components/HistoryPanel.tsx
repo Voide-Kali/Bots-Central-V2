@@ -17,14 +17,29 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   "telegram.linked": "Telegram vinculado",
   "telegram.unlinked": "Telegram desvinculado",
   "action.requested": "Ação pedida (aguardando aval)",
-  "action.approved": "Ação aprovada com código",
+  "action.approved": "Ação aprovada",
   "action.approval_failed": "Código de aprovação incorreto",
   "action.cancelled": "Ação cancelada",
   "action.dispatched": "Ação entregue ao agente",
   "action.failed": "Ação falhou no agente",
   "action.completed": "Ação concluída pelo agente",
-  "action.delivered": "Arquivo entregue no Telegram"
+  "action.delivered": "Resultado entregue no Telegram",
+  "pin.changed": "PIN criado ou trocado",
+  "pin.change_failed": "Senha errada ao trocar o PIN",
+  "pin.failed": "PIN incorreto",
+  "pin.locked": "PIN travado por 15 minutos",
+  "admin.role_changed": "Papel da conta alterado",
+  "admin.user_activated": "Conta ativada pelo administrador"
 };
+
+const KINDS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", webcam_photo: "foto da webcam" };
+
+/** "bloquear tela · com PIN", "enviar arquivo relatorio.pdf · tropa"; a dash when the event has nothing to add. */
+export function eventDetail(event: AuditEvent): string {
+  const what = [event.kind ? KINDS[event.kind] ?? event.kind : null, event.file].filter(Boolean).join(" ");
+  const parts = [what, event.name, event.byPin ? "com PIN" : null].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" · ") : "\u2014";
+}
 
 const ACTORS: Readonly<Record<string, string>> = { user: "você", device: "dispositivo", system: "sistema", telegram: "Telegram" };
 
@@ -72,7 +87,7 @@ export function HistoryPanel({ api, onUnauthenticated }: { readonly api: AuditAp
       {state.kind === "ready" && state.events.length > 0 ? <ol className="history-list">{state.events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
         <time className="num" dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
         <strong>{ACTION_LABELS[event.action] ?? event.action}</strong>
-        <span className="history-item__name">{event.name ?? "\u2014"}</span>
+        <span className="history-item__name">{eventDetail(event)}</span>
         <small>por {ACTORS[event.actor] ?? event.actor}{event.outcome === "success" ? "" : " · falhou"}</small>
       </li>)}</ol> : null}
     </section>
