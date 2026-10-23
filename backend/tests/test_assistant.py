@@ -115,14 +115,15 @@ def test_assistant_sees_only_the_callers_devices(factory: sessionmaker[Session])
 def test_assistant_disabled_rate_limited_and_unavailable(factory: sessionmaker[Session]) -> None:
     user_id, _, _ = _active_device(factory)
     _link(factory, user_id)
-    off = commands.handle_update(_msg("oi"), session_factory=factory, admission=_Admission())
+    q = "qual PC esta mais quente?"
+    off = commands.handle_update(_msg(q), session_factory=factory, admission=_Admission())
     assert off is not None and "não está ativada" in off.text
     limited = commands.handle_update(
-        _msg("oi"), session_factory=factory, admission=_Admission(False), model=_Model()
+        _msg(q), session_factory=factory, admission=_Admission(False), model=_Model()
     )
     assert limited is not None and "Muitas perguntas" in limited.text
     failing = commands.handle_update(
-        _msg("oi"), session_factory=factory, admission=_Admission(), model=_Model(fail=True)
+        _msg(q), session_factory=factory, admission=_Admission(), model=_Model(fail=True)
     )
     assert failing is not None and "não respondeu" in failing.text
 
@@ -190,3 +191,30 @@ def test_assistant_reads_recent_events_and_keeps_context(factory: sessionmaker[S
     assert roles == ["system", "user", "assistant", "user"]
     assert model.seen[1][1]["content"] == "qual PC esta mais quente?"
     assert model.seen[1][2]["content"] == "O telemetry-agent."
+
+
+def test_is_greeting_detects_simple_greetings_only() -> None:
+    for greeting in ["oi", "Ola", "OLA!", "bom dia", "Boa tarde", "opa", "blz", "tudo bem"]:
+        assert commands._is_greeting(greeting), greeting
+    for other in ["qual PC esta mais quente?", "bloqueia o Mac", "", "me manda o relatorio.pdf"]:
+        assert not commands._is_greeting(other), other
+
+
+@pytest.mark.postgresql
+def test_greeting_answers_instantly_without_the_model(factory: sessionmaker[Session]) -> None:
+    user_id, _, _ = _active_device(factory)
+    _link(factory, user_id)
+    model = _Model()
+    hi = commands.handle_update(
+        _msg("Olá!"), session_factory=factory, admission=_Admission(), model=model
+    )
+    assert hi is not None and hi.text == commands.GREETING_REPLY
+    assert model.seen == []  # a greeting never reaches the language model
+    # A real question still goes to the assistant.
+    commands.handle_update(
+        _msg("qual PC esta mais quente?"),
+        session_factory=factory,
+        admission=_Admission(),
+        model=model,
+    )
+    assert len(model.seen) == 1
