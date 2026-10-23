@@ -1,7 +1,7 @@
 # ADR-016: Ações com aval: um modelo único para tudo que muda o computador
 
-Status: **proposto (2026-10-21), aguardando aprovação explícita do Voide**. Afeta o protocolo do
-agente, a autorização e a auditoria.
+Status: **aprovado pelo Voide em 21/10/2026**, com o adendo abaixo. Afeta o protocolo do agente, a
+autorização e a auditoria.
 
 ## Contexto
 
@@ -120,3 +120,27 @@ Este ADR inclui a separação das chaves HMAC por uso, derivadas por HKDF da cha
   catálogo, parâmetro extra, digest trocado, ação não declarada pelo agente).
 - **Na pesquisa da feira**, isso vira mais uma hipótese testável: com a IA conectada ao catálogo
   só para leitura, nenhum ataque consegue disparar uma ação do catálogo.
+
+## Adendo (21/10/2026): decisões do dono depois da aprovação
+
+1. **Aprovação por PIN pessoal em vez de e-mail a cada ação.**
+   - O código por e-mail fica só para criar a conta e redefinir a senha.
+   - As ações são aprovadas com um **PIN de 6 dígitos**, criado no painel. Criar ou trocar o PIN
+     exige a senha da conta.
+   - O PIN é guardado como HMAC com a chave do servidor (tabela `action_pins`); PINs óbvios são
+     recusados.
+   - 5 erros travam as aprovações por 15 minutos.
+   - O PIN aprova só o pedido mais recente; pedidos por PIN mais antigos expiram.
+   - O bot apaga a mensagem do PIN.
+   - Sem PIN configurado, o código por e-mail continua valendo.
+   - Risco aceito: o PIN é digitado no mesmo celular do Telegram. Ele protege contra o celular
+     desbloqueado ou roubado, não contra quem também sabe o PIN.
+2. **Botões e frases.**
+   - O cartão de cada computador tem botões para as ações.
+   - Frases como "bloqueia o Mac" são reconhecidas por **padrões fixos sobre a mensagem do
+     próprio dono** (`app/telegram/intents.py`), não pelo modelo de IA. A IA continua sem
+     caminho para iniciar ações (ADR-013).
+3. **Foto automática quando errarem a senha (próximo passo).** É um sensor opcional, ativado na
+   instalação (`AVAL_SENSORS`), e equivale a um aval dado uma vez pelo dono. A foto vai só para o
+   Telegram do dono. Começa pelo Linux.
+4. **Papéis usuário/administrador.** Vão para o ADR-017.

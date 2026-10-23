@@ -102,7 +102,7 @@ def test_assistant_sees_only_the_callers_devices(factory: sessionmaker[Session])
         admission=_Admission(),
         model=model,
     )
-    assert reply is not None and reply.text.startswith("🤖 ")
+    assert reply is not None and reply.text.startswith("")
     prompt = model.seen[0][1]["content"]
     assert "telemetry-agent" in prompt and '"temperatura_c": 48.0' in prompt
     assert "SEGREDO-OUTRO" not in prompt

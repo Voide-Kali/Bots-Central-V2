@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Install the Aval agent for the logged-in macOS user (LaunchAgent, no sudo).
 # Usage: ./install-macos.sh https://SEU_SERVIDOR.tailXXXX.ts.net
+# Optional ADR-016 actions (each still needs your e-mail code every time):
+#   AVAL_ACTIONS=lock_screen,webcam_photo ./install-macos.sh https://...
+#   (webcam_photo needs: brew install imagesnap)
 set -euo pipefail
 SERVER="${1:-}"
 case "$SERVER" in https://*) ;; *) echo "Usage: $0 https://SERVER.tailXXXX.ts.net" >&2; exit 1;; esac
@@ -8,6 +11,15 @@ SERVER="${SERVER%/}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$(cd "$HERE/.." && pwd)"
 command -v go >/dev/null || { echo "Go not found: brew install go" >&2; exit 1; }
+ACTIONS_JSON=""
+IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
+for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
+  case "$action" in
+    lock_screen|webcam_photo) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    "") ;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo)" >&2; exit 1;;
+  esac
+done
 
 BASE="$HOME/Library/Application Support/Aval"
 BIN="$BASE/aval-agent"
@@ -30,7 +42,8 @@ cat > "$CONFIG" <<JSON
   "transport_timeout": "10s",
   "backoff_initial": "1s",
   "backoff_max": "1m",
-  "shared_dir": "$SHARED"
+  "shared_dir": "$SHARED",
+  "allowed_actions": [$ACTIONS_JSON]
 }
 JSON
 chmod 0600 "$CONFIG"

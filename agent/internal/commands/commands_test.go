@@ -1,12 +1,21 @@
 package commands
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+const testDevice = "11111111-1111-4111-8111-111111111111"
+
+// approved builds a command exactly as the backend would after approval.
+func approved(kind, argument string) Command {
+	return Command{Type: kind, FileName: argument, DeviceID: testDevice, Digest: Digest(kind, testDevice, argument)}
+}
 
 func TestValidFileName(t *testing.T) {
 	good := []string{"relatorio.pdf", "foto 01.jpg", "notas-2026.txt"}
@@ -55,11 +64,11 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 	}
 	big.Close()
 
-	executor, err := NewExecutor(shared)
+	executor, err := NewExecutor(shared, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := executor.Execute(Command{Type: "send_file", FileName: "ok.txt"})
+	result := executor.Execute(approved("send_file", "ok.txt"))
 	sum := sha256.Sum256(content)
 	if !result.OK || string(result.Content) != "relatorio" || result.SHA256 != hex.EncodeToString(sum[:]) {
 		t.Fatalf("ok.txt result = %+v", result)
@@ -73,14 +82,107 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 		"../secret.txt": "not_found",
 	}
 	for name, want := range cases {
-		if got := executor.Execute(Command{Type: "send_file", FileName: name}); got.OK || got.Error != want {
+		if got := executor.Execute(approved("send_file", name)); got.OK || got.Error != want {
 			t.Fatalf("%s: got %+v, want %s", name, got, want)
 		}
 	}
-	if got := executor.Execute(Command{Type: "run_shell", FileName: "ok.txt"}); got.OK || got.Error != "disabled" {
+	if got := executor.Execute(approved("run_shell", "ok.txt")); got.OK || got.Error != "disabled" {
 		t.Fatalf("unknown type must be refused: %+v", got)
 	}
-	if _, err := NewExecutor("relative/path"); err == nil {
+	if _, err := NewExecutor("relative/path", nil); err == nil {
 		t.Fatal("relative shared dir must be rejected")
+	}
+}
+
+type fakeSystem struct {
+	locked int
+	photo  []byte
+	err    error
+}
+
+func (f *fakeSystem) LockScreen(context.Context) error {
+	f.locked++
+	return f.err
+}
+
+func (f *fakeSystem) TakePhoto(_ context.Context, path string) error {
+	if f.err != nil {
+		return f.err
+	}
+	return os.WriteFile(path, f.photo, 0o600)
+}
+
+func TestDigestMismatchIsRefusedBeforeAnything(t *testing.T) {
+	system := &fakeSystem{}
+	executor, err := NewExecutor("", []string{"lock_screen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	tampered := approved("lock_screen", "")
+	tampered.Type = "webcam_photo" // a compromised channel swaps the action
+	if got := executor.Execute(tampered); got.OK || got.Error != "digest" {
+		t.Fatalf("swapped action: %+v", got)
+	}
+	other := approved("lock_screen", "")
+	other.DeviceID = "22222222-2222-4222-8222-222222222222" // approved for another computer
+	if got := executor.Execute(other); got.OK || got.Error != "digest" {
+		t.Fatalf("other device: %+v", got)
+	}
+	if got := executor.Execute(approved("lock_screen", "x")); got.OK || got.Error != "digest" {
+		t.Fatalf("lock_screen takes no argument: %+v", got)
+	}
+	if system.locked != 0 {
+		t.Fatal("nothing may run when the digest does not match")
+	}
+}
+
+func TestActionsRunOnlyWhenAllowed(t *testing.T) {
+	system := &fakeSystem{photo: []byte("\xff\xd8jpeg")}
+	executor, err := NewExecutor("", []string{"lock_screen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	if got := executor.Execute(approved("lock_screen", "")); !got.OK || len(got.Content) != 0 || system.locked != 1 {
+		t.Fatalf("lock: %+v", got)
+	}
+	if got := executor.Execute(approved("webcam_photo", "")); got.OK || got.Error != "disabled" {
+		t.Fatalf("photo not allowed: %+v", got)
+	}
+	if got := executor.Execute(approved("send_file", "a.txt")); got.OK || got.Error != "disabled" {
+		t.Fatalf("no shared folder: %+v", got)
+	}
+	executor.allowed["webcam_photo"] = true
+	got := executor.Execute(approved("webcam_photo", ""))
+	sum := sha256.Sum256(system.photo)
+	if !got.OK || string(got.Content) != string(system.photo) || got.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatalf("photo: %+v", got)
+	}
+	system.err = errUnsupported
+	if got := executor.Execute(approved("lock_screen", "")); got.OK || got.Error != "unsupported" {
+		t.Fatalf("unsupported: %+v", got)
+	}
+	system.err = errors.New("boom")
+	if got := executor.Execute(approved("webcam_photo", "")); got.OK || got.Error != "failed" {
+		t.Fatalf("failed: %+v", got)
+	}
+}
+
+func TestExecutorConfiguration(t *testing.T) {
+	if _, err := NewExecutor("", nil); err == nil {
+		t.Fatal("nothing enabled must be rejected")
+	}
+	if _, err := NewExecutor("", []string{"run_shell"}); err == nil {
+		t.Fatal("unknown action must be rejected")
+	}
+}
+
+func TestDigestMatchesBackendFormat(t *testing.T) {
+	// Same vector as backend tests/test_device_actions.py.
+	got := Digest("lock_screen", testDevice, "")
+	sum := sha256.Sum256([]byte("aval-action-v1\nlock_screen\n" + testDevice + "\n"))
+	if got != hex.EncodeToString(sum[:]) {
+		t.Fatal("digest format changed")
 	}
 }

@@ -237,11 +237,11 @@ def test_presence_alerts_fire_once_per_transition(factory: sessionmaker[Session]
             .values(last_seen_at=Device.last_seen_at - timedelta(minutes=10))
         )
     offline = [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT]
-    assert [r.text for r in offline] == ["🔴 telemetry-agent ficou offline."]
+    assert [r.text for r in offline] == ["telemetry-agent ficou offline."]
     assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []
     device_online.heartbeat(factory, device_id=device_id, jws=_beat(private, device_id, 2))
     online = [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT]
-    assert [r.text for r in online] == ["🟢 telemetry-agent voltou a ficar online."]
+    assert [r.text for r in online] == ["telemetry-agent voltou a ficar online."]
 
 
 def test_empty_telegram_settings_are_treated_as_unset() -> None:
@@ -275,7 +275,7 @@ def test_send_document_builds_a_safe_multipart_upload(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr("urllib.request.urlopen", fake)
     client = telegram_client.TelegramClient(SecretStr("123:abc"))
-    client.send_document(42, 'rel"\r\natorio.pdf', b"\x00PDF-bytes", caption="📎 teste")
+    client.send_document(42, 'rel"\r\natorio.pdf', b"\x00PDF-bytes", caption="teste")
     assert captured["url"].endswith("/sendDocument")
     boundary = captured["type"].split("boundary=")[1]
     body: bytes = captured["body"]
@@ -323,17 +323,21 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     panel = commands.handle_update(
         _msg(commands.MENU_PANEL), session_factory=factory, admission=_Admission()
     )
-    assert panel is not None and panel.text.startswith("📊 Seus computadores — 1 de 1 online")
+    assert panel is not None and panel.text.startswith("AVAL — PROTEGIDO")
+    assert "Computadores online: 1 de 1" in panel.text
     assert panel.keyboard is not None
     buttons = [b for row in panel.keyboard["inline_keyboard"] for b in row]
-    assert {"text": "🔍 telemetry-agent", "callback_data": f"dev:{device_id}"} in buttons
+    assert {"text": "telemetry-agent", "callback_data": f"dev:{device_id}"} in buttons
 
     card = commands.handle_update(
         _press(f"dev:{device_id}"), session_factory=factory, admission=_Admission()
     )
     assert card is not None and card.callback_id == "cb-1"
-    assert card.text.startswith("🖥️ telemetry-agent") and "ONLINE" in card.text
+    assert card.text.startswith("telemetry-agent") and "ONLINE" in card.text
     assert "RAM: 6,0 de 16,0 GB" in card.text and "Temperatura: 48 °C" in card.text
+    assert card.keyboard is not None
+    card_buttons = [b["callback_data"] for row in card.keyboard["inline_keyboard"] for b in row]
+    assert f"act:lock:{device_id}" in card_buttons and f"act:photo:{device_id}" in card_buttons
 
     other_user, other_device, _ = _active_device(factory)
     foreign = commands.handle_update(
@@ -343,6 +347,6 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
     assert other_user != user_id
 
     hint = commands.handle_update(
-        _msg(commands.MENU_AI), session_factory=factory, admission=_Admission()
-    )
+        _msg("IA"), session_factory=factory, admission=_Admission()
+    )  # button from an older keyboard still answers
     assert hint is not None and "Escreva sua pergunta" in hint.text

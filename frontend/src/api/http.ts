@@ -20,6 +20,10 @@ export class SameOriginHttpClient {
     );
   }
 
+  public async putJson(path: string, body: unknown, options: RequestOptions = {}): Promise<Response> {
+    return this.request(path, { method: "PUT", body: JSON.stringify(body) }, options);
+  }
+
   public async get(path: string, options: RequestOptions = {}): Promise<Response> {
     return this.request(path, { method: "GET" }, options);
   }

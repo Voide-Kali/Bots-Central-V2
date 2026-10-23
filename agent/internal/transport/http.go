@@ -453,6 +453,9 @@ func (c *HTTPClient) PollCommand(ctx context.Context, deviceID string) (*command
 	if result.Command != nil && (!isCanonicalUUID(result.Command.ID) || result.Command.Type == "") {
 		return nil, errors.New("transport: invalid command response")
 	}
+	if result.Command != nil {
+		result.Command.DeviceID = deviceID // the digest binds the command to this device
+	}
 	return result.Command, nil
 }
 

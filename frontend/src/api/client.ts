@@ -37,6 +37,11 @@ export interface TelegramApi {
   unlink(): Promise<void>;
 }
 
+export interface ActionPinApi {
+  status(): Promise<{ readonly configured: boolean; readonly lockedUntil: string | null }>;
+  set(password: string, pin: string): Promise<void>;
+}
+
 export interface AuditApi {
   list(limit?: number): Promise<readonly AuditEvent[]>;
 }
@@ -53,4 +58,5 @@ export interface ApiClient {
   readonly telegram?: TelegramApi;
   readonly passwordReset?: PasswordResetApi;
   readonly audit?: AuditApi;
+  readonly actionPin?: ActionPinApi;
 }
