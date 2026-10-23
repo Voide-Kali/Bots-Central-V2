@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/app"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
@@ -19,6 +20,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/sensors"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/sequence"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
@@ -124,6 +126,11 @@ func main() {
 		dependencies.Executor = executor
 		logger.Info("approved commands are enabled", logging.Field{Key: "shared_folder", Value: fileConfig.SharedDir != ""}, logging.Field{Key: "actions", Value: strings.Join(fileConfig.AllowedActions, ",")})
 	}
+	if len(fileConfig.Sensors) > 0 {
+		if record, loadErr := enrollmentState.Load(); loadErr == nil && record.DeviceID != "" {
+			startFailedLoginSensor(ctx, logger, httpTransport, record.DeviceID)
+		}
+	}
 	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, dependencies)
 	if err != nil {
 		logger.Error("agent startup failed", logging.ErrorField(err))
@@ -163,4 +170,24 @@ func readPairingToken(reader io.Reader) (string, error) {
 		return "", errors.New("pairing token input is empty")
 	}
 	return string(data), nil
+}
+
+// startFailedLoginSensor (ADR-019): on a wrong password, take one photo and report it to
+// the owner. The journal text never leaves the computer, only the program name.
+func startFailedLoginSensor(ctx context.Context, logger *logging.Logger, client *transport.HTTPClient, deviceID string) {
+	watcher := &sensors.Watcher{Report: func(program string) {
+		photo, err := commands.CapturePhoto()
+		if err != nil {
+			logger.Warn("wrong password detected; no photo", logging.ErrorField(err))
+		}
+		sendContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		if err := client.SendEvent(sendContext, deviceID, "failed_login", program, photo); err != nil {
+			logger.Warn("wrong password report failed", logging.ErrorField(err))
+			return
+		}
+		logger.Info("wrong password reported", logging.Field{Key: "program", Value: program}, logging.Field{Key: "photo", Value: fmt.Sprint(photo != nil)})
+	}}
+	go watcher.Run(ctx)
+	logger.Info("wrong-password sensor is on")
 }

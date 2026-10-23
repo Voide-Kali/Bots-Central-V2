@@ -120,3 +120,14 @@ func firstExisting(candidates ...string) string {
 	}
 	return candidates[len(candidates)-1]
 }
+
+// CapturePhoto takes one webcam picture for the wrong-password sensor (ADR-019), with the
+// same fixed programs and size limit as the approved webcam_photo action.
+func CapturePhoto() ([]byte, error) {
+	executor := &Executor{system: hostSystem{}}
+	result := executor.webcamPhoto()
+	if !result.OK {
+		return nil, errors.New("commands: photo failed: " + result.Error)
+	}
+	return result.Content, nil
+}

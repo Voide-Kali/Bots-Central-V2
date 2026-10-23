@@ -32,6 +32,8 @@ type Config struct {
 	SharedDir string
 	// AllowedActions lists the ADR-016 actions this computer accepts (empty = none).
 	AllowedActions []string
+	// Sensors lists what the computer reports by itself (ADR-019), e.g. "failed_login_photo".
+	Sensors []string
 }
 
 type diskConfig struct {
@@ -43,6 +45,7 @@ type diskConfig struct {
 	BackoffMax        string   `json:"backoff_max"`
 	SharedDir         string   `json:"shared_dir,omitempty"`
 	AllowedActions    []string `json:"allowed_actions,omitempty"`
+	Sensors           []string `json:"sensors,omitempty"`
 }
 
 // Load reads one bounded configuration file. It does not fall back to defaults: a
@@ -126,7 +129,17 @@ func Parse(data []byte) (Config, error) {
 		}
 		seen[action] = true
 	}
-	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax, SharedDir: sharedDir, AllowedActions: raw.AllowedActions}, nil
+	sensorSeen := map[string]bool{}
+	for _, sensor := range raw.Sensors {
+		if sensor != "failed_login_photo" {
+			return Config{}, fmt.Errorf("config: unknown sensor %q in sensors", sensor)
+		}
+		if sensorSeen[sensor] {
+			return Config{}, fmt.Errorf("config: duplicate sensor %q in sensors", sensor)
+		}
+		sensorSeen[sensor] = true
+	}
+	return Config{StateDir: filepath.Clean(raw.StateDir), BackendBaseURL: backendBaseURL, HeartbeatInterval: heartbeatInterval, TransportTimeout: transportTimeout, BackoffInitial: backoffInitial, BackoffMax: backoffMax, SharedDir: sharedDir, AllowedActions: raw.AllowedActions, Sensors: raw.Sensors}, nil
 }
 
 func positiveDuration(name, raw string) (time.Duration, error) {

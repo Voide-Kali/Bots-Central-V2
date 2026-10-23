@@ -105,6 +105,14 @@ LIVE_POLICY = AbusePolicy(
         AbuseLimit("global", 20000, 60),
     ),
 )
+# ADR-019: wrong-password events with a photo; the agent sends at most one a minute.
+DEVICE_EVENT_POLICY = AbusePolicy(
+    operation="device_event",
+    limits=(
+        AbuseLimit("device", 5, 600),
+        AbuseLimit("global", 500, 600),
+    ),
+)
 HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
     operation="device_heartbeat_preauth",
     limits=(
@@ -357,6 +365,9 @@ class AbuseController:
             PASSWORD_RESET_CONFIRM_POLICY,
             {"identifier": canonical_email, "network": network, "global": "all"},
         )
+
+    def admit_device_event(self, *, device_id: uuid.UUID) -> bool:
+        return self._admit(DEVICE_EVENT_POLICY, {"device": str(device_id), "global": "all"})
 
     def admit_live(self, *, device_id: uuid.UUID) -> bool:
         return self._admit(LIVE_POLICY, {"device": str(device_id), "global": "all"})

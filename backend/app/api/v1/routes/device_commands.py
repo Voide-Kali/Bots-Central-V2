@@ -19,7 +19,7 @@ from app.api.v1.routes.auth import (
 )
 from app.auth import device_online
 from app.auth.abuse_control import ClientAddressUnavailable
-from app.devices import commands
+from app.devices import commands, events
 
 device_commands_router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -117,6 +117,47 @@ async def command_result(
                 content_b64=body.content_b64,
             )
         )
+    except Exception as error:
+        return _device_error(error)
+    return JSONResponse(status_code=200, content={"accepted": True}, headers=_NO_STORE_HEADERS)
+
+
+class EventRequest(_AuthRequest):
+    jws: SecretStr = Field(max_length=8192)
+    photo_b64: str | None = Field(default=None, max_length=7 * 1024 * 1024)
+
+
+@device_commands_router.post("/{device_id}/events")
+async def device_event(device_id: uuid.UUID, body: EventRequest, request: Request) -> Response:
+    """ADR-019: the computer reports a wrong password (with a photo when it has one)."""
+    runtime = _runtime(request)
+    controller = runtime.abuse_controller
+    if controller is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    try:
+        network = _network(request, runtime)
+    except ClientAddressUnavailable:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    for check in (
+        lambda: controller.admit_heartbeat_preauth(network=network),
+        lambda: controller.admit_device_event(device_id=device_id),
+    ):
+        admitted = await _admit(check)
+        if admitted is None:
+            return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+        if not admitted:
+            return _limited()
+    try:
+        await _run_sync(
+            lambda: events.record_event(
+                runtime.session_factory,
+                device_id=device_id,
+                jws=body.jws.get_secret_value(),
+                photo_b64=body.photo_b64,
+            )
+        )
+    except events.InvalidEvent:
+        return _generic_json_response(400, _INVALID_MESSAGE)
     except Exception as error:
         return _device_error(error)
     return JSONResponse(status_code=200, content={"accepted": True}, headers=_NO_STORE_HEADERS)

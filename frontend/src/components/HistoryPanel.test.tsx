@@ -12,7 +12,8 @@ describe("HistoryPanel", () => {
         { occurredAt: "2026-10-21T11:00:00+00:00", actor: "telegram", action: "action.approval_failed", outcome: "failure", name: null },
         { occurredAt: "2026-10-21T10:00:00+00:00", actor: "system", action: "something.new", outcome: "success", name: null },
         { occurredAt: "2026-10-21T09:00:00+00:00", actor: "telegram", action: "action.approved", outcome: "success", name: null, kind: "lock_screen", file: null, byPin: true },
-        { occurredAt: "2026-10-21T08:00:00+00:00", actor: "telegram", action: "pin.failed", outcome: "denied", name: null }
+        { occurredAt: "2026-10-21T08:00:00+00:00", actor: "telegram", action: "pin.failed", outcome: "denied", name: null },
+        { occurredAt: "2026-10-21T07:00:00+00:00", actor: "device", action: "sensor.failed_login", outcome: "denied", name: "tropa", source: "gdm-password" }
       ])
     };
     render(<HistoryPanel api={api} onUnauthenticated={vi.fn()} />);
@@ -23,6 +24,8 @@ describe("HistoryPanel", () => {
     expect(screen.getByText("something.new")).toBeVisible(); // unknown actions still shown
     expect(screen.getByText("bloquear tela · com PIN")).toBeVisible();
     expect(screen.getByText("PIN incorreto")).toBeVisible();
+    expect(screen.getByText("Senha errada no computador")).toBeVisible();
+    expect(screen.getByText("tropa · tela de login")).toBeVisible();
     expect(api.list).toHaveBeenCalledWith(50);
   });
 

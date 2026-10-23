@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 from app.audit import events as audit
 from app.auth import action_pin, device_online
 from app.auth.abuse_control import AbuseControlKey
+from app.core.timezone import local
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import (
     CommandPayload,
@@ -732,7 +733,7 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
             assert command.chat_id is not None
             name = command.file_name
             if command.kind == "webcam_photo":
-                stamp = (command.finished_at or now).strftime("%Y%m%d-%H%M%S")
+                stamp = local(command.finished_at or now).strftime("%Y%m%d-%H%M%S")
                 name = f"foto-{stamp}.jpg"
             deliveries.append(
                 Delivery(command.id, command.chat_id, name, device_name, payload.content)
