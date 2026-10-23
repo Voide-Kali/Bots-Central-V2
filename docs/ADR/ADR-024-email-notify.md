@@ -1,0 +1,41 @@
+# ADR-024: Aviso e resumo de e-mails novos (leitura)
+
+Status: **proposto em 23/10/2026**. Pedido do Voide (23/10): comecar o gerenciamento de e-mails.
+Primeiro passo: avisar e-mails novos no Telegram, com um resumo curto feito pela IA local. E
+LEITURA pura; a IA nunca responde, apaga nem envia e-mail.
+
+## Contexto
+
+O inventario do Kali-Bunker (secao 2.6) marca "monitorar contas e avisar no Telegram, com resumo
+por IA local, guardando so o ID opaco, nunca o conteudo" como servico proprio, depois da feira. O
+Voide quer comecar agora. Este ADR traz so o nucleo seguro e testavel; a conexao real com o Gmail
+depende de credenciais OAuth que o Voide configura (nao entram no codigo).
+
+## Decisao
+
+1. **Leitura, nunca acao.** O subsistema so LE a caixa e avisa. Nao responde, nao marca, nao apaga,
+   nao envia. A IA (Ollama local) so resume; nao tem ferramentas (mesmo principio do ADR-013/023).
+2. **Guardar so o ID opaco, nunca o conteudo.** Uma tabela `email_seen` guarda apenas o id opaco da
+   mensagem (por conta, por dono) e a data, para nao avisar duas vezes. Assunto, remetente e corpo
+   NUNCA sao gravados no banco; passam so em memoria, do provedor para o aviso do Telegram.
+3. **Resumo pela IA local.** O resumo e feito pelo Ollama no proprio servidor; o conteudo do e-mail
+   nao sai da maquina. O prompt trata o e-mail como dado, nunca instrucao (defesa de injection), e
+   a IA e instruida a nao agir.
+4. **Provedor por interface.** `MailProvider` e uma interface (`fetch_recent`). A implementacao
+   real do Gmail (OAuth, API) e um passo seguinte e exige o cliente OAuth que o Voide cria no Google
+   (client id/secret), guardado so no `.env` do servidor. O nucleo e testado com um provedor falso.
+5. **Entrega pelo bot.** Uma passada no loop do bot (como a de eventos/arquivos) pega os e-mails
+   novos, monta o aviso ("Novo e-mail de X: <assunto>" + resumo curto) e manda ao chat do dono.
+   Limites de tamanho e de quantidade por passada, sem spam.
+6. **Opcional e desligado por padrao.** So liga quando o Voide configurar uma conta e as credenciais.
+   Sem conta configurada, o subsistema nao faz nada.
+
+## Consequencias
+
+- O dono fica sabendo de e-mails novos sem abrir a caixa, com um resumo, e o conteudo nunca e
+  gravado nem sai do servidor.
+- A superficie nova e de LEITURA de uma conta externa: o risco e de privacidade (um e-mail lido),
+  mitigado por nao gravar conteudo, resumo local e a IA sem acao. Nenhum poder sobre o computador.
+- OAuth do Gmail fica para o proximo passo, dependente das credenciais do Voide. Ate la, o nucleo
+  existe e e testado, mas nao conecta em conta real.
+- Responder/arquivar/apagar e-mail NAO entra: seria dar acao a IA, contra o principio do Aval.
