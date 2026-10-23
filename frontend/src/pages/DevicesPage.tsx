@@ -23,7 +23,7 @@ const noDevices: readonly Device[] = [];
 
 function Skeletons(): ReactElement {
   return <section aria-label="Carregando" className="panel panel--loading">
-    <div className="panel__head"><div><span className="skeleton skeleton--title" /><span className="skeleton" /></div><button className="button" disabled type="button">Atualizar</button></div>
+    <div className="panel__head"><span className="skeleton skeleton--title" /><button className="button" disabled type="button">Atualizar</button></div>
     <div className="list-controls"><input aria-label="Buscar computadores" disabled placeholder="Buscar por nome ou sistema" /></div>
     <div className="skeleton-rows">{[0, 1, 2].map((item) => <span className="skeleton skeleton--row" key={item} />)}</div>
   </section>;
@@ -162,65 +162,84 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     ...(isAdmin ? [{ id: "admin" as const, label: "Admin" }] : [])
   ];
 
+  const devicesView = <>
+    <section aria-labelledby="devices-title" className="title-row">
+      <div>
+        <h1 id="devices-title">Seus computadores</h1>
+        {deviceState.kind === "ready" ? <p className="title-row__sub" aria-label="Resumo"><span><strong>{online}</strong> de {devices.length} online</span>{pending > 0 ? <span className="title-row__pending"><strong>{pending}</strong> aguardando seu aval</span> : null}<span>atualizado {localTimestamp(deviceState.lastChecked)}</span></p> : null}
+      </div>
+      <div className="title-row__actions">
+        {deviceState.kind === "ready" ? <button className="button" onClick={refresh} type="button">Atualizar</button> : null}
+        {authenticated && !pairing ? <button className="button button--primary" disabled={actionBusy} onClick={() => void startPairing()} type="button">Adicionar computador</button> : null}
+      </div>
+    </section>
+
+    {authenticated && pairing ? <section aria-label="Adicionar computador" className="callout">
+      <div className="callout__text">
+        <h2>Código para o computador novo</h2>
+        <p>No computador que você quer adicionar, rode o instalador do agente e cole este código quando ele pedir.</p>
+        <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>. Depois ele aparece aqui como "aguardando seu aval".</p>
+      </div>
+      <div className="callout__side">
+        <code className="callout__code">{pairing.token}</code>
+        <div className="callout__actions"><button className="button button--primary" onClick={() => void copyPairing()} type="button">Copiar código</button><button className="button" disabled={actionBusy} onClick={() => void cancelPairing()} type="button">Cancelar código</button></div>
+      </div>
+    </section> : null}
+
+    {authenticated && selectedDevice?.lifecycleStatus === "pending" ? <section aria-label="Aprovar computador" className="callout callout--approval">
+      <div className="callout__text">
+        <h2>{selectedDevice.name} quer entrar</h2>
+        {selectedDevice.fingerprint === null ? <p role="alert">O servidor não mandou o código de identificação deste computador. Não dá para aprovar com segurança; atualize a lista.</p> : <p>Para ter certeza de que é o seu computador, compare: o agente mostrou um código na tela dele. Ele tem que ser exatamente este:</p>}
+      </div>
+      <div className="callout__side">
+        {selectedDevice.fingerprint === null ? null : <>
+          <code className="callout__code">{selectedDevice.fingerprint}</code>
+          <div className="form-field"><label htmlFor="fingerprint-check">Código mostrado no computador</label><input autoComplete="off" id="fingerprint-check" spellCheck={false} value={fingerprintInput} onChange={(event) => setFingerprintInput(event.target.value)} /><p className={fingerprintInput !== "" && fingerprintInput === selectedDevice.fingerprint ? "form-field__hint form-field__hint--ok" : "form-field__hint"}>{fingerprintInput === "" ? "Cole aqui o código que aparece no computador." : fingerprintInput === selectedDevice.fingerprint ? "Confere. Pode aprovar." : "Ainda não confere."}</p></div>
+        </>}
+        <div className="callout__actions">
+          <button className="button button--primary" disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "approve")} type="button">Aprovar computador</button>
+          <button className="button button--danger" disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "reject")} type="button">Recusar</button>
+        </div>
+      </div>
+    </section> : null}
+
+    {authenticated && pendingDevices.length > 0 && selectedDevice?.lifecycleStatus !== "pending" ? <p className="notice notice--pending" role="status"><span>{pendingDevices.length === 1 ? `${pendingDevices[0]!.name} está aguardando seu aval.` : `${pendingDevices.length} computadores aguardando seu aval.`}</span> Clique nele na lista para conferir o código e aprovar.</p> : null}
+
+    <div className="workspace__grid">
+      <div className="workspace__main">
+        {waitingForSession || loadingDevices ? <Skeletons /> : null}
+        {requiresLogin ? <section className="panel panel--state"><h2>Acesso necessário</h2><p>Entre para ver seus computadores.</p><button className="button button--primary" onClick={() => navigate("/login")} type="button">Ir para o login</button></section> : null}
+        {unavailable ? <section className="panel panel--state panel--warning"><h2>Não foi possível atualizar seus computadores.</h2><p>O servidor não respondeu. Confira se o Tailscale está ligado e tente de novo.</p><button className="button" onClick={session.kind === "unavailable" ? () => void retryBootstrap() : refresh} type="button">Tentar novamente</button></section> : null}
+        {deviceState.kind === "ready" ? <section aria-labelledby="devices-heading" className="panel">
+          <div className="panel__head"><h2 id="devices-heading">Saúde agora</h2><p className="panel__meta">{devices.length === 1 ? "1 computador" : `${devices.length} computadores`} · medições a cada minuto</p></div>
+          {devices.length > 0 ? <div className="list-controls">
+            <label className="list-controls__search"><span className="sr-only">Buscar computadores</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou sistema" type="search" value={search} /></label>
+            <div aria-label="Filtrar" className="segmented" role="group">{(["all", "online", "offline"] as const).map((nextFilter) => <button aria-pressed={filter === nextFilter} key={nextFilter} onClick={() => setFilter(nextFilter)} type="button">{nextFilter === "all" ? "Todos" : nextFilter === "online" ? "Online" : "Offline"}</button>)}</div>
+          </div> : null}
+          {filteredDevices.length === 0 ? <div className="empty">
+            {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
+          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} selectedId={selectedId} />}
+        </section> : null}
+      </div>
+      {authenticated && (api.telegram || api.actionPin) ? <aside aria-labelledby="aval-heading" className="workspace__aside">
+        <div className="aside__head"><h2 id="aval-heading">Seu aval</h2><p>Nada roda nos computadores sem passar por aqui.</p></div>
+        <div className="seal-row"><span aria-hidden="true" className="seal seal--on" /><div><h3>E-mail confirmado</h3><p>Códigos por e-mail só para criar a conta e trocar a senha.</p></div></div>
+        {api.actionPin ? <PinCard api={api.actionPin} onUnauthenticated={invalidate} /> : null}
+        {api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}
+      </aside> : null}
+    </div>
+  </>;
+
   return <div className="app">
-    <header className="topbar">
+    <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
+    <header className="topbar"><div className="topbar__inner">
       <a aria-label="Aval" className="brand-link" href="/devices" onClick={(event) => { event.preventDefault(); setView("devices"); }}><Brand /></a>
       <nav aria-label="Seções" className="tabs">{tabs.map((tab) => <button aria-current={view === tab.id ? "page" : undefined} className="tabs__tab" key={tab.id} onClick={() => { setView(tab.id); setFeedback(undefined); }} type="button">{tab.label}</button>)}</nav>
-      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span className="profile-menu__name">{profileName}</span><span aria-hidden="true"></span></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
-    </header>
+      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span aria-hidden="true" className="profile-menu__initial">{profileName.slice(0, 1)}</span><span className="profile-menu__name">{profileName}</span><span aria-hidden="true" className="profile-menu__caret" /></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
+    </div></header>
     <main className="workspace" id="main-content">
       {feedback ? <p className="notice" role="status">{feedback}</p> : null}
-      {view === "admin" && isAdmin && api.admin ? <AdminPanel api={api.admin} onUnauthenticated={invalidate} /> : view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : <>
-        <section aria-labelledby="devices-title" className="overview">
-          <div>
-            <h1 id="devices-title">Seus computadores</h1>
-            {deviceState.kind === "ready" ? <p className="overview__counts" aria-label="Resumo"><span><strong>{online}</strong> de {devices.length} online</span>{pending > 0 ? <span className="overview__pending"><strong>{pending}</strong> aguardando seu aval</span> : null}<span className="overview__time">atualizado {localTimestamp(deviceState.lastChecked)}</span></p> : null}
-          </div>
-          {authenticated && !pairing ? <button className="button button--primary" disabled={actionBusy} onClick={() => void startPairing()} type="button">Adicionar computador</button> : null}
-        </section>
-
-        {authenticated && pairing ? <section aria-label="Adicionar computador" className="callout">
-          <h2>Código para o computador novo</h2>
-          <p>No computador que você quer adicionar, rode o instalador do agente e cole este código quando ele pedir.</p>
-          <code className="callout__code">{pairing.token}</code>
-          <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>. Depois ele aparece aqui como "aguardando seu aval".</p>
-          <div className="callout__actions"><button className="button button--primary" onClick={() => void copyPairing()} type="button">Copiar código</button><button className="button" disabled={actionBusy} onClick={() => void cancelPairing()} type="button">Cancelar código</button></div>
-        </section> : null}
-
-        {authenticated && selectedDevice?.lifecycleStatus === "pending" ? <section aria-label="Aprovar computador" className="callout callout--approval">
-          <h2>{selectedDevice.name} quer entrar</h2>
-          {selectedDevice.fingerprint === null ? <p role="alert">O servidor não mandou o código de identificação deste computador. Não dá para aprovar com segurança; atualize a lista.</p> : <>
-            <p>Para ter certeza de que é o seu computador, compare: o agente mostrou um código na tela dele. Ele tem que ser exatamente este:</p>
-            <code className="callout__code">{selectedDevice.fingerprint}</code>
-            <div className="form-field"><label htmlFor="fingerprint-check">Código mostrado no computador</label><input autoComplete="off" id="fingerprint-check" spellCheck={false} value={fingerprintInput} onChange={(event) => setFingerprintInput(event.target.value)} /><p className="form-field__hint">{fingerprintInput === "" ? "Cole aqui o código que aparece no computador." : fingerprintInput === selectedDevice.fingerprint ? "Confere. Pode aprovar." : "Ainda não confere."}</p></div>
-          </>}
-          <div className="callout__actions">
-            <button className="button button--primary" disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "approve")} type="button">Aprovar computador</button>
-            <button className="button button--danger" disabled={actionBusy || selectedDevice.fingerprint === null || fingerprintInput !== selectedDevice.fingerprint} onClick={() => void decide(selectedDevice, "reject")} type="button">Recusar</button>
-          </div>
-        </section> : null}
-
-        {authenticated && pendingDevices.length > 0 && selectedDevice?.lifecycleStatus !== "pending" ? <p className="notice notice--pending" role="status">{pendingDevices.length === 1 ? `${pendingDevices[0]!.name} está aguardando seu aval.` : `${pendingDevices.length} computadores aguardando seu aval.`} Clique nele na lista para aprovar.</p> : null}
-
-        <div className="workspace__grid">
-          <div className="workspace__main">
-            {waitingForSession || loadingDevices ? <Skeletons /> : null}
-            {requiresLogin ? <section className="panel panel--state"><h2>Acesso necessário</h2><p>Entre para ver seus computadores.</p><button className="button button--primary" onClick={() => navigate("/login")} type="button">Ir para o login</button></section> : null}
-            {unavailable ? <section className="panel panel--state panel--warning"><h2>Não foi possível atualizar seus computadores.</h2><p>O servidor não respondeu. Confira se o Tailscale está ligado e tente de novo.</p><button className="button" onClick={session.kind === "unavailable" ? () => void retryBootstrap() : refresh} type="button">Tentar novamente</button></section> : null}
-            {deviceState.kind === "ready" ? <section aria-labelledby="devices-heading" className="panel">
-              <div className="panel__head"><h2 id="devices-heading">Lista</h2><button className="button" onClick={refresh} type="button">Atualizar</button></div>
-              {devices.length > 0 ? <div className="list-controls">
-                <label className="list-controls__search"><span className="sr-only">Buscar computadores</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou sistema" type="search" value={search} /></label>
-                <div aria-label="Filtrar" className="segmented" role="group">{(["all", "online", "offline"] as const).map((nextFilter) => <button aria-pressed={filter === nextFilter} key={nextFilter} onClick={() => setFilter(nextFilter)} type="button">{nextFilter === "all" ? "Todos" : nextFilter === "online" ? "Online" : "Offline"}</button>)}</div>
-              </div> : null}
-              {filteredDevices.length === 0 ? <div className="empty">
-                {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
-              </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} selectedId={selectedId} />}
-            </section> : null}
-          </div>
-          {authenticated && (api.telegram || api.actionPin) ? <aside className="workspace__aside">{api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}{api.actionPin ? <PinCard api={api.actionPin} onUnauthenticated={invalidate} /> : null}</aside> : null}
-        </div>
-      </>}
+      {view === "admin" && isAdmin && api.admin ? <AdminPanel api={api.admin} onUnauthenticated={invalidate} /> : view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : devicesView}
     </main>
     <footer className="app__footer">Nada acontece nos seus computadores sem o seu aval.</footer>
   </div>;
