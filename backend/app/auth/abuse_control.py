@@ -97,6 +97,14 @@ HEARTBEAT_POLICY = AbusePolicy(
         AbuseLimit("global", 5000, 60),
     ),
 )
+# ADR-018: one signed sample per second while the owner watches (plus slack).
+LIVE_POLICY = AbusePolicy(
+    operation="device_live",
+    limits=(
+        AbuseLimit("device", 150, 60),
+        AbuseLimit("global", 20000, 60),
+    ),
+)
 HEARTBEAT_PREAUTH_POLICY = AbusePolicy(
     operation="device_heartbeat_preauth",
     limits=(
@@ -349,6 +357,9 @@ class AbuseController:
             PASSWORD_RESET_CONFIRM_POLICY,
             {"identifier": canonical_email, "network": network, "global": "all"},
         )
+
+    def admit_live(self, *, device_id: uuid.UUID) -> bool:
+        return self._admit(LIVE_POLICY, {"device": str(device_id), "global": "all"})
 
     def admit_telegram_link(self, *, chat_id: int) -> bool:
         return self._admit(TELEGRAM_LINK_POLICY, {"chat": str(chat_id), "global": "all"})

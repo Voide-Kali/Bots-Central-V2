@@ -50,6 +50,12 @@ type CommandChannel interface {
 	SubmitResult(ctx context.Context, deviceID string, command commands.Command, result commands.Result) error
 }
 
+// LiveChannel sends a signed telemetry sample and learns whether the owner is
+// watching (ADR-018). Optional: without it the agent only sends heartbeats.
+type LiveChannel interface {
+	SendLive(ctx context.Context, deviceID string, sample telemetry.Sample) (bool, error)
+}
+
 // CommandExecutor runs one typed command locally.
 type CommandExecutor interface {
 	Execute(command commands.Command) commands.Result
@@ -88,6 +94,7 @@ type Dependencies struct {
 	// Commands and Executor are optional; both must be set to enable ADR-015 actions.
 	Commands      CommandChannel
 	Executor      CommandExecutor
+	Live          LiveChannel
 	Enrollment    EnrollmentState
 	Transport     transport.HeartbeatTransport
 	Logger        *logging.Logger
@@ -106,6 +113,7 @@ type Runner struct {
 	telemetry  telemetry.Collector
 	commands   CommandChannel
 	executor   CommandExecutor
+	live       LiveChannel
 	enrollment EnrollmentState
 	transport  transport.HeartbeatTransport
 	logger     *logging.Logger
@@ -133,7 +141,7 @@ func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if dependencies.Jitter == nil {
 		dependencies.Jitter = defaultJitter
 	}
-	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, commands: dependencies.Commands, executor: dependencies.Executor, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
+	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, commands: dependencies.Commands, executor: dependencies.Executor, live: dependencies.Live, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
 }
 
 func validateConfig(config Config) error {
@@ -213,7 +221,8 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 			r.setState(StateOnline)
 			r.logger.Info("heartbeat accepted by transport")
 			r.runCommands(ctx, deviceID)
-			if err := r.wait(ctx, r.heartbeatDelay()); err != nil {
+			r.runLive(ctx, deviceID)
+			if err := r.waitWatching(ctx, deviceID, r.heartbeatDelay()); err != nil {
 				if ctx.Err() != nil {
 					return nil
 				}
@@ -323,6 +332,64 @@ func waitFor(ctx context.Context, duration time.Duration) error {
 		return ctx.Err()
 	case <-timer.C:
 		return nil
+	}
+}
+
+// waitWatching waits for the next heartbeat but, when live mode is available, asks
+// every 10 s whether the owner opened this computer, so the chart starts quickly.
+func (r *Runner) waitWatching(ctx context.Context, deviceID string, delay time.Duration) error {
+	if r.live == nil || r.telemetry == nil {
+		return r.wait(ctx, delay)
+	}
+	for delay > 0 {
+		step := liveCheckEvery
+		if delay < step {
+			step = delay
+		}
+		if err := r.wait(ctx, step); err != nil {
+			return err
+		}
+		delay -= step
+		if delay > 0 {
+			r.runLive(ctx, deviceID)
+		}
+	}
+	return nil
+}
+
+const (
+	liveCheckEvery   = 10 * time.Second
+	liveInterval     = time.Second
+	maxLiveDuration  = 120 * time.Second
+	liveCommandEvery = 10
+)
+
+// runLive asks once whether the owner is watching this computer and, while the
+// answer is yes, sends one signed sample per second (at most 120 s at a time,
+// still polling for approved commands every 10 s). Any error ends live mode
+// quietly; the normal heartbeat cycle continues.
+func (r *Runner) runLive(ctx context.Context, deviceID string) {
+	if r.live == nil || r.telemetry == nil {
+		return
+	}
+	started := r.now()
+	for tick := 1; ; tick++ {
+		sendContext, cancel := context.WithTimeout(ctx, r.config.TransportTimeout)
+		watching, err := r.live.SendLive(sendContext, deviceID, r.telemetry.Collect())
+		cancel()
+		if err != nil {
+			r.logger.Warn("live sample failed", logging.ErrorField(err))
+			return
+		}
+		if !watching || r.now().Sub(started) >= maxLiveDuration {
+			return
+		}
+		if tick%liveCommandEvery == 0 {
+			r.runCommands(ctx, deviceID)
+		}
+		if err := r.wait(ctx, liveInterval); err != nil {
+			return
+		}
 	}
 }
 

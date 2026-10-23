@@ -77,7 +77,9 @@ T = TypeVar("T")
 
 def _body_limit(path: str) -> int | None:
     """Bound all public credential-bearing JSON, including UUID heartbeat routes."""
-    if path.startswith("/api/v1/devices/") and path.endswith("/heartbeat"):
+    if path.startswith("/api/v1/devices/") and (
+        path.endswith("/heartbeat") or path.endswith("/live")
+    ):
         return 16 * 1024
     if path.startswith("/api/v1/devices/") and path.endswith("/commands/next"):
         return 16 * 1024
@@ -947,6 +949,86 @@ async def device_heartbeat(
     except Exception:
         return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
     return JSONResponse(status_code=200, content={"accepted": True}, headers=_NO_STORE_HEADERS)
+
+
+@devices_router.post("/{device_id}/live")
+async def device_live(device_id: uuid.UUID, body: HeartbeatRequest, request: Request) -> Response:
+    """ADR-018: a signed sample per second while the owner watches; answers if still wanted."""
+    runtime = _runtime(request)
+    controller = runtime.abuse_controller
+    if controller is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    try:
+        network = _network(request, runtime)
+    except ClientAddressUnavailable:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    limited = JSONResponse(
+        status_code=429,
+        content={"code": "HEARTBEAT_RATE_LIMITED"},
+        headers={**_NO_STORE_HEADERS, "Retry-After": "60"},
+    )
+    admitted = await _admit(lambda: controller.admit_heartbeat_preauth(network=network))
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return limited
+    jws_text = body.jws.get_secret_value()
+    try:
+        await _run_sync(
+            lambda: device_online.authenticate_live(
+                runtime.session_factory, device_id=device_id, jws=jws_text
+            )
+        )
+    except device_online.DeviceRevoked:
+        return JSONResponse(
+            status_code=403, content={"code": "DEVICE_REVOKED"}, headers=_NO_STORE_HEADERS
+        )
+    except (device_online.DeviceNotFound, device_online.DevicePending, device_online.InvalidProof):
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    admitted = await _admit(lambda: controller.admit_live(device_id=device_id))
+    if admitted is None:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    if not admitted:
+        return limited
+    try:
+        watching = await _run_sync(
+            lambda: device_online.live(runtime.session_factory, device_id=device_id, jws=jws_text)
+        )
+    except device_online.DeviceRevoked:
+        return JSONResponse(
+            status_code=403, content={"code": "DEVICE_REVOKED"}, headers=_NO_STORE_HEADERS
+        )
+    except device_online.StaleHeartbeat:
+        return JSONResponse(
+            status_code=409, content={"code": "STALE_HEARTBEAT"}, headers=_NO_STORE_HEADERS
+        )
+    except (device_online.DeviceNotFound, device_online.DevicePending, device_online.InvalidProof):
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(status_code=200, content={"live": watching}, headers=_NO_STORE_HEADERS)
+
+
+@devices_router.post("/{device_id}/watch", status_code=204)
+async def watch_device(device_id: uuid.UUID, request: Request) -> Response:
+    """ADR-018: the owner has this computer open; keep its agent live for 60 s more."""
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        await _run_sync(
+            lambda: device_online.watch(
+                runtime.session_factory, user_id=principal.user_id, device_id=device_id
+            )
+        )
+    except (device_online.DeviceNotFound, device_online.DevicePending):
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return Response(status_code=204, headers=_NO_STORE_HEADERS)
 
 
 @verification_page_router.get("/email-verification", include_in_schema=False)
