@@ -76,7 +76,12 @@ services:
     # Local LLM for the read-only assistant (ADR-013). Not published; reachable only
     # from containers. Pull the model once:
     #   docker compose exec ollama ollama pull qwen2.5:3b
-    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    # Pinned to a fixed release instead of "latest" for reproducible, non-drifting
+    # builds (revisao de seguranca M1). For tamper-evidence, pin the digest too: on a
+    # host with registry access run
+    #   docker buildx imagetools inspect ollama/ollama:0.40.8
+    # and set OLLAMA_IMAGE=ollama/ollama:0.40.8@sha256:<digest> in .env.
+    image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.8}
     restart: unless-stopped
     volumes:
       - ollama-data:/root/.ollama
