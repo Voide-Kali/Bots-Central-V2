@@ -233,6 +233,13 @@ def test_presence_alerts_fire_once_per_transition(factory: sessionmaker[Session]
     assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []
     _link(factory, user_id)
     assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []  # first sight
+    with factory() as session, session.begin():  # two lost heartbeats: no alert yet
+        session.execute(
+            update(Device)
+            .where(Device.id == device_id)
+            .values(last_seen_at=Device.last_seen_at - timedelta(seconds=100))
+        )
+    assert [r for r in collect_presence_alerts(factory) if r.chat_id == CHAT] == []
     with factory() as session, session.begin():
         session.execute(
             update(Device)
@@ -293,7 +300,7 @@ def _press(data: str, *, chat: int = CHAT, sender: int | None = None) -> dict[st
         "callback_query": {
             "id": "cb-1",
             "from": {"id": chat if sender is None else sender, "is_bot": False},
-            "message": {"chat": {"id": chat, "type": "private"}},
+            "message": {"message_id": 55, "chat": {"id": chat, "type": "private"}},
             "data": data,
         },
     }
@@ -336,6 +343,7 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
         _press(f"dev:{device_id}"), session_factory=factory, admission=_Admission()
     )
     assert card is not None and card.callback_id == "cb-1"
+    assert card.edit_message_id == 55  # the card redraws the pressed message
     assert card.text.startswith("telemetry-agent") and "ONLINE" in card.text
     assert "RAM: 6,0 de 16,0 GB" in card.text and "Temperatura: 48 °C" in card.text
     assert card.keyboard is not None
@@ -357,3 +365,67 @@ def test_menu_buttons_and_device_card_flow(factory: sessionmaker[Session]) -> No
         _msg("IA"), session_factory=factory, admission=_Admission()
     )  # button from an older keyboard still answers
     assert hint is not None and "Escreva sua pergunta" in hint.text
+
+
+def test_send_edits_navigation_messages_and_never_duplicates_them() -> None:
+    from app.telegram import bot
+    from app.telegram.client import TelegramUnavailable
+
+    class _Client:
+        def __init__(self, fail_edit: bool) -> None:
+            self.fail_edit = fail_edit
+            self.calls: list[str] = []
+
+        def answer_callback(self, _callback_id: str) -> None:
+            self.calls.append("answer")
+
+        def edit_message(self, *_: Any) -> None:
+            self.calls.append("edit")
+            if self.fail_edit:
+                raise TelegramUnavailable
+
+        def send_message(self, *_: Any) -> None:
+            self.calls.append("send")
+
+        def delete_message(self, *_: Any) -> None:
+            self.calls.append("delete")
+
+    reply = commands.Reply(CHAT, "painel", {"inline_keyboard": []}, "cb", edit_message_id=55)
+    ok = _Client(fail_edit=False)
+    bot._send(ok, [reply])  # type: ignore[arg-type]
+    assert ok.calls == ["answer", "edit"]
+    unchanged = _Client(fail_edit=True)  # "message is not modified"
+    bot._send(unchanged, [reply])  # type: ignore[arg-type]
+    assert unchanged.calls == ["answer", "edit"]
+    plain = _Client(fail_edit=False)
+    bot._send(plain, [commands.Reply(CHAT, "oi")])  # type: ignore[arg-type]
+    assert plain.calls == ["send"]
+
+
+def test_chat_queue_keeps_order_per_chat_and_does_not_block_others() -> None:
+    import threading
+
+    from app.telegram.bot import ChatQueue, _chat_of
+
+    assert _chat_of({"message": {"chat": {"id": 7}}}) == 7
+    assert _chat_of({"callback_query": {"message": {"chat": {"id": 8}}}}) == 8
+    assert _chat_of({"weird": 1}) is None
+
+    queue = ChatQueue(workers=4)
+    order: list[str] = []
+    release = threading.Event()
+
+    def slow() -> None:  # e.g. the AI answering chat 1
+        release.wait(5)
+        order.append("chat1-question")
+
+    first = queue.submit(1, slow)
+    second = queue.submit(1, lambda: order.append("chat1-pin"))
+    other = queue.submit(2, lambda: order.append("chat2"))
+    other.result(timeout=5)
+    assert order == ["chat2"]  # another chat is not held back
+    release.set()
+    first.result(timeout=5)
+    second.result(timeout=5)
+    assert order == ["chat2", "chat1-question", "chat1-pin"]  # same chat stays in order
+    queue.shutdown()

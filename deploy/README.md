@@ -31,8 +31,8 @@ sudo mkdir -p /mnt/storage/bots-central-backups && sudo chmod 700 /mnt/storage/b
 ## 1. Código e segredos
 
 ```bash
-git clone https://github.com/Voide-Kali/Bots-Central-V2.git ~/bots-central
-cd ~/bots-central
+git clone https://github.com/Voide-Kali/Bots-Central-V2.git ~/aval
+cd ~/aval
 cd deploy/server
 ./generate-env.sh          # cria .env com senhas e chaves aleatórias
 tailscale status --self    # nome completo: algo.tailXXXX.ts.net

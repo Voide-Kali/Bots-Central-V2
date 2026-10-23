@@ -26,7 +26,7 @@ Use separate terminals and stop at the first failing gate.
 1. Start PostgreSQL and Mailpit:
 
    ```bash
-   cd ~/Bots-Central-V2
+   cd ~/aval
    sudo docker start bots-central-v2-pg17-test
    scripts/e2e/mailpit-local.sh
    ```
@@ -35,7 +35,7 @@ Use separate terminals and stop at the first failing gate.
    in shell variables; do not print or save them. It binds only to loopback.
 
    ```bash
-   cd ~/Bots-Central-V2
+   cd ~/aval
    e2e_env() { sudo docker inspect bots-central-v2-pg17-test --format '{{range .Config.Env}}{{println .}}{{end}}' | awk -F= -v name="$1" '$1 == name { print substr($0, index($0, "=") + 1); exit }'; }
    export E2E_DB_USER="$(e2e_env POSTGRES_USER)" E2E_DB_NAME="$(e2e_env POSTGRES_DB)" E2E_DB_PASSWORD="$(e2e_env POSTGRES_PASSWORD)"
    export E2E_DB_PASSWORD_ESCAPED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["E2E_DB_PASSWORD"], safe=""))')"
@@ -52,13 +52,13 @@ Use separate terminals and stop at the first failing gate.
 3. Start Vite on loopback:
 
    ```bash
-   cd ~/Bots-Central-V2/frontend
+   cd ~/aval/frontend
    npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
    ```
 4. Start the proxy only after both upstreams are ready:
 
    ```bash
-   cd ~/Bots-Central-V2
+   cd ~/aval
    scripts/e2e/proxy-local.sh
    scripts/e2e/preflight-local.sh
    ```
@@ -92,7 +92,7 @@ Use separate terminals and stop at the first failing gate.
    `SSL_CERT_FILE` on this Agent command only.
 
    ```bash
-   cd ~/Bots-Central-V2/agent
+   cd ~/aval/agent
    go build -o ../.local/bots-central-agent ./cmd/bots-central-agent
    ../scripts/e2e/agent-config-local.sh "$PWD/../.local/e2e-agent.json" "$PWD/../.local/e2e-agent-state"
    your-approved-secret-input-command | SSL_CERT_FILE="$PWD/../.local/e2e-mailpit/smtp-ca.pem" ../.local/bots-central-agent -config "$PWD/../.local/e2e-agent.json" -pairing-token-stdin
