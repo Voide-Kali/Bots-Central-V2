@@ -12,7 +12,15 @@ class AssistantUnavailable(Exception):
 
 
 class OllamaClient:
-    def __init__(self, base_url: str, model: str, *, timeout_seconds: float = 120.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        timeout_seconds: float = 45.0,
+        keep_alive: str = "30m",
+        num_predict: int = 256,
+    ) -> None:
         parts = urlsplit(base_url)
         if (
             parts.scheme not in {"http", "https"}
@@ -23,13 +31,18 @@ class OllamaClient:
         self._url = f"{parts.scheme}://{parts.netloc}/api/chat"
         self._model = model
         self._timeout = timeout_seconds
+        # keep_alive keeps the model loaded between questions, so an occasional question does
+        # not pay the cold reload. num_predict caps the answer length (shorter = faster on CPU).
+        self._keep_alive = keep_alive
+        self._num_predict = num_predict
 
     def chat(self, messages: list[dict[str, str]]) -> str:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.2, "num_predict": 400},
+            "keep_alive": self._keep_alive,
+            "options": {"temperature": 0.2, "num_predict": self._num_predict},
         }
         request = urllib.request.Request(
             self._url,
