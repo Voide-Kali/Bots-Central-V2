@@ -63,6 +63,7 @@ _AUTH_BODY_LIMITS = {
     "/api/v1/auth/password-reset/confirm": 8 * 1024,
     "/api/v1/devices/pairings": 1024,
     "/api/v1/devices/enrollments": 16 * 1024,
+    "/api/v1/me/action-pin": 8 * 1024,
 }
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 _ACCEPTED_MESSAGE = "If eligible, verification instructions will be sent."

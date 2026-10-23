@@ -5,8 +5,8 @@
 set -uo pipefail
 [ -f .env ] || cd "$(dirname "$0")"  # run from deploy/server or from anywhere via its path
 ok=0; bad=0
-pass() { printf '  ✅ %s\n' "$1"; ok=$((ok+1)); }
-fail() { printf '  ❌ %s\n     → %s\n' "$1" "$2"; bad=$((bad+1)); }
+pass() { printf '  [ok]    %s\n' "$1"; ok=$((ok+1)); }
+fail() { printf '  [FALHA] %s\n          -> %s\n' "$1" "$2"; bad=$((bad+1)); }
 val() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2-; }
 
 echo "== Arquivo .env"

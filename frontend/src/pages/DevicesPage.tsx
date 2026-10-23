@@ -8,6 +8,7 @@ import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
 import { DeviceList } from "../components/DeviceList";
 import { HistoryPanel } from "../components/HistoryPanel";
+import { PinCard } from "../components/PinCard";
 import { TelegramCard } from "../components/TelegramCard";
 
 type DeviceState =
@@ -159,7 +160,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     <header className="topbar">
       <a aria-label="Aval" className="brand-link" href="/devices" onClick={(event) => { event.preventDefault(); setView("devices"); }}><Brand /></a>
       <nav aria-label="Seções" className="tabs">{tabs.map((tab) => <button aria-current={view === tab.id ? "page" : undefined} className="tabs__tab" key={tab.id} onClick={() => { setView(tab.id); setFeedback(undefined); }} type="button">{tab.label}</button>)}</nav>
-      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span className="profile-menu__name">{profileName}</span><span aria-hidden="true">▾</span></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
+      <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span className="profile-menu__name">{profileName}</span><span aria-hidden="true"></span></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
     </header>
     <main className="workspace" id="main-content">
       {feedback ? <p className="notice" role="status">{feedback}</p> : null}
@@ -211,7 +212,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
               </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} selectedId={selectedId} />}
             </section> : null}
           </div>
-          {authenticated && api.telegram ? <aside className="workspace__aside"><TelegramCard api={api.telegram} onUnauthenticated={invalidate} /></aside> : null}
+          {authenticated && (api.telegram || api.actionPin) ? <aside className="workspace__aside">{api.telegram ? <TelegramCard api={api.telegram} onUnauthenticated={invalidate} /> : null}{api.actionPin ? <PinCard api={api.actionPin} onUnauthenticated={invalidate} /> : null}</aside> : null}
         </div>
       </>}
     </main>

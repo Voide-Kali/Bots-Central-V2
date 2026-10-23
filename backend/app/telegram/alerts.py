@@ -46,7 +46,7 @@ def collect_presence_alerts(session_factory: SessionFactory) -> list[Reply]:
             state.last_presence = presence
             state.updated_at = now
             if presence == "offline":
-                replies.append(Reply(chat_id, f"🔴 {device.name} ficou offline."))
+                replies.append(Reply(chat_id, f"{device.name} ficou offline."))
             else:
-                replies.append(Reply(chat_id, f"🟢 {device.name} voltou a ficar online."))
+                replies.append(Reply(chat_id, f"{device.name} voltou a ficar online."))
     return replies

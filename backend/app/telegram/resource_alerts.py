@@ -46,10 +46,10 @@ def _metrics(sample: DeviceTelemetrySample) -> dict[str, float | None]:
 
 LIMITS = {"cpu": CPU_LIMIT, "ram": RAM_LIMIT, "disk": DISK_LIMIT, "temp": TEMP_LIMIT}
 MESSAGES = {
-    "cpu": "⚠️ {name}: CPU em {value:.0f}% há alguns minutos.",
-    "ram": "⚠️ {name}: memória quase cheia ({value:.0f}%).",
-    "disk": "⚠️ {name}: disco em {value:.0f}%. Libere espaço.",
-    "temp": "🌡️ {name}: temperatura alta ({value:.0f} °C).",
+    "cpu": "{name}: CPU em {value:.0f}% há alguns minutos.",
+    "ram": "{name}: memória quase cheia ({value:.0f}%).",
+    "disk": "{name}: disco em {value:.0f}%. Libere espaço.",
+    "temp": "{name}: temperatura alta ({value:.0f} °C).",
 }
 
 

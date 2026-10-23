@@ -1,4 +1,8 @@
-"""Human-approved device commands (ADR-015). v0.1 supports only ``send_file``.
+"""Human-approved device commands (ADR-015, ADR-016).
+
+Catalogue: ``send_file`` (ADR-015), ``lock_screen`` and ``webcam_photo`` (ADR-016). Every
+command carries a canonical digest that the agent recomputes before acting, so what the
+owner approved is exactly what runs.
 
 Lifecycle::
 
@@ -33,7 +37,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.audit import events as audit
-from app.auth import device_online
+from app.auth import action_pin, device_online
 from app.auth.abuse_control import AbuseControlKey
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import (
@@ -56,7 +60,57 @@ MAX_ATTEMPTS = 5
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_OPEN_PER_USER = 3
 CODE_DIGITS = 8
-ERROR_CODES = frozenset({"not_found", "not_regular", "too_large", "read_error", "disabled"})
+ERROR_CODES = frozenset(
+    {
+        "not_found",
+        "not_regular",
+        "too_large",
+        "read_error",
+        "disabled",
+        "unsupported",
+        "failed",
+        "digest",
+    }
+)
+DIGEST_PREFIX = "aval-action-v1"
+
+
+@dataclass(frozen=True)
+class ActionSpec:
+    """One entry of the closed catalogue (ADR-016)."""
+
+    verb: str  # "bloquear a tela"
+    done: str  # message after success, {name} = computer
+    returns_file: bool
+    risk: str  # sentence shown in the approval e-mail
+
+
+ACTIONS: dict[str, ActionSpec] = {
+    "send_file": ActionSpec(
+        verb="enviar um arquivo",
+        done="Arquivo de {name} enviado.",
+        returns_file=True,
+        risk="O arquivo sai do computador e vem para o seu Telegram.",
+    ),
+    "lock_screen": ActionSpec(
+        verb="bloquear a tela",
+        done="Tela de {name} bloqueada.",
+        returns_file=False,
+        risk="Quem estiver usando o computador terá que digitar a senha de novo.",
+    ),
+    "webcam_photo": ActionSpec(
+        verb="tirar uma foto pela webcam",
+        done="Foto de {name} enviada.",
+        returns_file=True,
+        risk="A câmera do computador tira UMA foto, que vem só para o seu Telegram.",
+    ),
+}
+
+
+def action_digest(kind: str, device_id: uuid.UUID, argument: str) -> str:
+    """Canonical digest the agent recomputes (same text format in Go)."""
+    canonical = f"{DIGEST_PREFIX}\n{kind}\n{device_id}\n{argument}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class CommandError(Exception):
@@ -89,6 +143,10 @@ class InvalidApproval(CommandError):
     message = "Código inválido ou expirado."
 
 
+class UnknownAction(CommandError):
+    message = "Ação desconhecida."
+
+
 @dataclass(frozen=True)
 class ApprovalIntent:
     command_id: uuid.UUID
@@ -97,6 +155,7 @@ class ApprovalIntent:
     device_name: str
     file_name: str
     expires_at: datetime
+    kind: str = "send_file"
 
 
 def valid_file_name(name: str) -> bool:
@@ -133,18 +192,54 @@ def request_send_file(
 ) -> ApprovalIntent:
     if not valid_file_name(file_name):
         raise InvalidFileName
+    return request_action(
+        session_factory,
+        key,
+        user_id=user_id,
+        chat_id=chat_id,
+        kind="send_file",
+        device_name=device_name,
+        argument=file_name,
+    )
+
+
+def request_action(
+    session_factory: SessionFactory,
+    key: AbuseControlKey,
+    *,
+    user_id: uuid.UUID,
+    chat_id: int,
+    kind: str,
+    device_name: str | None = None,
+    device_id: uuid.UUID | None = None,
+    argument: str = "",
+    by_pin: bool = False,
+) -> ApprovalIntent:
+    """Create a pending command for one catalogue action (ADR-016).
+
+    ``by_pin``: approval will come from the owner's PIN in Telegram (no e-mail). Only
+    one PIN-approvable request is open at a time, so a PIN can never approve
+    something older than what the owner just asked for.
+    """
+    if kind not in ACTIONS or (device_name is None) == (device_id is None):
+        raise UnknownAction
+    if kind != "send_file" and argument:
+        raise UnknownAction  # these actions take no parameters
     code = f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
     with session_factory() as session, session.begin():
         user = session.scalar(select(User).where(User.id == user_id).with_for_update())
         if user is None or user.status is not AccountStatus.ACTIVE:
             raise DeviceNotFoundForUser
-        matches = session.scalars(
-            select(Device).where(
-                Device.user_id == user_id,
-                func.lower(Device.name) == device_name.strip().lower(),
-                Device.lifecycle_status == DeviceLifecycleStatus.ACTIVE,
-            )
-        ).all()
+        query = select(Device).where(
+            Device.user_id == user_id,
+            Device.lifecycle_status == DeviceLifecycleStatus.ACTIVE,
+        )
+        if device_id is not None:
+            query = query.where(Device.id == device_id)
+        else:
+            assert device_name is not None
+            query = query.where(func.lower(Device.name) == device_name.strip().lower())
+        matches = session.scalars(query).all()
         if not matches:
             raise DeviceNotFoundForUser
         if len(matches) > 1:
@@ -157,10 +252,19 @@ def request_send_file(
                 UserEmail.verified_at.is_not(None),
             )
         )
-        if email is None:
+        if email is None and not by_pin:
             raise NoEmail
         now = _now(session)
         _expire(session, now)
+        if by_pin:
+            session.execute(
+                update(DeviceCommand)
+                .where(
+                    DeviceCommand.user_id == user_id,
+                    DeviceCommand.status == "pending_approval",
+                )
+                .values(status="expired", approval_mac=None, finished_at=now, chat_id=None)
+            )
         open_count = session.scalar(
             select(func.count())
             .select_from(DeviceCommand)
@@ -177,15 +281,18 @@ def request_send_file(
                 id=command_id,
                 user_id=user_id,
                 device_id=device.id,
-                kind="send_file",
-                file_name=file_name,
+                kind=kind,
+                file_name=argument,
                 status="pending_approval",
-                approval_mac=_mac(key, command_id, code),
+                approval_mac=None if by_pin else _mac(key, command_id, code),
                 chat_id=chat_id,
                 created_at=now,
                 approval_expires_at=now + APPROVAL_TTL,
             )
         )
+        details = {"name": device.name, "action": kind}
+        if argument:
+            details["file"] = argument
         audit.record(
             session,
             user_id=user_id,
@@ -193,16 +300,35 @@ def request_send_file(
             actor="telegram",
             target_type="command",
             target_id=str(command_id),
-            details={"name": device.name, "file": file_name},
+            details=details,
         )
         return ApprovalIntent(
             command_id=command_id,
-            recipient=email.email_display,
+            recipient=email.email_display if email is not None else "",
             code=SecretStr(code),
             device_name=device.name,
-            file_name=file_name,
+            file_name=argument,
             expires_at=now + APPROVAL_TTL,
+            kind=kind,
         )
+
+
+def approval_email(intent: ApprovalIntent) -> tuple[str, str]:
+    """(subject, body) of the approval e-mail, in Portuguese."""
+    spec = ACTIONS[intent.kind]
+    code = intent.code.get_secret_value()
+    what = f"enviar o arquivo {intent.file_name}" if intent.kind == "send_file" else spec.verb
+    subject = f"Aval — aprovar: {what} ({intent.device_name})"
+    body = (
+        "Pedido no Aval:\n\n"
+        f"  Ação: {what}\n"
+        f"  No computador: {intent.device_name}\n"
+        f"  O que acontece: {spec.risk}\n\n"
+        f"Código de aprovação: {code[:4]} {code[4:]}\n"
+        "Vale 5 minutos e só para esta ação. Responda ao bot: /aprovar CÓDIGO\n\n"
+        "Se não foi você, NÃO use o código e desvincule o Telegram no painel.\n"
+    )
+    return subject, body
 
 
 def approve(
@@ -252,7 +378,7 @@ def approve(
                 actor="telegram",
                 target_type="command",
                 target_id=str(match.id),
-                details={"file": match.file_name},
+                details={"action": match.kind, "file": match.file_name},
             )
             session.flush()
             session.expunge(match)  # keep loaded values after commit
@@ -274,6 +400,46 @@ def approve(
     if approved is None:
         raise InvalidApproval
     return approved
+
+
+def approve_with_pin(
+    session_factory: SessionFactory, key: AbuseControlKey, *, user_id: uuid.UUID, pin: str
+) -> tuple[DeviceCommand | None, action_pin.PinCheck]:
+    """Approve the owner's open PIN request. Returns (command or None, PIN check)."""
+    with session_factory() as session, session.begin():
+        now = _now(session)
+        _expire(session, now)
+        command = session.scalar(
+            select(DeviceCommand)
+            .where(
+                DeviceCommand.user_id == user_id,
+                DeviceCommand.status == "pending_approval",
+                DeviceCommand.approval_mac.is_(None),
+                DeviceCommand.approval_expires_at > now,
+            )
+            .order_by(DeviceCommand.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        if command is None:
+            return None, action_pin.PinCheck(ok=False)
+        check = action_pin.check_pin(session, key, user_id=user_id, pin=pin)
+        if not check.ok:
+            return None, check
+        command.status = "approved"
+        command.approved_at = now
+        audit.record(
+            session,
+            user_id=user_id,
+            action="action.approved",
+            actor="telegram",
+            target_type="command",
+            target_id=str(command.id),
+            details={"action": command.kind, "file": command.file_name, "by": "pin"},
+        )
+        session.flush()
+        session.expunge(command)
+        return command, check
 
 
 def _expire(session: Session, now: datetime) -> None:
@@ -417,7 +583,12 @@ def next_command(
             target_type="command",
             target_id=str(command.id),
         )
-        return {"id": str(command.id), "type": command.kind, "file_name": command.file_name}
+        return {
+            "id": str(command.id),
+            "type": command.kind,
+            "file_name": command.file_name,
+            "digest": action_digest(command.kind, command.device_id, command.file_name),
+        }
 
 
 def submit_result(
@@ -456,6 +627,21 @@ def submit_result(
                 target_id=str(command.id),
                 outcome="failure",
                 details={"error": command.error_code},
+            )
+            return
+        if command.kind in ACTIONS and not ACTIONS[command.kind].returns_file:
+            if status != "ok" or claims.get("size", 0) != 0 or content_b64:
+                raise device_online.InvalidProof
+            command.status = "completed"
+            command.finished_at = now
+            audit.record(
+                session,
+                user_id=command.user_id,
+                action="action.completed",
+                actor="device",
+                target_type="command",
+                target_id=str(command.id),
+                details={"action": command.kind},
             )
             return
         size = claims.get("size")
@@ -498,7 +684,7 @@ def submit_result(
             actor="device",
             target_type="command",
             target_id=str(command.id),
-            details={"file": command.file_name, "size_bytes": size},
+            details={"action": command.kind, "file": command.file_name, "size_bytes": size},
         )
 
 
@@ -543,10 +729,42 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
         ).all()
         for command, payload, device_name in rows:
             assert command.chat_id is not None
+            name = command.file_name
+            if command.kind == "webcam_photo":
+                stamp = (command.finished_at or now).strftime("%Y%m%d-%H%M%S")
+                name = f"foto-{stamp}.jpg"
             deliveries.append(
-                Delivery(
-                    command.id, command.chat_id, command.file_name, device_name, payload.content
-                )
+                Delivery(command.id, command.chat_id, name, device_name, payload.content)
+            )
+        status_only = [kind for kind, spec in ACTIONS.items() if not spec.returns_file]
+        done = session.execute(
+            select(DeviceCommand, Device.name)
+            .join(Device, Device.id == DeviceCommand.device_id)
+            .join(
+                TelegramLink,
+                (TelegramLink.chat_id == DeviceCommand.chat_id)
+                & (TelegramLink.user_id == DeviceCommand.user_id),
+            )
+            .where(
+                DeviceCommand.status == "completed",
+                DeviceCommand.kind.in_(status_only),
+                DeviceCommand.chat_id.is_not(None),
+            )
+            .with_for_update(of=DeviceCommand, skip_locked=True)
+        ).all()
+        for command, device_name in done:
+            assert command.chat_id is not None
+            done_text = ACTIONS[command.kind].done.format(name=device_name)
+            notices.append(Notice(command.chat_id, done_text))
+            command.status = "delivered"
+            audit.record(
+                session,
+                user_id=command.user_id,
+                action="action.delivered",
+                actor="system",
+                target_type="command",
+                target_id=str(command.id),
+                details={"action": command.kind},
             )
         closed = session.scalars(
             select(DeviceCommand)
@@ -564,18 +782,32 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
 
 
 def _closed_text(command: DeviceCommand) -> str:
+    spec = ACTIONS.get(command.kind)
+    what = (
+        f"de {command.file_name}"
+        if command.kind == "send_file"
+        else f"para {spec.verb if spec else 'a ação'}"
+    )
     if command.status == "denied":
-        return f"⛔ Pedido de {command.file_name} bloqueado: código errado demais vezes."
+        return f"Pedido {what} bloqueado: código errado demais vezes."
     if command.status == "expired":
-        return f"⌛ Pedido de {command.file_name} expirou sem ser concluído."
+        return f"Pedido {what} expirou sem ser concluído."
     reasons = {
         "not_found": "o arquivo não está na pasta compartilhada",
         "not_regular": "não é um arquivo comum",
-        "too_large": "o arquivo passa de 10 MB",
-        "disabled": "o envio de arquivos está desligado nesse computador",
+        "too_large": "o resultado passa de 10 MB",
+        "disabled": "essa ação está desligada nesse computador",
+        "unsupported": "esse computador não suporta essa ação",
+        "failed": "o computador tentou e não conseguiu",
+        "digest": "o computador recusou: o pedido não confere com o aprovado",
     }
-    reason = reasons.get(command.error_code or "", "erro ao ler o arquivo")
-    return f"❌ Não foi possível enviar {command.file_name}: {reason}."
+    if command.kind == "send_file":
+        reasons["too_large"] = "o arquivo passa de 10 MB"
+        reasons["disabled"] = "o envio de arquivos está desligado nesse computador"
+        reason = reasons.get(command.error_code or "", "erro ao ler o arquivo")
+        return f"Não foi possível enviar {command.file_name}: {reason}."
+    reason = reasons.get(command.error_code or "", "erro no computador")
+    return f"Não foi possível {spec.verb if spec else 'concluir a ação'}: {reason}."
 
 
 def mark_delivered(session_factory: SessionFactory, *, command_id: uuid.UUID) -> None:

@@ -34,6 +34,11 @@ def _send(client: TelegramClient, replies: list[Reply]) -> None:
                 client.answer_callback(reply.callback_id)
             except TelegramUnavailable:
                 logger.warning("telegram callback answer failed")
+        if reply.delete_message_id is not None and reply.delete_message_id > 0:
+            try:
+                client.delete_message(reply.chat_id, reply.delete_message_id)
+            except TelegramUnavailable:
+                logger.warning("telegram delete failed")
         try:
             client.send_message(reply.chat_id, reply.text, reply.keyboard)
         except TelegramUnavailable:
@@ -49,7 +54,7 @@ def _deliver_files(client: TelegramClient, factory: sessionmaker[Session]) -> No
                 item.chat_id,
                 item.file_name,
                 item.content,
-                caption=f"📎 {item.file_name} — enviado por {item.device_name} (aprovado por você)",
+                caption=f"{item.file_name} — enviado por {item.device_name} (aprovado por você)",
             )
         except TelegramUnavailable:
             logger.warning("telegram document send failed")
