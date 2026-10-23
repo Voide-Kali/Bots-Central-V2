@@ -8,6 +8,7 @@ press goes through exactly the same private-chat and linked-account checks as a
 typed command. There is no persistent bottom keyboard.
 """
 
+import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -386,6 +387,8 @@ def _dispatch(
     intent = None if body.startswith("/") else intents.parse(body, device_names)
     action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/scan", "/_acao"}
     if intent is None and not body.startswith("/"):
+        if _is_greeting(body):
+            return Reply(chat_id, GREETING_REPLY, MAIN_MENU)
         return _ask(chat_id, user_id, body, session_factory, admission, model, conversations)
     if intent is not None or name in action_names:
         if actions is None:
@@ -433,6 +436,28 @@ def _dispatch(
             conversations.forget(chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
     return Reply(chat_id, HELP, {"inline_keyboard": [[BACK_BUTTON]]})
+
+
+# A bare greeting does not need the language model: answering it instantly keeps the bot
+# snappy and avoids loading the model (which is slow on CPU) just to say hello.
+_GREETINGS = frozenset(
+    {
+        "oi", "ola", "opa", "eai", "e ai", "hey", "hello", "alo", "salve", "bom dia",
+        "boa tarde", "boa noite", "tudo bem", "tudo bom", "blz", "beleza", "boa",
+    }
+)
+GREETING_REPLY = (
+    "Oi! Eu cuido dos seus computadores. Toque em /painel para o menu, "
+    "ou me faça uma pergunta, por exemplo: qual computador está mais quente?"
+)
+
+
+def _is_greeting(body: str) -> bool:
+    decomposed = unicodedata.normalize("NFKD", body.lower())
+    folded = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    kept = "".join(ch if ch.isalnum() else " " for ch in folded)
+    text = " ".join(kept.split())
+    return 0 < len(text) <= 20 and text in _GREETINGS
 
 
 def _ask(

@@ -83,6 +83,10 @@ services:
     # and set OLLAMA_IMAGE=ollama/ollama:0.40.8@sha256:<digest> in .env.
     image: ${OLLAMA_IMAGE:-ollama/ollama:0.40.8}
     restart: unless-stopped
+    environment:
+      # Keep the model loaded between questions so an occasional question does not pay the
+      # cold reload from disk (the slowest part on a CPU-only server).
+      OLLAMA_KEEP_ALIVE: "24h"
     volumes:
       - ollama-data:/root/.ollama
     networks: [internal, egress]
