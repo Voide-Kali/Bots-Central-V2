@@ -46,7 +46,11 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
     } finally { setPending(false); }
   }
 
-  if (!reset) return <PageStatus kind="error">A recuperação de senha não está disponível.</PageStatus>;
+  if (!reset) return <section aria-labelledby="recover-title" className="auth-card">
+    <h1 id="recover-title">Trocar a senha</h1>
+    <PageStatus kind="error">A recuperação de senha não está disponível agora. Fale com quem administra o Aval.</PageStatus>
+    <p className="auth-card__links"><a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Voltar para o login</a></p>
+  </section>;
 
   return <section className="auth-card" aria-labelledby="recover-title">
     <h1 id="recover-title">Trocar a senha</h1>
