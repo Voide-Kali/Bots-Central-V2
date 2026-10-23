@@ -89,7 +89,7 @@ export function HistoryPanel({ api, onUnauthenticated }: { readonly api: AuditAp
     </section>
     <section aria-label="Eventos" className="panel">
       <div className="panel__head"><h2>Últimos eventos</h2><p className="panel__meta">{state.kind === "ready" ? `${state.events.length} ${state.events.length === 1 ? "evento" : "eventos"}` : "\u2014"}</p></div>
-      {state.kind === "loading" ? <p className="panel__body">Carregando…</p> : null}
+      {state.kind === "loading" ? <div aria-hidden="true" className="skeleton-rows">{[0, 1, 2, 3].map((row) => <span className="skeleton skeleton--row" key={row} />)}</div> : null}
       {state.kind === "unavailable" ? <p className="panel__body" role="alert">Não foi possível carregar o histórico agora.</p> : null}
       {state.kind === "ready" && state.events.length === 0 ? <p className="panel__body">Nenhuma ação registrada ainda.</p> : null}
       {state.kind === "ready" && state.events.length > 0 ? <ol className="history-list">{state.events.map((event, index) => <li className={event.outcome === "success" ? "history-item" : "history-item history-item--failed"} key={`${event.occurredAt}-${index}`}>
