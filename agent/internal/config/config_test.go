@@ -42,3 +42,16 @@ func TestSensorsAreValidated(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowedActionsAreValidated(t *testing.T) {
+	base := `{"state_dir":"/state","backend_base_url":"https://backend.example","heartbeat_interval":"30s","transport_timeout":"10s","backoff_initial":"1s","backoff_max":"1m",`
+	config, err := Parse([]byte(base + `"allowed_actions":["lock_screen","webcam_photo","network_scan"]}`))
+	if err != nil || len(config.AllowedActions) != 3 {
+		t.Fatalf("every known action must be accepted: config=%+v err=%v", config, err)
+	}
+	for _, bad := range []string{`"allowed_actions":["telnet"]}`, `"allowed_actions":["network_scan","network_scan"]}`} {
+		if _, err := Parse([]byte(base + bad)); err == nil {
+			t.Fatalf("expected rejection for %s", bad)
+		}
+	}
+}
