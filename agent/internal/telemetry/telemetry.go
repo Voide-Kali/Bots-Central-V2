@@ -22,6 +22,10 @@ type Sample struct {
 	DiskUsed     *uint64  `json:"disk_used,omitempty"`
 	TemperatureC *float64 `json:"temp_c,omitempty"`
 	UptimeS      *uint64  `json:"uptime_s,omitempty"`
+	// BatteryPercent is the charge level 0-100; nil when the machine has no battery.
+	BatteryPercent *int `json:"battery_pct,omitempty"`
+	// BatteryCharging reports whether the battery is charging; nil when unknown.
+	BatteryCharging *bool `json:"battery_charging,omitempty"`
 }
 
 // Collector returns one sample. Implementations must not block for long.
@@ -49,6 +53,12 @@ func Sanitize(s Sample) Sample {
 	}
 	if s.UptimeS != nil && *s.UptimeS > maxSigned64 {
 		s.UptimeS = nil
+	}
+	if s.BatteryPercent != nil && (*s.BatteryPercent < 0 || *s.BatteryPercent > 100) {
+		s.BatteryPercent = nil
+	}
+	if s.BatteryPercent == nil {
+		s.BatteryCharging = nil // a charging flag without a level is not worth sending
 	}
 	return s
 }

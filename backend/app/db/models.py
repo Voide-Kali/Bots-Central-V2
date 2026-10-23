@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
@@ -500,6 +501,10 @@ class DeviceTelemetrySample(Base):
         CheckConstraint(
             "uptime_seconds IS NULL OR uptime_seconds >= 0", name="ck_device_telemetry_uptime"
         ),
+        CheckConstraint(
+            "battery_percent IS NULL OR (battery_percent >= 0 AND battery_percent <= 100)",
+            name="ck_device_telemetry_battery_percent",
+        ),
         Index("ix_device_telemetry_device_recorded", "device_id", text("recorded_at DESC")),
     )
 
@@ -517,6 +522,8 @@ class DeviceTelemetrySample(Base):
     disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
     uptime_seconds: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    battery_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    battery_charging: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class TelegramLink(Base):

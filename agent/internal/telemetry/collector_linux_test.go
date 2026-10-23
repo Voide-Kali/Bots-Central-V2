@@ -45,6 +45,28 @@ func TestLinuxCollectorFromFixtureTree(t *testing.T) {
 	}
 }
 
+func TestLinuxBatteryFromFixtureTree(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "/sys/class/power_supply/BAT0/capacity", "42\n")
+	write(t, root, "/sys/class/power_supply/BAT0/status", "Discharging\n")
+	c := &SystemCollector{root: root}
+	level, charging := c.battery()
+	if level == nil || *level != 42 || charging == nil || *charging {
+		t.Fatalf("level=%v charging=%v, want 42 not-charging", level, charging)
+	}
+	write(t, root, "/sys/class/power_supply/BAT0/status", "Charging\n")
+	if _, charging := c.battery(); charging == nil || !*charging {
+		t.Fatalf("charging=%v, want true", charging)
+	}
+}
+
+func TestLinuxBatteryAbsentIsNil(t *testing.T) {
+	c := &SystemCollector{root: t.TempDir()}
+	if level, charging := c.battery(); level != nil || charging != nil {
+		t.Fatalf("level=%v charging=%v, want nil on a machine without a battery", level, charging)
+	}
+}
+
 func TestLinuxCollectorRealSystemNeverPanics(t *testing.T) {
 	s := NewSystemCollector().Collect()
 	if s.V != Version || s.CPUs == nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -73,7 +74,34 @@ func (c *SystemCollector) Collect() Sample {
 		}
 	}
 	s.TemperatureC = c.temperature()
+	s.BatteryPercent, s.BatteryCharging = c.battery()
 	return Sanitize(s)
+}
+
+// battery returns the charge level and charging flag of the first battery power
+// supply, or (nil, nil) on a machine without one. It reads only the aggregate
+// capacity and status files, like every other metric here.
+func (c *SystemCollector) battery() (*int, *bool) {
+	dirs, _ := filepath.Glob(c.path("/sys/class/power_supply/BAT*"))
+	for i, dir := range dirs {
+		if i >= 8 {
+			break
+		}
+		data, err := os.ReadFile(filepath.Join(dir, "capacity"))
+		if err != nil {
+			continue
+		}
+		level, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil {
+			continue
+		}
+		var charging *bool
+		if status, err := os.ReadFile(filepath.Join(dir, "status")); err == nil {
+			charging = ptr(strings.EqualFold(strings.TrimSpace(string(status)), "Charging"))
+		}
+		return ptr(level), charging
+	}
+	return nil, nil
 }
 
 // cpuSensorDrivers are hwmon drivers that report the processor itself. When one is

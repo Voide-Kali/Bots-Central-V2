@@ -207,6 +207,34 @@ func parseTopCPU(content string) (float64, bool) {
 	return 100 - idle, true
 }
 
+// parseBatteryPmset reads `pmset -g batt`. The battery line looks like
+// " -InternalBattery-0 (id=...)\t73%; discharging; 3:21 remaining present: true".
+// It returns the charge level 0-100 and whether the battery is actively charging.
+func parseBatteryPmset(content string) (percent int, charging bool, ok bool) {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		fields := strings.SplitN(scanner.Text(), ";", 2)
+		if len(fields) < 2 {
+			continue
+		}
+		index := strings.IndexByte(fields[0], '%')
+		if index <= 0 {
+			continue
+		}
+		start := index - 1
+		for start > 0 && fields[0][start-1] >= '0' && fields[0][start-1] <= '9' {
+			start--
+		}
+		value, err := strconv.Atoi(fields[0][start:index])
+		if err != nil || value < 0 || value > 100 {
+			continue
+		}
+		status := strings.TrimSpace(strings.SplitN(fields[1], ";", 2)[0])
+		return value, strings.EqualFold(status, "charging"), true
+	}
+	return 0, false, false
+}
+
 // diskUsage matches `df`: used = total - free, and the percentage is
 // used / (used + available to normal users). The reported total is therefore
 // used + available, so the panel's percentage equals df's "Use%".
