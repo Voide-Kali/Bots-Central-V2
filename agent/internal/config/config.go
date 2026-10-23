@@ -121,7 +121,7 @@ func Parse(data []byte) (Config, error) {
 	}
 	seen := map[string]bool{}
 	for _, action := range raw.AllowedActions {
-		if action != "lock_screen" && action != "webcam_photo" {
+		if action != "lock_screen" && action != "webcam_photo" && action != "network_scan" {
 			return Config{}, fmt.Errorf("config: unknown action %q in allowed_actions", action)
 		}
 		if seen[action] {
