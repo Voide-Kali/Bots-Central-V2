@@ -9,6 +9,7 @@ import { Brand } from "../components/Brand";
 import { DeviceActions } from "../components/DeviceActions";
 import { DeviceChart } from "../components/DeviceChart";
 import { DeviceList } from "../components/DeviceList";
+import { FairMode } from "../components/FairMode";
 import { AdminPanel } from "../components/AdminPanel";
 import { HistoryPanel } from "../components/HistoryPanel";
 import { PinCard } from "../components/PinCard";
@@ -47,7 +48,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [pairing, setPairing] = useState<{ readonly id: string; readonly token: string; readonly expiresAt: string }>();
   const [fingerprintInput, setFingerprintInput] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
-  const [view, setView] = useState<"devices" | "history" | "admin">("devices");
+  const [view, setView] = useState<"devices" | "history" | "admin" | "fair">("devices");
 
   const listRequest = useRef<Promise<void> | undefined>(undefined);
   /** True only for a refresh the person asked for; automatic polling stays silent. */
@@ -180,9 +181,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const authenticated = session.kind === "authenticated";
   const profileName = authenticated ? session.identity.email : "Perfil";
   const isAdmin = authenticated && session.identity.role === "admin" && api.admin !== undefined;
-  const tabs: ReadonlyArray<{ readonly id: "devices" | "history" | "admin"; readonly label: string }> = [
+  const tabs: ReadonlyArray<{ readonly id: "devices" | "history" | "admin" | "fair"; readonly label: string }> = [
     { id: "devices", label: "Computadores" },
     ...(api.audit ? [{ id: "history" as const, label: "Histórico" }] : []),
+    ...(api.audit ? [{ id: "fair" as const, label: "Modo feira" }] : []),
     ...(isAdmin ? [{ id: "admin" as const, label: "Admin" }] : [])
   ];
 
@@ -263,7 +265,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     </div></header>
     <main className="workspace" id="main-content">
       {feedback ? <p className="notice" role="status">{feedback}</p> : null}
-      {view === "admin" && isAdmin && api.admin ? <AdminPanel api={api.admin} onUnauthenticated={invalidate} /> : view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : devicesView}
+      {view === "admin" && isAdmin && api.admin ? <AdminPanel api={api.admin} onUnauthenticated={invalidate} /> : view === "history" && authenticated && api.audit ? <HistoryPanel api={api.audit} onUnauthenticated={invalidate} /> : view === "fair" && authenticated && api.audit ? <FairMode api={api} onUnauthenticated={invalidate} /> : devicesView}
     </main>
     <footer className="app__footer">Nada acontece nos seus computadores sem o seu aval.</footer>
   </div>;
