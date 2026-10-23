@@ -236,11 +236,11 @@ describe("HTTP API adapter", () => {
   it("reads the audit trail and rejects malformed events", async () => {
     accessTokenStore.replace("access");
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json({ events: [{ occurred_at: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", target_type: "device", target_id: "x", outcome: "success", details: { name: "PC" } }] }))
+      .mockResolvedValueOnce(json({ events: [{ occurred_at: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", target_type: "device", target_id: "x", outcome: "success", details: { name: "PC", action: "lock_screen", by: "pin" } }] }))
       .mockResolvedValueOnce(json({ events: [{ occurred_at: "not a date", actor: "user", action: "x", outcome: "success" }] }));
     vi.stubGlobal("fetch", fetchMock);
     const api = createHttpApiClient();
-    await expect(api.audit?.list(20)).resolves.toEqual([{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: "PC" }]);
+    await expect(api.audit?.list(20)).resolves.toEqual([{ occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: "PC", kind: "lock_screen", file: null, byPin: true }]);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/audit?limit=20");
     await expect(api.audit?.list()).rejects.toBeInstanceOf(ApiError);
     await expect(api.audit?.list(101)).rejects.toBeInstanceOf(RangeError);

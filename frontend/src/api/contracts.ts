@@ -124,4 +124,8 @@ export interface AuditEvent {
   readonly action: string;
   readonly outcome: string;
   readonly name: string | null;
+  /** Catalogue action ("lock_screen"…), file name and approval method, when the event has them. */
+  readonly kind?: string | null;
+  readonly file?: string | null;
+  readonly byPin?: boolean;
 }

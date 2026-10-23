@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// SystemCollector uses sysctl, statfs and the fixed system binary
-// /usr/bin/vm_stat (no shell, no arguments). macOS does not expose CPU
-// temperature or a cheap instantaneous CPU percentage without cgo, so those
-// are omitted and load average is reported instead.
+// SystemCollector uses sysctl, statfs and the fixed system binaries
+// /usr/bin/vm_stat and /usr/bin/top (no shell, fixed arguments). The CPU
+// percentage comes from top's second one-second sample. macOS only exposes the
+// CPU temperature to root (powermetrics), so it is omitted.
 type SystemCollector struct{}
 
 func NewSystemCollector() *SystemCollector { return &SystemCollector{} }
@@ -25,6 +25,13 @@ func (c *SystemCollector) Collect() Sample {
 			s.Load1 = ptr(v)
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if out, err := exec.CommandContext(ctx, "/usr/bin/top", "-l", "2", "-n", "0", "-s", "1").Output(); err == nil {
+		if pct, ok := parseTopCPU(string(out)); ok {
+			s.CPUPercent = ptr(pct)
+		}
+	}
+	cancel()
 	if raw, err := syscall.Sysctl("hw.memsize"); err == nil {
 		if total, ok := decodeUint64(raw); ok {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -51,11 +58,8 @@ func (c *SystemCollector) Collect() Sample {
 		_ = syscall.Statfs(path, &fs)
 	}
 	if fs.Bsize > 0 {
-		bsize := uint64(fs.Bsize)
-		total := fs.Blocks * bsize
-		free := fs.Bfree * bsize
-		if free <= total {
-			s.DiskTotal, s.DiskUsed = ptr(total), ptr(total-free)
+		if total, used, ok := diskUsage(fs.Blocks, fs.Bfree, fs.Bavail, uint64(fs.Bsize)); ok {
+			s.DiskTotal, s.DiskUsed = ptr(total), ptr(used)
 		}
 	}
 	return Sanitize(s)

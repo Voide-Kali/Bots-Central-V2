@@ -135,3 +135,25 @@ func TestWireFormatUsesOnlyAllowedKeys(t *testing.T) {
 		t.Fatalf("unexpected encoding: %s", data)
 	}
 }
+
+func TestParseTopCPUUsesTheLastSample(t *testing.T) {
+	out := "Processes: 512 total\nCPU usage: 30.00% user, 20.00% sys, 50.00% idle\n\nProcesses: 512 total\nCPU usage: 7.12% user, 10.40% sys, 82.48% idle\nSharedLibs: 1\n"
+	got, ok := parseTopCPU(out)
+	if !ok || got < 17.51 || got > 17.53 {
+		t.Fatalf("cpu=%v ok=%v, want 17.52", got, ok)
+	}
+	if _, ok := parseTopCPU("nothing here"); ok {
+		t.Fatal("expected no value")
+	}
+}
+
+func TestDiskUsageMatchesDf(t *testing.T) {
+	// df: 100 blocks, 30 free, 25 available to users -> Use% = 70 / (70 + 25) = 73.7%
+	total, used, ok := diskUsage(100, 30, 25, 1024)
+	if !ok || used != 70*1024 || total != 95*1024 {
+		t.Fatalf("total=%d used=%d ok=%v", total, used, ok)
+	}
+	if _, _, ok := diskUsage(10, 20, 5, 1); ok {
+		t.Fatal("free > blocks must be rejected")
+	}
+}

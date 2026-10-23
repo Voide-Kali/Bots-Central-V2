@@ -294,7 +294,7 @@ describe("Device Online pairing and decisions", () => {
     expect(api.devices.reject).not.toHaveBeenCalled();
   });
 
-  it.each(["cancel", "expiry", "unmount", "completion"])("stops pairing polling on %s", async (ending) => {
+  it.each(["cancel", "expiry", "unmount", "completion"])("stops the fast pairing polling on %s", async (ending) => {
     const list = vi.fn().mockResolvedValue(serverDevices);
     renderDevices(fakeClient(list)); await waitForDevices();
     vi.useFakeTimers();
@@ -310,8 +310,32 @@ describe("Device Online pairing and decisions", () => {
     }
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
     const count = list.mock.calls.length;
-    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    // Back to the normal live view: nothing within 9 s, one call at 10 s (none after unmount).
+    await act(async () => { await vi.advanceTimersByTimeAsync(9_000); });
     expect(list).toHaveBeenCalledTimes(count);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(list).toHaveBeenCalledTimes(ending === "unmount" ? count : count + 1);
+  });
+
+  it("keeps the list live every 10 seconds without announcing it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const list = vi.fn().mockResolvedValue(serverDevices);
+    renderDevices(fakeClient(list)); await waitForDevices();
+    expect(list).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Lista atualizada.")).not.toBeInTheDocument();
+  });
+
+  it("closes the pairing code and opens the approval when the new computer arrives", async () => {
+    const before = serverDevices.filter((device) => device.lifecycleStatus !== "pending");
+    const list = vi.fn().mockResolvedValueOnce(before).mockResolvedValue(serverDevices);
+    renderDevices(fakeClient(list)); await waitForDevices();
+    vi.useFakeTimers();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aprovar computador" })).toBeVisible();
   });
 
   it("never overlaps list calls, including a decision refresh during a slow poll", async () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the Aval agent for the logged-in macOS user (LaunchAgent, no sudo).
 # Usage: ./install-macos.sh https://SEU_SERVIDOR.tailXXXX.ts.net
-# Optional ADR-016 actions (each still needs your e-mail code every time):
+# Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
 #   AVAL_ACTIONS=lock_screen,webcam_photo ./install-macos.sh https://...
 #   (webcam_photo needs: brew install imagesnap)
 set -euo pipefail
@@ -88,4 +88,4 @@ cat > "$PLIST" <<XML
 XML
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 echo "Done. Logs: tail -f \"$LOGS/agent.log\""
-echo "Files you allow Aval to send (after e-mail approval) go in: $SHARED"
+echo "Files you allow Aval to send (after your approval with the PIN) go in: $SHARED"
