@@ -57,6 +57,28 @@ class EmailNotice:
     text: str
 
 
+@dataclass(frozen=True)
+class EmailFilter:
+    """Drop the e-mails the owner does not care about, before announcing (ADR-024).
+
+    Mirrors the old Kali-Bunker bot: a match on any ignored sender or domain (checked against
+    both sender and subject) or any ignored subject keyword means the e-mail is not announced.
+    Filtered e-mails are still recorded as seen, so they are never re-evaluated or backlogged.
+    """
+
+    ignore_senders: tuple[str, ...] = ()
+    ignore_sender_domains: tuple[str, ...] = ()
+    ignore_subject_keywords: tuple[str, ...] = ()
+
+    def allows(self, message: "EmailMessage") -> bool:
+        sender = message.sender.lower()
+        subject = message.subject.lower()
+        for item in (*self.ignore_senders, *self.ignore_sender_domains):
+            if item and (item.lower() in sender or item.lower() in subject):
+                return False
+        return not any(word and word.lower() in subject for word in self.ignore_subject_keywords)
+
+
 def _clean(value: str, limit: int) -> str:
     kept = "".join(ch for ch in value if unicodedata.category(ch)[0] != "C" or ch == " ")
     return kept.replace("<", "‹").replace(">", "›").strip()[:limit]
@@ -136,11 +158,15 @@ def collect_email_notices(
     provider: MailProvider,
     model: ChatModel | None,
     targets: list[EmailTarget],
+    *,
+    email_filter: EmailFilter | None = None,
 ) -> list[EmailNotice]:
     """Poll each target, record new ids, and build one notice per new e-mail for its owner.
 
     The provider fetch (network) runs outside the database transaction; recording the ids and
     reading the owner's chat run inside it. A summary is attempted only when a model is given.
+    When an ``email_filter`` is given, ignored e-mails are still recorded as seen (so they do
+    not backlog or get re-checked) but produce no notice.
     """
     notices: list[EmailNotice] = []
     for target in targets:
@@ -159,6 +185,8 @@ def collect_email_notices(
                 session, user_id=target.user_id, account=target.account, fetched=fetched
             )
         for message in new:
+            if email_filter is not None and not email_filter.allows(message):
+                continue
             summary = summarize(model, message) if model is not None else None
             notices.append(EmailNotice(chat_id=int(chat_id), text=notice_text(message, summary)))
     return notices

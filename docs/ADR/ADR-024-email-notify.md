@@ -39,3 +39,22 @@ depende de credenciais OAuth que o Voide configura (nao entram no codigo).
 - OAuth do Gmail fica para o proximo passo, dependente das credenciais do Voide. Ate la, o nucleo
   existe e e testado, mas nao conecta em conta real.
 - Responder/arquivar/apagar e-mail NAO entra: seria dar acao a IA, contra o principio do Aval.
+
+## Implementacao (Gmail API, leitura) — 23/10/2026
+
+O "proximo passo" do item 4 foi implementado reaproveitando o cliente de Gmail do antigo
+Kali-Bunker, agora como provedor que obedece a interface `MailProvider`:
+
+- `app/inbox/gmail_api.py`: `GmailApiProvider` (OAuth2, escopo `gmail.readonly`). So LE: lista os
+  nao-lidos do INBOX e extrai cabecalhos e um trecho de texto, em memoria. Nunca envia, apaga nem
+  marca. Reusa o `token.json` ja autorizado no Google (o mesmo do Kali-Bunker); credenciais ficam
+  so no `.env`/arquivo montado, nunca no codigo. Falha de rede nao derruba o loop do bot.
+- `EmailFilter` (em `inbox.py`): filtros de remetente/dominio/assunto (noreply, newsletter, promo),
+  iguais aos do Kali-Bunker. E-mail filtrado e gravado como visto (nao reavalia), mas nao vira aviso.
+- Resumo pela IA LOCAL (Ollama), nunca na nuvem — o conteudo do e-mail nao sai da maquina.
+- Ligado no loop do bot por `_email_watch`/`_deliver_emails`, numa passada propria a cada 60s.
+- Opcional e desligado por padrao: so liga com `GMAIL_TOKEN_FILE`, `GMAIL_ACCOUNT` e `EMAIL_OWNER`
+  no `.env`. As libs do Google entram na imagem so com `INSTALL_GMAIL=1` (imagem enxuta por padrao).
+
+O escopo `gmail.readonly` e a ausencia de ferramentas na IA mantem a garantia: no maximo um aviso
+errado, nunca uma acao. IMAP tambem continua disponivel como provedor alternativo.
