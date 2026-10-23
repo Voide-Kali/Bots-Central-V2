@@ -69,6 +69,9 @@ def test_ollama_client_validates_url_and_hides_errors(monkeypatch: pytest.Monkey
     assert client.chat([{"role": "user", "content": "x"}]) == "oi"
     assert captured["url"] == "http://ollama:11434/api/chat"
     assert captured["body"]["model"] == "qwen2.5:3b" and captured["body"]["stream"] is False
+    # Keep the model warm between questions and cap the answer length (latency fixes).
+    assert captured["body"]["keep_alive"] == "30m"
+    assert captured["body"]["options"]["num_predict"] == 256
     monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: _Response(b'{"message":{}}'))
     with pytest.raises(AssistantUnavailable):
         client.chat([])

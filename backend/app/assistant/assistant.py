@@ -25,8 +25,8 @@ from app.devices import telemetry
 
 MAX_QUESTION_CHARS = 500
 MAX_ANSWER_CHARS = 3500
-RECENT_EVENTS = 8  # how many recent audited events the assistant may read
-HISTORY_TURNS = 3  # prior question/answer pairs kept per chat for context
+RECENT_EVENTS = 5  # how many recent audited events the assistant may read (fewer = faster on CPU)
+HISTORY_TURNS = 2  # prior question/answer pairs kept per chat for context
 MAX_CHATS = 500  # bound on how many chats keep a short history in memory
 
 SYSTEM_PROMPT = (
