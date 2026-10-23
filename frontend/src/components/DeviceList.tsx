@@ -9,6 +9,8 @@ interface DeviceListProps {
   onSelect(id: string): void;
   /** Extra content at the top of an open computer (the live chart). */
   renderChart?(device: Device): ReactNode;
+  /** Action controls (ADR-021) shown inside an open, active computer. */
+  renderActions?(device: Device): ReactNode;
 }
 
 function selectWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, select: () => void): void {
@@ -68,7 +70,7 @@ function Metric({ label, percent }: { readonly label: string; readonly percent: 
   </span>;
 }
 
-export function DeviceList({ devices, selectedId, onSelect, renderChart }: DeviceListProps): ReactElement {
+export function DeviceList({ devices, selectedId, onSelect, renderChart, renderActions }: DeviceListProps): ReactElement {
   return <div className="device-table">
     <div aria-hidden="true" className="device-table__head">
       <span>Computador</span><span>Situação</span><span>Conexão</span><span className="num">CPU</span><span className="num">Memória</span><span className="num">Disco</span><span className="num">Temp.</span><span className="num">Visto</span>
@@ -90,6 +92,7 @@ export function DeviceList({ devices, selectedId, onSelect, renderChart }: Devic
         </button>
         {selected ? <div aria-label={`Detalhes de ${device.name}`} className="device__details">
           {renderChart ? renderChart(device) : null}
+          {device.lifecycleStatus === "active" && renderActions ? renderActions(device) : null}
           {device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}
           <dl className="facts">
             <div><dt>Situação</dt><dd>{lifecycleLabel(device.lifecycleStatus)}</dd></div>

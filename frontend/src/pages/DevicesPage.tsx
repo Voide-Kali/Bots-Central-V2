@@ -6,6 +6,7 @@ import type { Device } from "../api/contracts";
 import { navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
+import { DeviceActions } from "../components/DeviceActions";
 import { DeviceChart } from "../components/DeviceChart";
 import { DeviceList } from "../components/DeviceList";
 import { AdminPanel } from "../components/AdminPanel";
@@ -241,7 +242,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           </div> : null}
           {filteredDevices.length === 0 ? <div className="empty">
             {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
-          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} selectedId={selectedId} />}
+          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} renderActions={(device) => <DeviceActions api={api.devices} pinApi={api.actionPin} deviceId={device.id} onUnauthenticated={invalidate} />} selectedId={selectedId} />}
         </section> : null}
       </div>
       {authenticated && (api.telegram || api.actionPin) ? <aside aria-labelledby="aval-heading" className="workspace__aside">
