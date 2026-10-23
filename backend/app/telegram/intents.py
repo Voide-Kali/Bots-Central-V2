@@ -15,6 +15,8 @@ from dataclasses import dataclass
 # problem and go to the assistant instead.
 _LOCK = re.compile(r"\b(bloqueia|bloquear|bloqueie|trava|travar|trave|tranca|trancar|tranque)\b")
 _PHOTO = re.compile(r"\b(foto\w*|webcam|camera)\b")
+# Network scan: a scan verb, or "na (minha) rede" (e.g. "quem esta na minha rede").
+_SCAN = re.compile(r"\b(scan\w*|escane\w*|escaneia|varre\w*|varredura)\b|\bna (minha )?rede\b")
 _SEND = re.compile(r"\b(mand\w*|envi\w*|passa\w*|traz\w*|traga)\b")
 _FILE = re.compile(r"^(.+?\.[a-z0-9]{1,8})(?![\w])", re.IGNORECASE)
 _FILLER = {"me", "pra", "para", "mim", "o", "a", "os", "as", "um", "uma", "meu", "minha", "arquivo"}
@@ -61,4 +63,6 @@ def parse(text: str, device_names: list[str]) -> Intent | None:
         return Intent("webcam_photo", device)
     if _LOCK.search(folded):
         return Intent("lock_screen", device)
+    if _SCAN.search(folded):
+        return Intent("network_scan", device)
     return None
