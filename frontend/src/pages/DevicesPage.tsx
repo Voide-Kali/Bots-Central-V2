@@ -36,6 +36,27 @@ function localTimestamp(timestamp: string): string {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(timestamp));
 }
 
+// The panel is served from the same address the agent must talk to, so we read the server URL
+// from the page instead of asking the person to type it (the usual source of install mistakes).
+function serverOrigin(): string {
+  try {
+    return window.location.origin;
+  } catch {
+    return "";
+  }
+}
+
+// Ready-to-run install commands, one per system, with the server URL already filled in. The
+// person copies the line for their computer; nothing to type or guess. The pairing code is still
+// pasted when the installer asks, so this changes no security property.
+function installCommands(origin: string): { readonly linux: string; readonly macos: string } {
+  const env = "AVAL_ACTIONS=lock_screen,webcam_photo,network_scan AVAL_SENSORS=failed_login_photo";
+  return {
+    linux: `cd ~/aval/agent && sudo ${env} ./install/install-linux.sh ${origin}`,
+    macos: `cd ~/aval/agent && ${env} ./install/install-macos.sh ${origin}`,
+  };
+}
+
 export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement {
   const { state: session, invalidate, logout, retryBootstrap } = useSession();
   const [deviceState, setDeviceState] = useState<DeviceState>({ kind: "idle" });
@@ -144,6 +165,10 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     try { await navigator.clipboard.writeText(pairing.token); setFeedback("Código copiado."); }
     catch { setFeedback("Não foi possível copiar. Selecione o código para copiá-lo."); }
   }
+  async function copyText(text: string, okMessage: string): Promise<void> {
+    try { await navigator.clipboard.writeText(text); setFeedback(okMessage); }
+    catch { setFeedback("Não foi possível copiar. Selecione o texto para copiá-lo."); }
+  }
   async function cancelPairing(): Promise<void> {
     if (!pairing || actionLock.current) return;
     actionLock.current = true;
@@ -202,11 +227,23 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
 
     {authenticated && pairing ? <section aria-label="Adicionar computador" className="callout">
       <div className="callout__text">
-        <h2>Código para o computador novo</h2>
-        <p>No computador que você quer adicionar, rode o instalador do agente e cole este código quando ele pedir.</p>
-        <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>. Depois ele aparece aqui como "aguardando seu aval".</p>
+        <h2>Adicionar um computador novo</h2>
+        <p>No computador que você quer adicionar, abra o terminal, copie o comando do sistema dele e rode. O endereço do servidor já vem preenchido.</p>
+        <ol className="install-steps">
+          <li>
+            <div className="install-steps__head"><span className="install-steps__os">Linux</span><button className="button" onClick={() => void copyText(installCommands(serverOrigin()).linux, "Comando do Linux copiado.")} type="button">Copiar comando</button></div>
+            <code className="callout__code callout__code--block">{installCommands(serverOrigin()).linux}</code>
+          </li>
+          <li>
+            <div className="install-steps__head"><span className="install-steps__os">macOS</span><button className="button" onClick={() => void copyText(installCommands(serverOrigin()).macos, "Comando do macOS copiado.")} type="button">Copiar comando</button></div>
+            <code className="callout__code callout__code--block">{installCommands(serverOrigin()).macos}</code>
+          </li>
+        </ol>
+        <p>Quando o instalador pedir o código, cole o código de pareamento ao lado. Depois o computador aparece aqui como "aguardando seu aval" para você aprovar.</p>
+        <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>.</p>
       </div>
       <div className="callout__side">
+        <p className="callout__fine">Código de pareamento</p>
         <code className="callout__code">{pairing.token}</code>
         <div className="callout__actions"><button className="button button--primary" onClick={() => void copyPairing()} type="button">Copiar código</button><button className="button" disabled={actionBusy} onClick={() => void cancelPairing()} type="button">Cancelar código</button></div>
       </div>

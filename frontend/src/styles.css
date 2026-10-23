@@ -305,6 +305,10 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .callout__code { display: block; padding: 12px 14px; border-radius: var(--radius-control); background: var(--raised); box-shadow: inset 0 0 0 1px var(--border); font-size: 17px; font-weight: 500; letter-spacing: .06em; overflow-wrap: anywhere; user-select: all; }
 .callout__fine { font-size: var(--fs-small); }
 .callout__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.callout__code--block { font-size: 14px; font-weight: 500; letter-spacing: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: left; }
+.install-steps { display: grid; gap: 14px; margin: 14px 0; padding: 0; list-style: none; }
+.install-steps__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.install-steps__os { font-weight: 600; }
 
 /* ---------- "Seu aval": the three keys, each with its seal ---------- */
 .workspace__aside { display: grid; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: linear-gradient(180deg, #16181d, var(--surface) 120px); box-shadow: var(--shadow-2); }
