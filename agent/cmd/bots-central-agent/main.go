@@ -25,7 +25,8 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
 )
 
-var version = "0.1.0-dev"
+// version is reported once, at enrollment. 0.5: live telemetry (ADR-018), CPU on macOS.
+var version = "0.5.0"
 
 const maxPairingTokenSize = 8 * 1024
 

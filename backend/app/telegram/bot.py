@@ -7,7 +7,10 @@ DATABASE_URL and ABUSE_CONTROL_HMAC_KEY; refuses to start without them.
 import logging
 import signal
 import time
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from types import FrameType
+from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -40,6 +43,15 @@ def _send(client: TelegramClient, replies: list[Reply]) -> None:
                 client.delete_message(reply.chat_id, reply.delete_message_id)
             except TelegramUnavailable:
                 logger.warning("telegram delete failed")
+        if reply.edit_message_id is not None:
+            try:
+                client.edit_message(
+                    reply.chat_id, reply.edit_message_id, reply.text, reply.keyboard
+                )
+            except TelegramUnavailable:
+                # Usually "message is not modified" (Atualizar with nothing new).
+                logger.info("telegram edit skipped")
+            continue
         try:
             client.send_message(reply.chat_id, reply.text, reply.keyboard)
         except TelegramUnavailable:
@@ -63,6 +75,48 @@ def _deliver_files(client: TelegramClient, factory: sessionmaker[Session]) -> No
         commands.mark_delivered(factory, command_id=item.command_id)
 
 
+def _chat_of(update: dict[str, Any]) -> int | None:
+    callback = update.get("callback_query")
+    message = callback.get("message") if isinstance(callback, dict) else update.get("message")
+    chat = message.get("chat") if isinstance(message, dict) else None
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    return chat_id if isinstance(chat_id, int) else None
+
+
+class ChatQueue:
+    """Handle updates in worker threads, keeping each chat's updates in order.
+
+    A slow answer from the local AI no longer holds every other chat (and alerts) back,
+    while a PIN typed after a request in the same chat is still handled after it.
+    """
+
+    def __init__(self, workers: int = 4) -> None:
+        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="tg")
+        self._last: dict[int, Future[None]] = {}
+
+    def submit(self, chat_id: int | None, job: Callable[[], None]) -> Future[None]:
+        key = chat_id if chat_id is not None else 0
+        previous = self._last.get(key)
+
+        def run() -> None:
+            if previous is not None:
+                try:
+                    previous.result()
+                except Exception:  # noqa: S110 - the earlier job already logged its failure
+                    pass
+            job()
+
+        future = self._pool.submit(run)
+        self._last[key] = future
+        for done in [chat for chat, item in self._last.items() if item.done()]:
+            if self._last[done] is not future:
+                del self._last[done]
+        return future
+
+    def shutdown(self) -> None:
+        self._pool.shutdown(wait=True)
+
+
 def run() -> None:
     settings = get_settings()
     if settings.telegram_bot_token is None:
@@ -84,6 +138,7 @@ def run() -> None:
         else None
     )
     resources = ResourceAlerter()
+    queue = ChatQueue()
     stopping = False
 
     def stop(_signum: int, _frame: FrameType | None) -> None:
@@ -131,19 +186,24 @@ def run() -> None:
             update_id = update.get("update_id")
             if isinstance(update_id, int):
                 offset = update_id + 1
-            try:
-                reply = handle_update(
-                    update,
-                    session_factory=factory,
-                    admission=admission,
-                    model=model,
-                    actions=actions,
-                )
-            except Exception:
-                logger.exception("telegram update handling failed")
-                continue
-            if reply is not None:
-                _send(client, [reply])
+
+            def job(update: dict[str, Any] = update) -> None:
+                try:
+                    reply = handle_update(
+                        update,
+                        session_factory=factory,
+                        admission=admission,
+                        model=model,
+                        actions=actions,
+                    )
+                except Exception:
+                    logger.exception("telegram update handling failed")
+                    return
+                if reply is not None:
+                    _send(client, [reply])
+
+            queue.submit(_chat_of(update), job)
+    queue.shutdown()
     logger.info("telegram bot stopped")
 
 

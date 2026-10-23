@@ -1,7 +1,7 @@
 """Presence-change alerts: announce online/offline transitions once each."""
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 
 from sqlalchemy import select, text
@@ -13,6 +13,10 @@ from app.db.models import Device, DevicePresenceAlert, TelegramLink
 from app.telegram.commands import Reply
 
 SessionFactory = Callable[[], Session]
+
+# A computer counts as offline after 90 s, but the owner is warned only after it has been
+# silent for 3 minutes, so one or two lost heartbeats do not send "offline/online" pairs.
+OFFLINE_ALERT_AFTER = timedelta(minutes=3)
 
 
 def collect_presence_alerts(session_factory: SessionFactory) -> list[Reply]:
@@ -43,6 +47,12 @@ def collect_presence_alerts(session_factory: SessionFactory) -> list[Reply]:
                 continue
             if state.last_presence == presence:
                 continue
+            if (
+                presence == "offline"
+                and device.last_seen_at is not None
+                and now - device.last_seen_at < OFFLINE_ALERT_AFTER
+            ):
+                continue  # maybe a lost heartbeat: decide on a later pass
             state.last_presence = presence
             state.updated_at = now
             if presence == "offline":
