@@ -3,9 +3,9 @@
 Every reply is plain text. Unlinked chats only learn how to link; they never
 see whether a code, user, or device exists.
 
-Buttons (inline keyboards and the persistent menu) are only shortcuts for the
-same commands: a button press goes through exactly the same private-chat and
-linked-account checks as a typed message.
+Buttons are inline keyboards under the message (Kali-Bunker style): a button
+press goes through exactly the same private-chat and linked-account checks as a
+typed command. There is no persistent bottom keyboard.
 """
 
 import uuid
@@ -31,16 +31,16 @@ SessionFactory = Callable[[], Session]
 
 HELP = (
     "Escreva do seu jeito e o Aval entende:\n"
-    "• “qual computador está mais quente?” → a IA responde\n"
-    "• “bloqueia o Mac”, “tira uma foto do servidor”\n"
-    "• “manda o relatorio.pdf do Mac”\n\n"
-    "Toda ação pede o seu PIN (crie no painel do Aval). Sem PIN, o código vai por e-mail.\n\n"
-    "Comandos: /status · /historico · /bloquear PC · /foto PC · /enviar PC arquivo · "
-    "/desvincular · /ajuda"
+    "- qual computador esta mais quente? (a IA responde)\n"
+    "- bloqueia o Mac / tira uma foto do servidor\n"
+    "- manda o relatorio.pdf do Mac\n\n"
+    "Toda acao pede o seu PIN (crie no painel do Aval). Sem PIN, o codigo vai por e-mail.\n\n"
+    "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC "
+    "/enviar PC arquivo /desvincular /ajuda"
 )
 NOT_LINKED = (
-    "Este chat não está vinculado.\n"
-    "No painel do Aval, gere um código em “Vincular Telegram” e envie aqui:\n"
+    "Este chat nao esta vinculado.\n"
+    "No painel do Aval, gere um codigo em Vincular Telegram e envie aqui:\n"
     "/vincular SEU-CODIGO"
 )
 
@@ -61,42 +61,65 @@ class Reply:
     callback_id: str | None = None
     delete_message_id: int | None = None  # e.g. the owner's PIN message
     edit_message_id: int | None = None  # navigation buttons update their own message
+    remove_reply_keyboard: bool = False  # clear the old persistent bottom keyboard once
 
 
+# Labels of the computers screen (the old "Painel"). "Painel" is now the button menu.
 MENU_PANEL = "Computadores"
+MENU_AI = "IA"
 MENU_HISTORY = "Histórico"
 MENU_FILE = "Arquivo"
 MENU_HELP = "Ajuda"
-MENU_KEYBOARD: dict[str, Any] = {
-    "keyboard": [
-        [{"text": MENU_PANEL}, {"text": MENU_FILE}],
-        [{"text": MENU_HISTORY}, {"text": MENU_HELP}],
-    ],
-    "resize_keyboard": True,
-    "is_persistent": True,
+
+PANEL_TEXT = "Painel do Aval"
+
+# Main menu: inline buttons under the message, Kali-Bunker style, two per row, no emojis.
+def _menu_button(text: str, data: str) -> dict[str, str]:
+    return {"text": text, "callback_data": data}
+
+
+MAIN_MENU: dict[str, Any] = {
+    "inline_keyboard": [
+        [_menu_button(MENU_PANEL, "menu:status"), _menu_button(MENU_AI, "menu:ia")],
+        [_menu_button(MENU_HISTORY, "menu:hist"), _menu_button(MENU_FILE, "menu:arquivo")],
+        [_menu_button(MENU_HELP, "menu:help")],
+    ]
 }
+# A message carrying this clears any leftover persistent keyboard from older bot versions.
+REMOVE_KEYBOARD: dict[str, Any] = {"remove_keyboard": True}
+BACK_BUTTON = {"text": "Voltar", "callback_data": "menu:home"}
+
+# Typed labels still work as shortcuts (and old emoji buttons map after their glyph is stripped).
 MENU_ALIASES = {
-    MENU_PANEL: "/status",
+    "Painel": "/painel",
+    "Menu": "/painel",
+    MENU_PANEL: "/computadores",
+    MENU_AI: "/ia",
     MENU_HISTORY: "/historico",
     MENU_HELP: "/ajuda",
     MENU_FILE: "/arquivo",
-    "Painel": "/status",  # keyboards sent by older versions
-    "IA": "/ia",
 }
 ACTION_BUTTONS = {"lock": "lock_screen", "photo": "webcam_photo"}
-CALLBACKS = {"menu:status": "/status", "menu:hist": "/historico", "menu:help": "/ajuda"}
+CALLBACKS = {
+    "menu:home": "/painel",
+    "menu:status": "/computadores",
+    "menu:ia": "/ia",
+    "menu:hist": "/historico",
+    "menu:arquivo": "/arquivo",
+    "menu:help": "/ajuda",
+}
 AI_HINT = (
     "Escreva sua pergunta em texto livre, por exemplo:\n"
-    "• qual computador está mais quente?\n"
-    "• quanto de memória o Mac está usando?\n"
-    "• algum computador está offline?\n\n"
+    "- qual computador está mais quente?\n"
+    "- quanto de memória o Mac está usando?\n"
+    "- algum computador está offline?\n\n"
     "A IA só lê os dados dos seus computadores. Ela não consegue executar nada."
 )
 FILE_HINT = (
     "Para receber um arquivo de um computador:\n"
     "1. Coloque o arquivo na pasta compartilhada do computador "
-    "(Mac: ~/Aval-Compartilhado · Linux: /srv/aval-compartilhado).\n"
-    "2. Escreva aqui, por exemplo: “manda o relatorio.pdf do Mac”.\n"
+    "(Mac: ~/Aval-Compartilhado, Linux: /srv/aval-compartilhado).\n"
+    "2. Escreva aqui, por exemplo: manda o relatorio.pdf do Mac\n"
     "3. Confirme com o seu PIN.\n\n"
     "Sem a sua confirmação, nenhum arquivo sai do computador."
 )
@@ -145,7 +168,14 @@ def _private_message(
     chat_id, user_id = chat.get("id"), sender.get("id")
     if not isinstance(chat_id, int) or not isinstance(user_id, int) or chat_id != user_id:
         return None
-    body = MENU_ALIASES.get(body.strip(), body)
+    stripped = body.strip()
+    # Old keyboards prefixed labels with an emoji (e.g. "[chart] Painel"); drop any leading
+    # non-letters so a tap on a leftover button still maps to the right command.
+    label = stripped
+    while label and not (label[0].isalnum() or label[0] == "/"):
+        label = label[1:]
+    label = label.strip()
+    body = MENU_ALIASES.get(stripped, MENU_ALIASES.get(label, body))
     return chat_id, user_id, body[:512], callback_id, message_id
 
 
@@ -212,6 +242,7 @@ def status_keyboard(session: Session, user_id: Any) -> dict[str, Any]:
     _, devices = _user_devices(session, user_id)
     rows = [[_button(f"{item.name}", f"dev:{item.id}")] for item in devices[:20]]
     rows.append([_button("Atualizar", "menu:status"), _button("Histórico", "menu:hist")])
+    rows.append([BACK_BUTTON])
     return {"inline_keyboard": rows}
 
 
@@ -239,7 +270,7 @@ def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> R
     rows.append(
         [
             _button("Atualizar", f"dev:{device.id}"),
-            _button("‹ Voltar ao painel", "menu:status"),
+            _button("Voltar", "menu:status"),
         ]
     )
     return Reply(chat_id, card, {"inline_keyboard": rows})
@@ -271,7 +302,10 @@ def handle_update(
     if callback_id is not None:
         # Panel, card and history buttons redraw the same message instead of piling up
         # new ones; action buttons still answer with a new message.
-        navigation = body.startswith(("/status", "/pc ", "/historico", "/ajuda"))
+        navigation = body.startswith(
+            ("/painel", "/menu", "/computadores", "/status", "/pc ", "/historico",
+             "/ia", "/arquivo", "/ajuda")
+        )
         edit = message_id if navigation and reply.keyboard is not None else None
         return Reply(reply.chat_id, reply.text, reply.keyboard, callback_id, edit_message_id=edit)
     if reply.delete_message_id == -1:  # placeholder: delete the message just received
@@ -305,7 +339,12 @@ def _dispatch(
             )
         except (linking.InvalidLinkCode, linking.AlreadyLinked):
             return Reply(chat_id, "Código inválido ou expirado. Gere um novo no painel.")
-        return Reply(chat_id, "Chat vinculado à sua conta.\n\n" + HELP, MENU_KEYBOARD)
+        return Reply(
+            chat_id,
+            "Chat vinculado à sua conta. Use /painel para abrir o menu.",
+            REMOVE_KEYBOARD,
+            remove_reply_keyboard=True,
+        )
 
     with session_factory() as session:
         user_id = linking.linked_user_id(
@@ -313,7 +352,10 @@ def _dispatch(
         )
         if user_id is None:
             return Reply(chat_id, NOT_LINKED)
-        if name == "/status":
+        if name in {"/painel", "/menu", "/start"}:
+            # The menu home: a button message, and it clears any old bottom keyboard.
+            return Reply(chat_id, PANEL_TEXT, MAIN_MENU, remove_reply_keyboard=name == "/start")
+        if name in {"/computadores", "/status"}:
             return Reply(chat_id, status_text(session, user_id), status_keyboard(session, user_id))
         if name == "/pc":
             return device_reply(session, user_id, chat_id, argument)
@@ -328,12 +370,12 @@ def _dispatch(
             return Reply(
                 chat_id,
                 "Últimas ações:\n" + body_text,
-                {"inline_keyboard": [[_button("‹ Voltar ao painel", "menu:status")]]},
+                {"inline_keyboard": [[BACK_BUTTON]]},
             )
     if name == "/ia":
-        return Reply(chat_id, AI_HINT)
+        return Reply(chat_id, AI_HINT, {"inline_keyboard": [[BACK_BUTTON]]})
     if name == "/arquivo":
-        return Reply(chat_id, FILE_HINT)
+        return Reply(chat_id, FILE_HINT, {"inline_keyboard": [[BACK_BUTTON]]})
     if not body.startswith("/") and action_pin.looks_like_pin(body):
         return _pin_reply(chat_id, user_id, body, session_factory, actions)
     intent = None if body.startswith("/") else intents.parse(body, device_names)
@@ -381,7 +423,7 @@ def _dispatch(
     if name == "/desvincular":
         linking.unlink_chat(session_factory, chat_id=chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
-    return Reply(chat_id, HELP, MENU_KEYBOARD)
+    return Reply(chat_id, HELP, {"inline_keyboard": [[BACK_BUTTON]]})
 
 
 def _ask(

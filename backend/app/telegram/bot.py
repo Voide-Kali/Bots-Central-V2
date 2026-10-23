@@ -38,6 +38,19 @@ def _send(client: TelegramClient, replies: list[Reply]) -> None:
                 client.answer_callback(reply.callback_id)
             except TelegramUnavailable:
                 logger.warning("telegram callback answer failed")
+        if reply.remove_reply_keyboard:
+            # One message clears any leftover persistent bottom keyboard; the inline menu,
+            # if any, follows as a second message (the two cannot share one reply_markup).
+            try:
+                client.send_message(reply.chat_id, reply.text, {"remove_keyboard": True})
+            except TelegramUnavailable:
+                logger.warning("telegram keyboard removal failed")
+            if reply.keyboard is not None and "inline_keyboard" in reply.keyboard:
+                try:
+                    client.send_message(reply.chat_id, "Escolha uma opção:", reply.keyboard)
+                except TelegramUnavailable:
+                    logger.warning("telegram menu send failed")
+            continue
         if reply.delete_message_id is not None and reply.delete_message_id > 0:
             try:
                 client.delete_message(reply.chat_id, reply.delete_message_id)
