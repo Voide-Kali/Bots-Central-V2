@@ -25,6 +25,8 @@ var errUnsupported = errors.New("unsupported")
 type System interface {
 	LockScreen(ctx context.Context) error
 	TakePhoto(ctx context.Context, path string) error
+	// NetworkScan returns nmap's greppable output for the host's own private subnets.
+	NetworkScan(ctx context.Context) ([]byte, error)
 }
 
 func (e *Executor) lockScreen() Result {
