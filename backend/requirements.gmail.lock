@@ -1,0 +1,9 @@
+# Optional runtime dependencies for Gmail notices (ADR-024). Installed into the image only
+# when the build sets INSTALL_GMAIL=1, so the default image stays lean. Read-only Gmail API
+# (scope gmail.readonly). Install with the runtime lock as a constraints file so the validated
+# base pins (cryptography, cffi, ...) are never changed:
+#   pip install -c requirements.runtime.lock -r requirements.gmail.lock
+google-api-python-client==2.201.0
+google-auth==2.62.0
+google-auth-httplib2==0.4.4
+httplib2==0.32.0
