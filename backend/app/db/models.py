@@ -757,3 +757,25 @@ class DeviceEvent(Base):
     photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EmailSeen(Base):
+    """Opaque IDs of e-mails already announced to the owner (ADR-024).
+
+    Only the provider's opaque message id is stored, never the subject, sender or body.
+    It exists solely so the same e-mail is not announced twice.
+    """
+
+    __tablename__ = "email_seen"
+    __table_args__ = (
+        UniqueConstraint("user_id", "account", "message_id", name="uq_email_seen_message"),
+        Index("ix_email_seen_created", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    account: Mapped[str] = mapped_column(String(320), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
