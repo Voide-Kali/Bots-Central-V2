@@ -294,12 +294,15 @@ def handle_update(
     admission: LinkAdmission,
     model: assistant.ChatModel | None = None,
     actions: ActionDeps | None = None,
+    conversations: assistant.Conversations | None = None,
 ) -> Reply | None:
     parsed = _private_message(update)
     if parsed is None:
         return None
     chat_id, telegram_user_id, body, callback_id, message_id = parsed
-    reply = _dispatch(chat_id, telegram_user_id, body, session_factory, admission, model, actions)
+    reply = _dispatch(
+        chat_id, telegram_user_id, body, session_factory, admission, model, actions, conversations
+    )
     if callback_id is not None:
         # Panel, card and history buttons redraw the same message instead of piling up
         # new ones; action buttons still answer with a new message.
@@ -322,6 +325,7 @@ def _dispatch(
     admission: LinkAdmission,
     model: assistant.ChatModel | None,
     actions: ActionDeps | None,
+    conversations: assistant.Conversations | None = None,
 ) -> Reply:
     name, argument = _command(body)
 
@@ -382,7 +386,7 @@ def _dispatch(
     intent = None if body.startswith("/") else intents.parse(body, device_names)
     action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/scan", "/_acao"}
     if intent is None and not body.startswith("/"):
-        return _ask(chat_id, user_id, body, session_factory, admission, model)
+        return _ask(chat_id, user_id, body, session_factory, admission, model, conversations)
     if intent is not None or name in action_names:
         if actions is None:
             return Reply(chat_id, "Ações não estão ativadas neste servidor.")
@@ -425,6 +429,8 @@ def _dispatch(
         )
     if name == "/desvincular":
         linking.unlink_chat(session_factory, chat_id=chat_id)
+        if conversations is not None:
+            conversations.forget(chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
     return Reply(chat_id, HELP, {"inline_keyboard": [[BACK_BUTTON]]})
 
@@ -436,6 +442,7 @@ def _ask(
     session_factory: SessionFactory,
     admission: LinkAdmission,
     model: assistant.ChatModel | None,
+    conversations: assistant.Conversations | None = None,
 ) -> Reply:
     if model is None:
         return Reply(chat_id, "A IA não está ativada neste servidor.\n\n" + HELP)
@@ -444,10 +451,15 @@ def _ask(
             return Reply(chat_id, "Muitas perguntas seguidas. Aguarde alguns minutos.")
     except AbuseControlUnavailable:
         return Reply(chat_id, "Serviço indisponível no momento. Tente mais tarde.")
+    history = conversations.recent(chat_id) if conversations else None
     try:
-        text_reply = assistant.answer(session_factory, model, user_id=user_id, question=question)
+        text_reply = assistant.answer(
+            session_factory, model, user_id=user_id, question=question, history=history
+        )
     except AssistantUnavailable:
         return Reply(chat_id, "A IA não respondeu a tempo. Tente de novo em instantes.")
+    if conversations is not None:
+        conversations.remember(chat_id, question, text_reply)
     return Reply(chat_id, text_reply)
 
 
