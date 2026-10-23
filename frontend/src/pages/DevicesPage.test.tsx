@@ -62,6 +62,19 @@ describe("DevicesPage", () => {
     await waitForDevices();
   });
 
+  it("shows the Admin tab only to admins", async () => {
+    const base = fakeClient();
+    const admin = { overview: vi.fn(), users: vi.fn(), failures: vi.fn(), events: vi.fn(), activate: vi.fn() };
+    const api: ApiClient = { ...base, admin, auth: { ...base.auth, me: async () => ({ id: "user-1", email: "operator@example.test", role: "admin" as const }) } };
+    renderDevices(api);
+    await waitForDevices();
+    expect(within(screen.getByRole("navigation", { name: "Seções" })).getByRole("button", { name: "Admin" })).toBeVisible();
+    cleanup();
+    renderDevices({ ...base, admin });
+    await waitForDevices();
+    expect(within(screen.getByRole("navigation", { name: "Seções" })).queryByRole("button", { name: "Admin" })).toBeNull();
+  });
+
   it("shows only real sections in the top navigation", async () => {
     renderDevices();
     await waitForDevices();

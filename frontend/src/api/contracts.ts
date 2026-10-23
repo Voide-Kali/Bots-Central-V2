@@ -25,6 +25,44 @@ export interface ConsumeVerificationCodeResponse {
 export interface AuthenticatedUser {
   readonly id: string;
   readonly email: string;
+  /** Absent on older servers; only "admin" shows the admin tab (the backend still decides). */
+  readonly role?: "user" | "admin";
+}
+
+export interface AdminOverview {
+  readonly checkedAt: string;
+  readonly users: Readonly<Record<string, number>>;
+  readonly devicesByLifecycle: Readonly<Record<string, number>>;
+  readonly devicesOnline: number;
+  readonly commands24h: Readonly<Record<string, number>>;
+  readonly telegramLinks: number;
+}
+
+export interface AdminUser {
+  readonly id: string;
+  readonly email: string;
+  readonly status: string;
+  readonly role: string;
+  readonly createdAt: string;
+  readonly devices: number;
+  readonly telegram: boolean;
+  readonly pin: boolean;
+}
+
+export interface AdminFailure {
+  readonly at: string;
+  readonly user: string;
+  readonly device: string;
+  readonly action: string;
+  readonly status: string;
+  readonly error: string | null;
+}
+
+export interface AdminEvent {
+  readonly occurredAt: string;
+  readonly user: string | null;
+  readonly action: string;
+  readonly outcome: string;
 }
 
 export type DevicePresence = "online" | "offline";
