@@ -227,7 +227,7 @@ def request_action(
     key: AbuseControlKey,
     *,
     user_id: uuid.UUID,
-    chat_id: int,
+    chat_id: int | None,
     kind: str,
     device_name: str | None = None,
     device_id: uuid.UUID | None = None,
@@ -884,6 +884,164 @@ def _closed_text(command: DeviceCommand) -> str:
         return f"Não foi possível enviar {command.file_name}: {reason}."
     reason = reasons.get(command.error_code or "", "erro no computador")
     return f"Não foi possível {spec.verb if spec else 'concluir a ação'}: {reason}."
+
+
+# --- web panel action control (ADR-021) -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class WebActionResult:
+    """What the panel shows while an action runs and when it finishes."""
+
+    status: str  # pending_approval | approved | dispatched | completed | delivered | failed | ...
+    message: str | None = None  # done text (lock) or friendly failure reason, when terminal
+    text: str | None = None  # result text for returns_text actions (e.g. network_scan)
+    has_photo: bool = False  # a returns_file result (photo) is ready to fetch once
+
+
+def start_web_action(
+    session_factory: SessionFactory,
+    key: AbuseControlKey,
+    *,
+    user_id: uuid.UUID,
+    device_id: uuid.UUID,
+    kind: str,
+    pin: str,
+) -> tuple[uuid.UUID | None, action_pin.PinCheck]:
+    """Request one catalogue action from the panel and approve it with the PIN, in one step.
+
+    Same core as Telegram: request_action(by_pin=True) + approve_with_pin. The command carries
+    no chat_id, so the bot's delivery ignores it; the panel reads the result back by polling.
+    A wrong or locked PIN drops the just-created pending request so nothing stale lingers.
+    """
+    intent = request_action(
+        session_factory,
+        key,
+        user_id=user_id,
+        chat_id=None,
+        kind=kind,
+        device_id=device_id,
+        by_pin=True,
+    )
+    command, check = approve_with_pin(session_factory, key, user_id=user_id, pin=pin)
+    if command is None:
+        cancel_request(session_factory, command_id=intent.command_id)
+        return None, check
+    return command.id, check
+
+
+def _mark_web_delivered(session: Session, command: DeviceCommand) -> None:
+    command.status = "delivered"
+    session.execute(delete(CommandPayload).where(CommandPayload.command_id == command.id))
+    audit.record(
+        session,
+        user_id=command.user_id,
+        action="action.delivered",
+        actor="system",
+        target_type="command",
+        target_id=str(command.id),
+        details={"action": command.kind, "channel": "web"},
+    )
+
+
+def web_action_status(
+    session_factory: SessionFactory,
+    *,
+    user_id: uuid.UUID,
+    device_id: uuid.UUID,
+    command_id: uuid.UUID,
+) -> WebActionResult | None:
+    """Status (and, once, the text result) of a panel-started action the user owns."""
+    with session_factory() as session, session.begin():
+        now = _now(session)
+        _expire(session, now)
+        row = session.execute(
+            select(DeviceCommand, Device.name)
+            .join(Device, Device.id == DeviceCommand.device_id)
+            .where(
+                DeviceCommand.id == command_id,
+                DeviceCommand.user_id == user_id,
+                DeviceCommand.device_id == device_id,
+            )
+            .with_for_update(of=DeviceCommand)
+        ).first()
+        if row is None:
+            return None
+        command, device_name = row
+        spec = ACTIONS.get(command.kind)
+        if command.status in ("pending_approval", "approved", "dispatched"):
+            return WebActionResult(status=command.status)
+        if command.status in ("failed", "expired", "denied"):
+            return WebActionResult(status=command.status, message=_closed_text(command))
+        # completed or delivered
+        done = spec.done.format(name=device_name) if spec else "Pronto."
+        was_completed = command.status == "completed"
+        reported = "completed" if was_completed else command.status  # delivered after first read
+        if spec and spec.returns_file:
+            has = bool(
+                session.scalar(
+                    select(func.count())
+                    .select_from(CommandPayload)
+                    .where(CommandPayload.command_id == command.id)
+                )
+            )
+            return WebActionResult(status=reported, message=done, has_photo=has)
+        if spec and spec.returns_text:
+            payload = session.scalar(
+                select(CommandPayload).where(CommandPayload.command_id == command.id)
+            )
+            text = (
+                payload.content.decode("utf-8", "replace")[:MAX_TEXT_RESULT_CHARS].strip()
+                if payload
+                else None
+            )
+            if was_completed:
+                _mark_web_delivered(session, command)
+            return WebActionResult(status=reported, message=done, text=text)
+        if was_completed:  # status-only action (lock_screen): nothing to drop but mark once
+            command.status = "delivered"
+            audit.record(
+                session,
+                user_id=command.user_id,
+                action="action.delivered",
+                actor="system",
+                target_type="command",
+                target_id=str(command.id),
+                details={"action": command.kind, "channel": "web"},
+            )
+        return WebActionResult(status=reported, message=done)
+
+
+def web_action_photo(
+    session_factory: SessionFactory,
+    *,
+    user_id: uuid.UUID,
+    device_id: uuid.UUID,
+    command_id: uuid.UUID,
+) -> bytes | None:
+    """The photo bytes of a completed panel webcam_photo the user owns, handed over once."""
+    with session_factory() as session, session.begin():
+        command = session.scalar(
+            select(DeviceCommand)
+            .where(
+                DeviceCommand.id == command_id,
+                DeviceCommand.user_id == user_id,
+                DeviceCommand.device_id == device_id,
+                DeviceCommand.status == "completed",
+            )
+            .with_for_update()
+        )
+        spec = ACTIONS.get(command.kind) if command is not None else None
+        if command is None or spec is None or not spec.returns_file:
+            return None
+        payload = session.scalar(
+            select(CommandPayload).where(CommandPayload.command_id == command.id)
+        )
+        if payload is None:
+            return None
+        content = bytes(payload.content)
+        _mark_web_delivered(session, command)
+        return content
 
 
 def mark_delivered(session_factory: SessionFactory, *, command_id: uuid.UUID) -> None:
