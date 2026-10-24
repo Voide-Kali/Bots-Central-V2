@@ -23,7 +23,11 @@ ACTIONS="${AVAL_ACTIONS:-lock_screen,webcam_photo,network_scan}"
 SENSORS="${AVAL_SENSORS:-failed_login_photo}"
 command -v go >/dev/null || { echo "Go nao encontrado." >&2; exit 1; }
 
-rm -rf "$OUT"; mkdir -p "$OUT"
+mkdir -p "$OUT"
+# Remove only what this script generates; keep a macOS .pkg dropped here by fazer-pkg.sh.
+rm -f "$OUT"/aval-instalar-linux-*.run "$OUT"/aval-instalar-linux-*.run.sha256 \
+  "$OUT"/aval-instalar-macos-*.command "$OUT"/aval-instalar-macos-*.command.sha256 \
+  "$OUT"/index.html
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -85,6 +89,14 @@ card() { # title, file, note
 HTML
 }
 
+# A macOS .pkg (clique duplo, sem terminal) so existe se fazer-pkg.sh foi rodado num Mac e o
+# arquivo foi colocado aqui. Quando existe, aparece como opcao preferida no macOS.
+pkg_card=""
+if [ -f "$OUT/aval-instalar-macos.pkg" ]; then
+  sha "$OUT/aval-instalar-macos.pkg" > "$OUT/aval-instalar-macos.pkg.sha256"
+  pkg_card="$(card "macOS — instalador (.pkg)" "aval-instalar-macos.pkg" "Clique duplo, sem terminal. Universal (Apple Silicon e Intel).")"
+fi
+
 cat > "$OUT/index.html" <<HTML
 <!doctype html>
 <html lang="pt-BR">
@@ -117,6 +129,7 @@ cat > "$OUT/index.html" <<HTML
     <h1>Baixar o Aval</h1>
     <p class="lead">Escolha o seu sistema, baixe e abra o instalador. Ele pede o codigo de pareamento numa janela e configura tudo sozinho.</p>
     <section class="grid">
+$pkg_card
 $(card "macOS — Apple Silicon (M1/M2/M3)" "aval-instalar-macos-apple-silicon.command" "Macs novos, com chip Apple.")
 $(card "macOS — Intel" "aval-instalar-macos-intel.command" "Macs mais antigos, com Intel.")
 $(card "Linux — x86-64" "aval-instalar-linux-x86_64.run" "Debian, Ubuntu, Kali (PC comum).")
