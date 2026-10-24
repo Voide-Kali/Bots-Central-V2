@@ -191,6 +191,7 @@ describe("Device Online pairing and decisions", () => {
     await screen.findByText("test-only-pairing");
     expect(screen.getByText(/install-linux\.sh/)).toBeVisible();
     expect(screen.getByText(/install-macos\.sh/)).toBeVisible();
+    expect(screen.getByRole("link", { name: /Baixe um instalador pronto/ })).toHaveAttribute("href", "/baixar");
     const copyButtons = screen.getAllByRole("button", { name: "Copiar comando" });
     expect(copyButtons).toHaveLength(2);
     fireEvent.click(copyButtons[0]!);

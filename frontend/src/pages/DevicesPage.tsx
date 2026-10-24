@@ -240,6 +240,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           </li>
         </ol>
         <p>Quando o instalador pedir o código, cole o código de pareamento ao lado. Depois o computador aparece aqui como "aguardando seu aval" para você aprovar.</p>
+        <p className="callout__fine">Prefere não usar o terminal? <a href="/baixar" rel="noreferrer" target="_blank">Baixe um instalador pronto</a> para o seu sistema.</p>
         <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>.</p>
       </div>
       <div className="callout__side">
