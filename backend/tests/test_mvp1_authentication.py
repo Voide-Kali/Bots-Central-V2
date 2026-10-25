@@ -714,6 +714,31 @@ def test_session_usable_rejects_absolute_expiry_before_idle_expiry() -> None:
     assert not authentication._session_usable(user, db_session, now)
 
 
+def test_idle_timeout_is_one_hour_and_logs_out_after_inactivity() -> None:
+    """ADR-025: one hour of inactivity ends the session; an active window stays valid."""
+    assert authentication.IDLE_TTL == timedelta(hours=1)
+    assert authentication.IDLE_TTL <= authentication.SESSION_TTL
+    now = datetime(2030, 1, 1, tzinfo=UTC)
+    user_id = uuid.uuid4()
+    user = User(id=user_id, status=AccountStatus.ACTIVE, security_version=0)
+
+    def built(idle_expires_at: datetime) -> DbSession:
+        return DbSession(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            created_at=now - timedelta(days=1),
+            last_seen_at=now - timedelta(minutes=5),
+            expires_at=now + timedelta(days=10),
+            idle_expires_at=idle_expires_at,
+            security_version=0,
+            authentication_methods=["password"],
+        )
+
+    # Still inside the hour: usable. Past the idle window by a second: logged out.
+    assert authentication._session_usable(user, built(now + timedelta(minutes=30)), now)
+    assert not authentication._session_usable(user, built(now - timedelta(seconds=1)), now)
+
+
 def test_access_rejects_security_version_and_account_state(
     migrated_postgresql_engine: Engine,
 ) -> None:
