@@ -182,6 +182,24 @@ describe("Device Online pairing and decisions", () => {
     expect(screen.queryByText("test-only-pairing")).not.toBeInTheDocument();
   });
 
+  it("shows ready-to-run install commands with the server URL filled in", async () => {
+    const copy = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText: copy } });
+    renderDevices();
+    await waitForDevices();
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar computador" }));
+    await screen.findByText("test-only-pairing");
+    expect(screen.getByText(/install-linux\.sh/)).toBeVisible();
+    expect(screen.getByText(/install-macos\.sh/)).toBeVisible();
+    expect(screen.getByRole("link", { name: /Baixe um instalador pronto/ })).toHaveAttribute("href", "/baixar");
+    const copyButtons = screen.getAllByRole("button", { name: "Copiar comando" });
+    expect(copyButtons).toHaveLength(2);
+    fireEvent.click(copyButtons[0]!);
+    await waitFor(() =>
+      expect(copy).toHaveBeenCalledWith(expect.stringContaining(`install-linux.sh ${window.location.origin}`))
+    );
+  });
+
   it("keeps pairing visible when server-side cancellation fails", async () => {
     const api = renderDevices();
     await waitForDevices();
