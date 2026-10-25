@@ -87,5 +87,14 @@ cat > "$PLIST" <<XML
 </plist>
 XML
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# Confirm the agent really started: KeepAlive would silently restart a binary that exits on a
+# bad config, so check the log a moment later and surface a startup error instead of a false OK.
+sleep 3
+if tail -n 8 "$LOGS/agent.log" 2>/dev/null | grep -q '"message":"agent startup failed"'; then
+  echo "ERRO: o agente registrou falha ao subir. Ultimas linhas do log:" >&2
+  tail -n 15 "$LOGS/agent.log" >&2
+  exit 1
+fi
+echo "OK: agente iniciado."
 echo "Done. Logs: tail -f \"$LOGS/agent.log\""
 echo "Files you allow Aval to send (after your approval with the PIN) go in: $SHARED"
