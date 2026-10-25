@@ -445,7 +445,9 @@ def live(session_factory: SessionFactory, *, device_id: uuid.UUID, jws: str) -> 
                 raise DeviceRevoked
             raise StaleHeartbeat
         live_until, now = row
-        watching = live_until is not None and live_until > now
+        # last_seen_at was just set to clock_timestamp(), so now is never null in practice;
+        # the explicit check narrows the nullable column type and is safe either way.
+        watching = live_until is not None and now is not None and live_until > now
         if watching and sample is not None:
             telemetry.store(session, device_id=device_id, sample=sample)
         return watching
