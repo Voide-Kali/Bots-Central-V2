@@ -140,6 +140,16 @@ install -m 0644 "$HERE/aval-agent.service" /etc/systemd/system/aval-agent.servic
 systemctl daemon-reload
 systemctl enable aval-agent
 systemctl restart aval-agent
-systemctl --no-pager --lines=5 status aval-agent || true
+# Confirm the agent is really up: the state right after restart is not meaningful because the
+# agent validates its config a moment later and may exit. Wait, then check the true state and
+# surface the log on failure (e.g. an unknown action in the config) instead of a false "running".
+sleep 3
+if systemctl is-active --quiet aval-agent; then
+  echo "OK: aval-agent esta ativo."
+else
+  echo "ERRO: aval-agent nao ficou ativo. Ultimas linhas do log:" >&2
+  journalctl -u aval-agent -n 15 --no-pager >&2 || true
+  exit 1
+fi
 echo "Done. Logs: journalctl -u aval-agent -f"
 echo "Files you allow Aval to send (after your approval with the PIN) go in: /srv/aval-compartilhado"

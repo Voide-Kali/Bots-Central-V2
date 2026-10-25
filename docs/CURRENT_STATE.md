@@ -15,7 +15,7 @@ de cada mudança fica no PR e no git; o diário antigo está em [HISTORY.md](HIS
 
 | Área | Situação | Referência |
 |---|---|---|
-| Conta | Cadastro, verificação de e-mail (código), login, sessões no servidor, refresh com rotação e detecção de replay, logout | [AUTH.md](AUTH.md), ADR-006/007/008 |
+| Conta | Cadastro, verificação de e-mail (código), login, sessões no servidor, refresh com rotação e detecção de replay, logout automático após 1 h de inatividade, logout | [AUTH.md](AUTH.md), ADR-006/007/008, ADR-025 |
 | Recuperação de senha | Código de 8 dígitos por e-mail; troca derruba sessões, Telegram e comandos abertos | ADR-014 |
 | Papéis | `user` e `admin` na tabela `users`; promoção só por comando no servidor (`python -m app.admin promote`), nunca pela web | ADR-017 |
 | Dispositivos | Pareamento por token de uso único, identidade Ed25519, aprovação humana pelo fingerprint, heartbeat JWS EdDSA com anti-replay, online/offline | [DEVICE_ONLINE_V01.md](DEVICE_ONLINE_V01.md) |
