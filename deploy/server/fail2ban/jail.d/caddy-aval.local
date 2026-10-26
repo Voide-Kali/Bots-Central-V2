@@ -1,0 +1,13 @@
+# fail2ban jail for the Aval auth routes (ADR-030). OPTIONAL host-side reinforcement.
+# Copy to /etc/fail2ban/jail.d/ and EDIT logpath to the real path of the Caddy access log on
+# this host (the ./logs volume from deploy/server/compose.yaml). Then: sudo systemctl restart fail2ban
+[caddy-aval]
+enabled  = true
+backend  = auto
+filter   = caddy-aval
+# EDIT THIS to your path, e.g. /home/voide/aval/deploy/server/logs/access.log
+logpath  = /CHANGE/ME/aval/deploy/server/logs/access.log
+maxretry = 12
+findtime = 300
+bantime  = 3600
+action   = iptables-allports[name=caddy-aval]
