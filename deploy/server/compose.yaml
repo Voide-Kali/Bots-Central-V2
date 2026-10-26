@@ -124,7 +124,7 @@ services:
       - ./downloads:/srv/baixar:ro
     ports:
       - "127.0.0.1:8081:80"
-    networks: [internal]
+    networks: [egress]
 
   backup:
     image: postgres:17-alpine
