@@ -21,11 +21,13 @@ BUNDLE_DIR="$AGENT_DIR/install/bundle"
 OUT="${AVAL_OUT:-$REPO/deploy/server/downloads}"
 ACTIONS="${AVAL_ACTIONS:-lock_screen,webcam_photo,network_scan}"
 SENSORS="${AVAL_SENSORS:-failed_login_photo}"
+VERSION="${AVAL_VERSION:-0.1.0+$(date -u +%Y%m%d%H%M)}"
 command -v go >/dev/null || { echo "Go nao encontrado." >&2; exit 1; }
 
 mkdir -p "$OUT"
 # Remove only what this script generates; keep a macOS .pkg dropped here by fazer-pkg.sh.
-rm -f "$OUT"/aval-instalar-linux-*.run "$OUT"/aval-instalar-linux-*.run.sha256 \
+rm -f "$OUT"/aval-instalar-linux-*.deb "$OUT"/aval-instalar-linux-*.deb.sha256 \
+  "$OUT"/aval-instalar-linux-*.run "$OUT"/aval-instalar-linux-*.run.sha256 \
   "$OUT"/aval-instalar-macos-*.command "$OUT"/aval-instalar-macos-*.command.sha256 \
   "$OUT"/index.html
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
@@ -71,10 +73,22 @@ build_one() {
   echo "   gerado $out_name ($(sha "$script" | cut -c1-12)...)"
 }
 
+# Linux ships as a .deb: double-click opens the graphical installer (no terminal, no "file full of
+# code"), and pairing is the "Parear Aval" menu entry. See deploy/release/build-deb.sh / ADR-028.
+build_linux_deb() { # goarch, deb_arch
+  local goarch="$1" deb_arch="$2"
+  local stage="$work/linux-$goarch"; mkdir -p "$stage"
+  echo "==> compilando linux/$goarch"
+  (cd "$AGENT_DIR" && GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 \
+    go build -trimpath -ldflags "-s -w" -o "$stage/aval-agent" ./cmd/bots-central-agent)
+  AVAL_SERVER="$SERVER" AVAL_ACTIONS="$ACTIONS" AVAL_SENSORS="$SENSORS" AVAL_VERSION="$VERSION" \
+    bash "$HERE/build-deb.sh" "$deb_arch" "$stage/aval-agent" "$OUT" "$REPO"
+}
+
 build_one macos darwin arm64 "aval-instalar-macos-apple-silicon.command"
 build_one macos darwin amd64 "aval-instalar-macos-intel.command"
-build_one linux linux  amd64 "aval-instalar-linux-x86_64.run"
-build_one linux linux  arm64 "aval-instalar-linux-arm64.run"
+build_linux_deb amd64 amd64
+build_linux_deb arm64 arm64
 
 # ---- Download page ----
 card() { # title, file, note
@@ -132,15 +146,15 @@ cat > "$OUT/index.html" <<HTML
 $pkg_card
 $(card "macOS — Apple Silicon (M1/M2/M3)" "aval-instalar-macos-apple-silicon.command" "Macs novos, com chip Apple.")
 $(card "macOS — Intel" "aval-instalar-macos-intel.command" "Macs mais antigos, com Intel.")
-$(card "Linux — x86-64" "aval-instalar-linux-x86_64.run" "Debian, Ubuntu, Kali (PC comum).")
-$(card "Linux — ARM64" "aval-instalar-linux-arm64.run" "Placas ARM (ex.: Raspberry Pi 64-bit).")
+$(card "Linux — x86-64 (.deb)" "aval-instalar-linux-x86_64.deb" "Debian, Ubuntu, Kali (PC comum). Clique duplo e Instalar.")
+$(card "Linux — ARM64 (.deb)" "aval-instalar-linux-arm64.deb" "Placas ARM (ex.: Raspberry Pi 64-bit). Clique duplo e Instalar.")
     </section>
     <section class="steps">
       <h2>Como instalar</h2>
       <ol>
         <li>No painel, clique em <strong>Adicionar computador</strong> e deixe o codigo de pareamento a mao.</li>
-        <li>Baixe o arquivo do seu sistema acima e abra. No macOS, se aparecer um aviso, clique com o botao direito no arquivo e escolha <strong>Abrir</strong>.</li>
-        <li>Quando pedir, cole o <strong>codigo de pareamento</strong> do painel.</li>
+        <li>Baixe o arquivo do seu sistema acima e abra com <strong>clique duplo</strong>. No Linux (.deb) abre o instalador do sistema: clique em <strong>Instalar</strong> e digite sua senha. No macOS, se aparecer um aviso, clique com o botao direito no arquivo e escolha <strong>Abrir</strong>.</li>
+        <li>No Linux, depois de instalar, abra <strong>Parear Aval</strong> no menu de aplicativos. Cole o <strong>codigo de pareamento</strong> do painel na janela que aparecer. (No macOS o instalador ja pede o codigo.)</li>
         <li>O computador aparece no painel como <strong>aguardando seu aval</strong>; aprove comparando o codigo mostrado.</li>
       </ol>
       <p class="note">O arquivo roda codigo para instalar. Para conferir que ninguem o adulterou, compare o SHA-256 do download com o mostrado neste cartao. Os arquivos sao servidos pelo seu proprio servidor.</p>
