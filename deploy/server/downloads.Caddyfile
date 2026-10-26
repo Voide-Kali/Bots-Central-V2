@@ -1,0 +1,18 @@
+# Download-only server (ADR-027). Serves ONLY the generated download page and installers,
+# with no proxy to the API/backend. Published to 127.0.0.1:8081 on the host and exposed
+# publicly for just the /baixar path via Tailscale Funnel. Panel and API are never served here.
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	root * /srv/baixar
+	file_server
+	header {
+		Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

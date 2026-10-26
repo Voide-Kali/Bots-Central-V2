@@ -113,6 +113,19 @@ services:
         ipv4_address: 172.30.10.10
       egress: {}
 
+  downloads:
+    # Download-only static server (ADR-027). Serves ONLY the /baixar page and installers; no API.
+    # Bound to 127.0.0.1 so only the host reaches it; exposed publicly for just /baixar via
+    # Tailscale Funnel (see ADR-027). Panel and API stay private on the tailnet.
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    volumes:
+      - ./downloads.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./downloads:/srv/baixar:ro
+    ports:
+      - "127.0.0.1:8081:80"
+    networks: [internal]
+
   backup:
     image: postgres:17-alpine
     restart: unless-stopped
