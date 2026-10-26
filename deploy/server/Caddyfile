@@ -1,13 +1,6 @@
 {
 	admin off
 	# Certificates for *.ts.net come from the local tailscaled (socket mounted).
-	# Public exposure (ADR-030): behind Tailscale Funnel the real client IP arrives via
-	# X-Forwarded-For from the local funnel proxy (a private/loopback source), so trust private
-	# ranges. Direct tailnet clients come from 100.64.0.0/10 (NOT a private range here), so their
-	# client-sent X-Forwarded-For is still ignored, as before.
-	servers {
-		trusted_proxies static private_ranges
-	}
 }
 
 # Shared routing for the tailnet HTTPS listener and the Funnel HTTP listener.
@@ -31,14 +24,13 @@
 
 	@backend path /api/* /email-verification
 	handle @backend {
-		# Send exactly one X-Forwarded-For: the resolved real client IP (respects trusted_proxies).
-		# Keeps the backend's single-hop TRUSTED_PROXY_IP policy, now with the real IP under Funnel,
-		# so its per-IP abuse control throttles real attackers instead of one shared proxy address.
-		# NOTE: the placeholder is {client_ip}. {http.request.client_ip} does NOT exist and Caddy
-		# passes it through verbatim, which the backend rejects as an invalid IP -> every login 503s.
-		reverse_proxy 172.30.10.20:8000 {
-			header_up X-Forwarded-For {client_ip}
-		}
+		# Caddy ignores client-sent X-Forwarded-For and sets exactly one value (the immediate peer),
+		# matching the backend's single-hop TRUSTED_PROXY_IP policy. Do NOT add `trusted_proxies`
+		# or `header_up X-Forwarded-For` here: that made Caddy trust the Funnel's injected XFF and
+		# the backend's strict single-IP parser then rejected it, so every login and heartbeat 503'd
+		# (regression from ADR-030, reverted). Under the Funnel the client appears as the funnel
+		# proxy, so per-IP abuse control is coarse there; the per-account throttle still applies.
+		reverse_proxy 172.30.10.20:8000
 	}
 
 	# Download site (ADR-026/029): installers + landing, mounted read-only at /srv/baixar.
