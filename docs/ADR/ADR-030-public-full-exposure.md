@@ -32,9 +32,12 @@ momento**: `sudo tailscale funnel --https=443 off` fecha o acesso publico e volt
 ## Reforcos aplicados (o "portao")
 
 - **IP real do cliente atras do Funnel.** `trusted_proxies static private_ranges` + `header_up
-  X-Forwarded-For {http.request.client_ip}` fazem o backend receber o IP real (um unico hop), em vez
-  de um IP de proxy unico. Assim o **controle de abuso que ja existe** (limite de tentativas por
-  conta e por rede, com bloqueio) passa a valer **por IP real** — o reforco central do login.
+  X-Forwarded-For {client_ip}` fazem o backend receber o IP real (um unico hop), em vez de um IP de
+  proxy unico. Assim o **controle de abuso que ja existe** (limite de tentativas por conta e por
+  rede, com bloqueio) passa a valer **por IP real** — o reforco central do login.
+  (Correcao 26/10: a primeira versao usou `{http.request.client_ip}`, que NAO e um placeholder
+  valido no Caddy; ele era repassado literalmente e o backend o recusava como IP invalido, derrubando
+  TODO login com 503 "servidor nao respondeu". O correto e `{client_ip}`.)
 - **HSTS com `includeSubDomains`.**
 - **Defesas que ja existiam e seguem valendo:** senha Argon2id, sessoes no servidor, protocolo do
   agente assinado com anti-replay, acoes so com PIN, respostas genericas (sem enumeracao), `/docs`
