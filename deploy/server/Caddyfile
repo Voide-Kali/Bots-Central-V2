@@ -34,8 +34,10 @@
 		# Send exactly one X-Forwarded-For: the resolved real client IP (respects trusted_proxies).
 		# Keeps the backend's single-hop TRUSTED_PROXY_IP policy, now with the real IP under Funnel,
 		# so its per-IP abuse control throttles real attackers instead of one shared proxy address.
+		# NOTE: the placeholder is {client_ip}. {http.request.client_ip} does NOT exist and Caddy
+		# passes it through verbatim, which the backend rejects as an invalid IP -> every login 503s.
 		reverse_proxy 172.30.10.20:8000 {
-			header_up X-Forwarded-For {http.request.client_ip}
+			header_up X-Forwarded-For {client_ip}
 		}
 	}
 

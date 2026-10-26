@@ -77,6 +77,21 @@ jobs:
       - run: go test -race ./...
       - run: go vet ./...
 
+  deploy-config:
+    # Validate the Caddy configs and compose file. A Caddyfile placeholder typo is not Python/TS,
+    # so the other jobs never catch it (it once passed an invalid X-Forwarded-For and broke login).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate main Caddyfile
+        run: >-
+          docker run --rm -v "$PWD/deploy/server:/work" -w /work -e SERVER_HOSTNAME=example.ts.net
+          caddy:2.10-alpine caddy validate --config Caddyfile --adapter caddyfile
+      - name: Validate downloads Caddyfile
+        run: >-
+          docker run --rm -v "$PWD/deploy/server:/work" -w /work
+          caddy:2.10-alpine caddy validate --config downloads.Caddyfile --adapter caddyfile
+
   secrets:
     runs-on: ubuntu-latest
     steps:
