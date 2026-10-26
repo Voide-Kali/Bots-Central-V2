@@ -132,6 +132,24 @@ def test_provider_swallows_errors_and_rebuilds_service() -> None:
     assert builds["count"] == 2
 
 
+def test_assert_read_only_accepts_only_gmail_readonly() -> None:
+    gmail_api.assert_read_only([gmail_api.READONLY_SCOPE])  # does not raise
+
+
+def test_assert_read_only_refuses_broader_or_unknown_scopes() -> None:
+    import pytest
+
+    for bad in (
+        None,
+        [],
+        ["https://mail.google.com/"],
+        ["https://www.googleapis.com/auth/gmail.modify"],
+        [gmail_api.READONLY_SCOPE, "https://www.googleapis.com/auth/gmail.send"],
+    ):
+        with pytest.raises(gmail_api.GmailUnavailable):
+            gmail_api.assert_read_only(bad)
+
+
 def test_email_filter_drops_noise_keeps_real_mail() -> None:
     email_filter = EmailFilter(
         ignore_sender_domains=("noreply", "newsletter"), ignore_subject_keywords=("promo",)

@@ -58,3 +58,18 @@ Kali-Bunker, agora como provedor que obedece a interface `MailProvider`:
 
 O escopo `gmail.readonly` e a ausencia de ferramentas na IA mantem a garantia: no maximo um aviso
 errado, nunca uma acao. IMAP tambem continua disponivel como provedor alternativo.
+
+## Garantia de escopo somente leitura (reforco, 26/10/2026)
+
+O ADR exige `gmail.readonly`, mas reaproveitar um `token.json` antigo poderia trazer um escopo mais
+amplo (`gmail.modify`, `gmail.send`, `mail.google.com`) sem que ninguem percebesse — um token
+capaz de enviar/apagar guardado no servidor, exatamente o risco que o ADR quer eliminar. Reforcos:
+
+- **O backend recusa, no ar, qualquer token que nao seja somente `gmail.readonly`.** `build_service`
+  (gmail_api.py) le os escopos gravados no `token.json` e chama `assert_read_only` antes de montar
+  qualquer cliente; escopo extra, ou ausencia de escopo registrado, derruba a ativacao com uma
+  mensagem clara (e o loop do bot segue, so sem e-mail). Garantia por construcao, nao por confianca.
+- **`deploy/release/verificar-token-gmail.py`**: confere o token OFFLINE (so le o arquivo) e diz se
+  e somente leitura, antes de montar no servidor.
+- **`deploy/release/autorizar-gmail.py`**: refaz a autorizacao pedindo so `gmail.readonly`, para
+  gerar um token novo quando o antigo nao for somente leitura (ou nao existir).
