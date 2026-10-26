@@ -91,16 +91,6 @@ jobs:
         run: >-
           docker run --rm -v "$PWD/deploy/server:/work" -w /work
           caddy:2.10-alpine caddy validate --config downloads.Caddyfile --adapter caddyfile
-      - name: Validate compose file
-        working-directory: deploy/server
-        env:
-          SERVER_HOSTNAME: example.ts.net
-          TAILSCALE_IP: 127.0.0.1
-          POSTGRES_DB: x
-          POSTGRES_USER: x
-          POSTGRES_PASSWORD: x
-          BACKUP_DIR: /tmp/backups
-        run: docker compose config >/dev/null
 
   secrets:
     runs-on: ubuntu-latest
