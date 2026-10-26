@@ -31,13 +31,16 @@ momento**: `sudo tailscale funnel --https=443 off` fecha o acesso publico e volt
 
 ## Reforcos aplicados (o "portao")
 
-- **IP real do cliente atras do Funnel.** `trusted_proxies static private_ranges` + `header_up
-  X-Forwarded-For {client_ip}` fazem o backend receber o IP real (um unico hop), em vez de um IP de
-  proxy unico. Assim o **controle de abuso que ja existe** (limite de tentativas por conta e por
-  rede, com bloqueio) passa a valer **por IP real** — o reforco central do login.
-  (Correcao 26/10: a primeira versao usou `{http.request.client_ip}`, que NAO e um placeholder
-  valido no Caddy; ele era repassado literalmente e o backend o recusava como IP invalido, derrubando
-  TODO login com 503 "servidor nao respondeu". O correto e `{client_ip}`.)
+- **IP real do cliente atras do Funnel — REVERTIDO (26/10).** A tentativa de propagar o IP real
+  (`trusted_proxies` + `header_up X-Forwarded-For`) quebrou o login E os heartbeats dos agentes:
+  o backend tem um parser estrito de X-Forwarded-For (`client_network`) que aceita **um unico IP,
+  sem virgula**; ao confiar no proxy do Funnel e repassar o XFF, o backend passou a receber valor
+  invalido/ambiguo e retornava **503** em todo login e heartbeat (um agente apareceu offline numa
+  apresentacao). Revertido para o comportamento original: o Caddy ignora o XFF do cliente e manda
+  **exatamente um IP** (o peer imediato) — testado para tailnet e Funnel. Consequencia aceita:
+  atras do Funnel o cliente aparece como o proxy do Funnel, entao o limite **por IP** fica grosseiro
+  ali; o limite **por conta** (e-mail) continua valendo e e a defesa principal do login. Reativar o
+  IP real exige testar o XFF real do Funnel com cuidado (follow-up), nunca em cima de apresentacao.
 - **HSTS com `includeSubDomains`.**
 - **Defesas que ja existiam e seguem valendo:** senha Argon2id, sessoes no servidor, protocolo do
   agente assinado com anti-replay, acoes so com PIN, respostas genericas (sem enumeracao), `/docs`
