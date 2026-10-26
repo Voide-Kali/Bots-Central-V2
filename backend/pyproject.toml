@@ -21,6 +21,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Gmail notices (ADR-024) are optional: only the host running the bot installs these, so the
+# lean API image and CI stay free of the Google client stack unless the feature is used.
+gmail = [
+  "google-api-python-client>=2.100,<3",
+  "google-auth>=2.23,<3",
+  "google-auth-httplib2>=0.2,<1",
+  "httplib2>=0.22,<1",
+]
 dev = [
   "httpx>=0.28,<1",
   "mypy>=1.13,<2",
@@ -59,4 +67,9 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = ["alembic.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The optional Gmail client stack ships no type stubs and is not installed in CI.
+module = ["googleapiclient.*", "google.*", "google_auth_httplib2.*", "httplib2.*"]
 ignore_missing_imports = true
