@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aval — uma IA que só age com o seu aval</title>
+<meta name="description" content="O Aval centraliza, monitora e administra os seus computadores por agentes. Nenhuma ação acontece sem a sua aprovação. Baixe o instalador para o seu sistema.">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="brand"><span class="dot"></span> Aval</div>
+  <nav class="navlinks">
+    <a class="hide-sm" href="#sobre">O que é</a>
+    <a class="hide-sm" href="#como">Como funciona</a>
+    <a class="hide-sm" href="#seguranca">Segurança</a>
+    <a href="#baixar">Baixar</a>
+  </nav>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <canvas id="scene" aria-hidden="true"></canvas>
+    <div class="wrap hero-inner">
+      <h1>Uma IA que só age<br>com o <span class="grad">seu aval</span>.</h1>
+      <p class="tagline">Centralize, monitore e administre os seus computadores.</p>
+      <p class="sub">O Aval conecta cada computador por um agente assinado e mostra tudo num painel só.
+        Nenhuma ação sensível acontece sem a sua aprovação.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#baixar">Baixar o Aval</a>
+        <a class="btn btn-ghost" href="#como">Como funciona</a>
+      </div>
+    </div>
+    <div class="scrollcue">rolar<span class="line"></span></div>
+  </section>
+
+  <!-- O QUE É -->
+  <section class="section" id="sobre">
+    <div class="wrap">
+      <p class="eyebrow reveal">O que é</p>
+      <h2 class="reveal">Todos os seus computadores, num painel só.</h2>
+      <p class="lead reveal">Cada máquina roda um agente leve que se conecta ao seu servidor pela sua
+        rede privada. Você vê o estado de todas e dispara ações — sempre com a sua aprovação.</p>
+      <div class="grid cols-3" style="margin-top:36px">
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <h3>Painel central</h3>
+          <p>Veja cada computador: online ou offline, CPU, memória, disco, temperatura e quando foi visto pela última vez.</p>
+        </div>
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3>Ação só com aval</h3>
+          <p>Bloquear a tela, tirar foto da webcam, varrer a rede — cada ação pede o seu PIN. Nada acontece sozinho.</p>
+        </div>
+        <div class="feature reveal">
+          <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div>
+          <h3>Avisos e histórico</h3>
+          <p>Alertas no Telegram quando algo foge do normal, e um registro de tudo que foi feito, sem segredos.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMO FUNCIONA -->
+  <section class="section" id="como" style="background:var(--bg-2)">
+    <div class="wrap">
+      <p class="eyebrow reveal">Como funciona</p>
+      <h2 class="reveal">Quatro passos, sem terminal.</h2>
+      <div class="steps" style="margin-top:34px">
+        <div class="step reveal"><div><h3>Baixe e instale</h3><p>Escolha o seu sistema aqui embaixo, baixe e abra o instalador. Ele configura tudo sozinho.</p></div></div>
+        <div class="step reveal"><div><h3>Pareie o computador</h3><p>Cole o código que aparece no painel. O computador gera a própria identidade e se apresenta.</p></div></div>
+        <div class="step reveal"><div><h3>Dê o seu aval</h3><p>No painel, o computador entra como "aguardando seu aval". Você aprova conferindo o código.</p></div></div>
+        <div class="step reveal"><div><h3>Acompanhe e aja</h3><p>A partir daí você monitora o estado e dispara ações — cada uma aprovada com o seu PIN.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEGURANÇA -->
+  <section class="section" id="seguranca">
+    <div class="wrap">
+      <p class="eyebrow reveal">Segurança</p>
+      <h2 class="reveal">Negar por padrão. Nada perigoso sem o seu aval.</h2>
+      <p class="lead reveal">O Aval foi desenhado para que o controle seja sempre seu — não da IA, não de quem baixou o instalador.</p>
+      <div class="seclist" style="margin-top:34px">
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>Identidades separadas</b><span>Cada computador tem uma chave própria (Ed25519); você aprova comparando o fingerprint.</span></div></div>
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>Tudo assinado</b><span>Cada mensagem do agente é assinada e não pode ser repetida por um atacante.</span></div></div>
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>Ação com segundo fator</b><span>Ações sensíveis só rodam depois do seu PIN; a IA não executa nada sozinha.</span></div></div>
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>Só na sua rede</b><span>O servidor fica na sua rede privada. Esta página de download é a única parte pública.</span></div></div>
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>IA que só observa</b><span>A IA consulta e resume; ela não tem ferramentas para agir no seu computador.</span></div></div>
+        <div class="secitem reveal"><span class="chk"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span><div><b>Baixar não dá poder</b><span>Um instalador sozinho é inútil: sem o código do painel, nenhum computador entra.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BAIXAR -->
+  <section class="section" id="baixar" style="background:var(--bg-2)">
+    <div class="wrap">
+      <p class="eyebrow reveal">Baixar</p>
+      <h2 class="reveal">Escolha o seu sistema.</h2>
+      <p class="lead reveal">Baixe, abra o instalador e cole o código de pareamento do painel. Confira o SHA-256 para garantir que o arquivo não foi adulterado.</p>
+      <div class="grid cols-3">
+<!--DOWNLOAD_CARDS-->
+      </div>
+      <div class="steps" style="margin-top:40px; max-width:760px">
+        <div class="step"><div><h3>No painel</h3><p>Clique em "Adicionar computador" e deixe o código de pareamento à mão.</p></div></div>
+        <div class="step"><div><h3>Instale</h3><p>No Linux (.deb), o clique duplo abre o instalador do sistema: clique em Instalar e digite a senha. No macOS, se aparecer um aviso, clique com o botão direito e escolha Abrir.</p></div></div>
+        <div class="step"><div><h3>Pareie</h3><p>No Linux, abra "Parear Aval" no menu e cole o código. No macOS, o próprio instalador pede o código.</p></div></div>
+        <div class="step"><div><h3>Aprove</h3><p>O computador aparece no painel como "aguardando seu aval". Aprove conferindo o código mostrado.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTATO -->
+  <section class="section contact" id="contato">
+    <div class="wrap">
+      <p class="eyebrow reveal">Contato</p>
+      <h2 class="reveal">Feito por quem assina embaixo.</h2>
+      <div class="card-lg reveal">
+        <p class="lead" style="text-align:center">Dúvidas, ideias ou quer acompanhar o desenvolvimento? O código e o contato ficam no GitHub.</p>
+        <a class="gh" href="https://github.com/Voide-Kali" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24"><path d="M12 .5a12 12 0 00-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 016 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0012 .5z"/></svg>
+          github.com/Voide-Kali
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Aval — uma IA que só age com o seu aval.</span>
+    <span>Arquivos servidos pelo próprio servidor do Aval.</span>
+  </div>
+</footer>
+
+<script src="./three.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
