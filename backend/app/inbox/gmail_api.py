@@ -15,6 +15,7 @@ backend and its tests never depend on them unless Gmail notices are configured
 
 import base64
 import html
+import json
 import logging
 import re
 from collections.abc import Callable
@@ -25,7 +26,8 @@ from app.inbox.inbox import MAX_SNIPPET_CHARS, EmailMessage
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+SCOPES = [READONLY_SCOPE]
 RECENT_SCAN_LIMIT = 100  # how many of the newest messages to page through per poll
 
 ServiceBuilder = Callable[[str, int], Any]
@@ -33,6 +35,29 @@ ServiceBuilder = Callable[[str, int], Any]
 
 class GmailUnavailable(RuntimeError):
     """Gmail is not usable (libraries missing, or the OAuth token is gone/invalid)."""
+
+
+def assert_read_only(scopes: object) -> None:
+    """Refuse any OAuth token granted more than ``gmail.readonly`` (ADR-024).
+
+    This client only ever issues read calls, but a token authorized with a broader scope
+    (``gmail.modify``, ``gmail.send`` or full ``mail.google.com``) could delete or send mail.
+    Holding a write-capable token on the server is exactly the risk the ADR rules out, so we
+    refuse to run with one and tell the owner to reauthorize read-only. A token file with no
+    recorded scopes cannot be proven read-only, so it is refused too.
+    """
+    if not isinstance(scopes, list) or not scopes:
+        raise GmailUnavailable(
+            "OAuth token tem escopo desconhecido; reautorize so com gmail.readonly "
+            "(deploy/release/autorizar-gmail.py)"
+        )
+    extra = sorted({str(scope) for scope in scopes if scope != READONLY_SCOPE})
+    if extra:
+        raise GmailUnavailable(
+            "OAuth token nao e somente leitura (escopos extras: "
+            + ", ".join(extra)
+            + "); reautorize so com gmail.readonly"
+        )
 
 
 def _decode_part(part: dict[str, Any]) -> str:
@@ -113,6 +138,12 @@ def build_service(token_file: str, timeout_seconds: int) -> Any:
     token_path = Path(token_file)
     if not token_path.exists():
         raise GmailUnavailable(f"OAuth token missing: {token_file}")
+    # Refuse a non-read-only token before building a client that could act with it (ADR-024).
+    try:
+        granted = json.loads(token_path.read_text(encoding="utf-8")).get("scopes")
+    except (OSError, ValueError) as exc:
+        raise GmailUnavailable(f"OAuth token unreadable: {token_file}") from exc
+    assert_read_only(granted)
     creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
