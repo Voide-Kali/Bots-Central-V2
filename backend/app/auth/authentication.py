@@ -29,7 +29,10 @@ from app.db.models import Session as DbSession
 SessionFactory = Callable[[], OrmSession]
 ACCESS_TTL = timedelta(minutes=10)
 SESSION_TTL = timedelta(days=30)
-IDLE_TTL = timedelta(days=7)
+# Idle timeout (ADR-025): one hour without activity logs the person out. Each refresh while
+# active slides this window forward; after an hour with no request the session and its refresh
+# token both idle-expire, so the next call fails and a fresh login is required.
+IDLE_TTL = timedelta(hours=1)
 TOKEN_BYTES = 32
 
 
