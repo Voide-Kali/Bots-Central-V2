@@ -117,6 +117,10 @@ services:
     # Download-only static server (ADR-027). Serves ONLY the /baixar page and installers; no API.
     # Bound to 127.0.0.1 so only the host reaches it; exposed publicly for just /baixar via
     # Tailscale Funnel (see ADR-027). Panel and API stay private on the tailnet.
+    # On its OWN bridge network (not egress): a normal bridge publishes the host port, while
+    # keeping this container off the network that backend/telegram/ollama share, so a compromise
+    # of this static server cannot reach the API or the unauthenticated ollama (least privilege,
+    # restores the ADR-027 isolation claim). It needs no outbound: it only serves local files.
     image: caddy:2.10-alpine
     restart: unless-stopped
     volumes:
@@ -124,7 +128,7 @@ services:
       - ./downloads:/srv/baixar:ro
     ports:
       - "127.0.0.1:8081:80"
-    networks: [egress]
+    networks: [downloads_net]
 
   backup:
     image: postgres:17-alpine
@@ -153,6 +157,11 @@ networks:
       config:
         - subnet: 172.30.10.0/24
   egress:
+    driver_opts:
+      com.docker.network.driver.mtu: "1400"
+  # Dedicated bridge for the download-only server: publishes its host port without putting it on
+  # the network the backend/telegram/ollama share (ADR-027 isolation).
+  downloads_net:
     driver_opts:
       com.docker.network.driver.mtu: "1400"
 

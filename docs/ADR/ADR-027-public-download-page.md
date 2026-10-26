@@ -43,6 +43,16 @@ binario e inutil sem o codigo de pareamento do painel privado. Mitigacoes: Funne
 `/baixar`, servidor de download isolado (sem acesso a API/db), checksums publicados. O painel e a
 API **nao** mudam de exposicao.
 
+### Correcao de isolamento (2026-10-26)
+
+A primeira correcao do 502 (#76) pos o container `downloads` na rede `egress`, que ele
+compartilhava com `backend`, `telegram` e `ollama` — um comprometimento do servidor estatico
+alcancaria a API e o `ollama` (sem autenticacao) pela rede, contrariando "sem acesso a API/db"
+acima. Corrigido: o `downloads` fica numa rede bridge dedicada (`downloads_net`), so dele. Uma
+bridge normal publica a porta no host do mesmo jeito (o que faltava na rede `internal: true`), mas
+sem dar alcance aos outros servicos. O `db` ja estava isolado (so `internal`). O container de
+download nao faz conexao de saida: so serve arquivos locais.
+
 ## Operacao (no tropa)
 
 ```
