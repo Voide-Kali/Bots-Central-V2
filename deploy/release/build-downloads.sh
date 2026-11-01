@@ -99,7 +99,7 @@ card() { # title, file, note
   local title="$1" file="$2" note="$3" digest; digest="$(cat "$OUT/$file.sha256")"
   cat <<HTML
         <article class="card">
-          <h3>$title</h3>
+          <h4>$title</h4>
           <p class="note">$note</p>
           <a class="dl" href="./$file" download>Baixar</a>
           <p class="sum">SHA-256<br><code>$digest</code></p>
@@ -124,8 +124,13 @@ $(card "Linux — ARM64 (.deb)" "aval-instalar-linux-arm64.deb" "Placas ARM (ex.
 HTML
 )"
 
-# Copy the static assets and inject the cards into the placeholder (awk: no python dependency).
-cp "$SITE/styles.css" "$SITE/app.js" "$SITE/three.min.js" "$OUT/"
+# Copy the static assets (scripts, fonts, images) and inject the cards into the placeholder
+# (awk: no python dependency). The landing is dark/3D now (ADR-029): boot.js adds the `js` class
+# before paint, app.js runs the interactions, and the design ships its own fonts/ and img/.
+rm -f "$OUT/styles.css" "$OUT/three.min.js"
+cp "$SITE/boot.js" "$SITE/app.js" "$OUT/"
+rm -rf "$OUT/fonts" "$OUT/img"
+cp -r "$SITE/fonts" "$SITE/img" "$OUT/"
 cards_file="$(mktemp)"; printf '%s\n' "$cards" > "$cards_file"
 awk -v cf="$cards_file" '
   /<!--DOWNLOAD_CARDS-->/ { while ((getline line < cf) > 0) print line; next }
