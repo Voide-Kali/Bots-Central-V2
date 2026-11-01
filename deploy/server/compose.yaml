@@ -99,11 +99,11 @@ services:
     environment:
       SERVER_HOSTNAME: ${SERVER_HOSTNAME}
     ports:
-      - "${TAILSCALE_IP}:443:443"
-      - "${TAILSCALE_IP}:80:80"
-      # Plain-HTTP entrance for Tailscale Funnel (ADR-030), bound to the host loopback only:
-      # `sudo tailscale funnel --https=443 http://127.0.0.1:8082` publishes the whole panel.
-      # Omit the Funnel command to keep everything tailnet-only; this port alone exposes nothing.
+      # The web container serves ONLY plain HTTP on the host loopback (ADR-031). Tailscale
+      # `serve`/`funnel` owns :443 on the tailnet address and does the TLS, forwarding BOTH tailnet
+      # and public traffic here. The web no longer binds the tailnet :443/:80 — that collided with
+      # the Funnel (both wanted :443) and broke the whole stack. Bring the entrance up with:
+      #   sudo tailscale funnel --bg --https=443 http://127.0.0.1:8082
       - "127.0.0.1:8082:8080"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
