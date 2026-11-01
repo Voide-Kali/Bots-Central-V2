@@ -9,9 +9,10 @@
    comparando o fingerprint.
 2. **Toda requisição de dispositivo é assinada** (JWS EdDSA, audiência fixa por finalidade) e
    consome uma sequência monotônica: replay é recusado.
-3. **Ações só por comando tipado + segundo fator.** O dono pede; um código vinculado àquela ação
-   chega por e-mail; só então o agente recebe o comando. O agente valida tudo de novo
-   localmente (pasta compartilhada, sem symlink/hard link, tamanho).
+3. **Ações só por comando tipado + segundo fator.** O dono pede; aprova com o **PIN pessoal de 6
+   dígitos** no Telegram (ADR-016; HMAC no banco, 5 erros travam por 15 min); só então o agente
+   recebe o comando. O agente valida tudo de novo localmente (pasta compartilhada, sem symlink/
+   hard link, tamanho). O código por e-mail continua para cadastro e recuperação de senha.
 4. **Separação de privilégios entre IAs.** A IA de dispositivos não tem ferramentas; a futura IA
    de e-mail não terá acesso aos agentes. Conteúdo externo nunca é instrução.
 5. **Menor exposição.** Servidor só na rede Tailscale; banco em rede Docker interna; CORS
