@@ -90,16 +90,20 @@ build_one macos darwin amd64 "aval-instalar-macos-intel.command"
 build_linux_deb amd64 amd64
 build_linux_deb arm64 arm64
 
-# ---- Download page ----
+# ---- Download page (ADR-029) ----
+# The landing is a static, animated site in deploy/release/site/ (hero 3D, explainer, contact).
+# Only the download cards depend on the build (filenames + SHA-256), so they are generated here
+# and injected into the page placeholder; the rest of the page ships as-is.
+SITE="$HERE/site"
 card() { # title, file, note
   local title="$1" file="$2" note="$3" digest; digest="$(cat "$OUT/$file.sha256")"
   cat <<HTML
-      <article class="card">
-        <h2>$title</h2>
-        <p class="note">$note</p>
-        <a class="dl" href="./$file" download>Baixar</a>
-        <p class="sum">SHA-256<br><code>$digest</code></p>
-      </article>
+        <article class="card">
+          <h3>$title</h3>
+          <p class="note">$note</p>
+          <a class="dl" href="./$file" download>Baixar</a>
+          <p class="sum">SHA-256<br><code>$digest</code></p>
+        </article>
 HTML
 }
 
@@ -111,58 +115,23 @@ if [ -f "$OUT/aval-instalar-macos.pkg" ]; then
   pkg_card="$(card "macOS — instalador (.pkg)" "aval-instalar-macos.pkg" "Clique duplo, sem terminal. Universal (Apple Silicon e Intel).")"
 fi
 
-cat > "$OUT/index.html" <<HTML
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aval — Baixar</title>
-<style>
-  :root { color-scheme: light dark; --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --card:#171a21; --line:#272b33; --accent:#4f9cf9; }
-  @media (prefers-color-scheme: light) { :root { --bg:#f5f6f8; --fg:#1b1d21; --muted:#5a6068; --card:#ffffff; --line:#e3e6ea; } }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
-  .wrap { max-width: 900px; margin: 0 auto; padding: 48px 16px 64px; }
-  h1 { font-size: 30px; margin: 0 0 6px; }
-  .lead { color: var(--muted); margin: 0 0 32px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
-  .card h2 { font-size: 18px; margin: 0 0 4px; }
-  .note { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
-  .dl { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; padding: 10px 18px; border-radius: 10px; }
-  .sum { color: var(--muted); font-size: 12px; margin: 16px 0 0; word-break: break-all; }
-  .sum code { color: var(--fg); }
-  .steps { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 24px; }
-  .steps ol { padding-left: 20px; }
-  .steps li { margin: 8px 0; }
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>Baixar o Aval</h1>
-    <p class="lead">Escolha o seu sistema, baixe e abra o instalador. Ele pede o codigo de pareamento numa janela e configura tudo sozinho.</p>
-    <section class="grid">
+cards="$(cat <<HTML
 $pkg_card
 $(card "macOS — Apple Silicon (M1/M2/M3)" "aval-instalar-macos-apple-silicon.command" "Macs novos, com chip Apple.")
 $(card "macOS — Intel" "aval-instalar-macos-intel.command" "Macs mais antigos, com Intel.")
 $(card "Linux — x86-64 (.deb)" "aval-instalar-linux-x86_64.deb" "Debian, Ubuntu, Kali (PC comum). Clique duplo e Instalar.")
 $(card "Linux — ARM64 (.deb)" "aval-instalar-linux-arm64.deb" "Placas ARM (ex.: Raspberry Pi 64-bit). Clique duplo e Instalar.")
-    </section>
-    <section class="steps">
-      <h2>Como instalar</h2>
-      <ol>
-        <li>No painel, clique em <strong>Adicionar computador</strong> e deixe o codigo de pareamento a mao.</li>
-        <li>Baixe o arquivo do seu sistema acima e abra com <strong>clique duplo</strong>. No Linux (.deb) abre o instalador do sistema: clique em <strong>Instalar</strong> e digite sua senha. No macOS, se aparecer um aviso, clique com o botao direito no arquivo e escolha <strong>Abrir</strong>.</li>
-        <li>No Linux, depois de instalar, abra <strong>Parear Aval</strong> no menu de aplicativos. Cole o <strong>codigo de pareamento</strong> do painel na janela que aparecer. (No macOS o instalador ja pede o codigo.)</li>
-        <li>O computador aparece no painel como <strong>aguardando seu aval</strong>; aprove comparando o codigo mostrado.</li>
-      </ol>
-      <p class="note">O arquivo roda codigo para instalar. Para conferir que ninguem o adulterou, compare o SHA-256 do download com o mostrado neste cartao. Os arquivos sao servidos pelo seu proprio servidor.</p>
-    </section>
-  </div>
-</body>
-</html>
 HTML
+)"
+
+# Copy the static assets and inject the cards into the placeholder (awk: no python dependency).
+cp "$SITE/styles.css" "$SITE/app.js" "$SITE/three.min.js" "$OUT/"
+cards_file="$(mktemp)"; printf '%s\n' "$cards" > "$cards_file"
+awk -v cf="$cards_file" '
+  /<!--DOWNLOAD_CARDS-->/ { while ((getline line < cf) > 0) print line; next }
+  { print }
+' "$SITE/index.html" > "$OUT/index.html"
+rm -f "$cards_file"
 
 echo "==> pronto em $OUT"
 ls -1 "$OUT"
