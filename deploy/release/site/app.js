@@ -1,146 +1,88 @@
-/* Aval landing — topbar, scroll reveal, and a neon particle-network hero (Three.js UMD).
-   No external calls. Degrades gracefully: no WebGL or reduced motion -> the CSS background stays. */
-(function () {
-  "use strict";
-
-  // --- topbar shadow on scroll ---
-  var topbar = document.getElementById("topbar");
-  function onScroll() {
-    if (topbar) topbar.classList.toggle("scrolled", window.scrollY > 8);
-  }
-  window.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
-
-  // --- scroll reveal ---
-  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var reveals = Array.prototype.slice.call(document.querySelectorAll(".reveal"));
-  if (reduceMotion || !("IntersectionObserver" in window)) {
-    reveals.forEach(function (el) { el.classList.add("in"); });
-  } else {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-      });
-    }, { threshold: 0.12 });
-    reveals.forEach(function (el) { io.observe(el); });
+// Aval, site de apresentacao: interacoes do artefato do Voide, movidas para um arquivo
+// externo porque a CSP do /baixar e `default-src 'self'` (sem inline script). Roda no fim
+// do body, com o DOM ja pronto. A logica e a mesma do artefato original.
+(() => {
+  /* 3D seal: stacked layers give the disc its thickness; the face carries the "visto". */
+  const seal = document.getElementById("seal");
+  for (let z = -13; z <= 13; z += 1) { const l = document.createElement("div"); l.className = "seal__layer"; l.style.setProperty("--z", z); seal.appendChild(l); }
+  const face = document.createElement("div");
+  face.className = "seal__face";
+  face.innerHTML = '<svg viewBox="0 0 200 200"><defs><path id="ring" d="M100,100 m-84,0 a84,84 0 1,1 168,0 a84,84 0 1,1 -168,0"/></defs><g class="seal__ring"><text><textPath href="#ring">APROVADO COM PIN · NADA SEM O SEU AVAL · </textPath></text></g><path class="seal__check" d="M52 104c10 7 18 16 24 25C92 98 118 76 152 66"/></svg>';
+  seal.appendChild(face);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce) {
+    addEventListener("pointermove", (e) => {
+      const x = e.clientX / innerWidth - .5, y = e.clientY / innerHeight - .5;
+      seal.style.setProperty("--rx", `${x * 40}deg`); seal.style.setProperty("--ry", `${-y * 30}deg`);
+    }, { passive: true });
   }
 
-  // --- 3D hero ---
-  var canvas = document.getElementById("scene");
-  if (!canvas || typeof window.THREE === "undefined") { if (canvas) canvas.style.display = "none"; return; }
-  var THREE = window.THREE;
+  /* Entrances. */
+  const io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add("is-in"); io.unobserve(en.target); } }), { threshold: .18 });
+  document.querySelectorAll(".reveal, .reveal-tilt").forEach((el) => io.observe(el));
 
-  var renderer;
-  try {
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
-  } catch (err) {
-    canvas.style.display = "none";
-    return;
+  /* The two screens turn as they cross the viewport. */
+  const scene = document.getElementById("scene");
+  const turn = () => { const r = scene.getBoundingClientRect(); const t = Math.max(-1, Math.min(1, (r.top + r.height / 2 - innerHeight / 2) / innerHeight)); scene.style.transform = `rotateY(${-18 + t * -14}deg) rotateX(${8 + t * 6}deg)`; };
+  if (!reduce) { addEventListener("scroll", turn, { passive: true }); turn(); }
+
+  /* The request you can type: the same deterministic rules the bot uses. The AI never turns text into an action. */
+  const devices = ["tropa", "MacMaker", "pc-sala"];
+  const ask = document.getElementById("ask"), out = document.getElementById("answer");
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function parse(text) {
+    const t = text.trim();
+    if (t === "" || /\?\s*$/.test(t)) return null;
+    const low = t.toLowerCase();
+    const device = devices.find((d) => new RegExp(`(^|\\s)${d.toLowerCase().replace("-", "\\-")}(\\s|$)`).test(low)) ?? null;
+    if (/(^|\s)(bloque\w*|trav\w*)/.test(low)) return { kind: "Bloquear a tela", device };
+    if (/(^|\s)(foto\w*|webcam|c[aâ]mera)/.test(low)) return { kind: "Foto da webcam", device };
+    const send = /(^|\s)(mand\w*|envi\w*|passa\w*|traz\w*)\s/.test(low);
+    const file = t.match(/[\w.-]+\.[a-z0-9]{1,6}/i);
+    if (send && file) return { kind: "Mandar arquivo", device, argument: file[0] };
+    return null;
   }
-  renderer.setClearColor(0x000000, 0);
-
-  var scene = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-  camera.position.z = 15;
-
-  var group = new THREE.Group();
-  scene.add(group);
-
-  // Points distributed in a rough sphere shell.
-  var COUNT = 320;
-  var RADIUS = 9;
-  var positions = new Float32Array(COUNT * 3);
-  var colors = new Float32Array(COUNT * 3);
-  var cyan = new THREE.Color(0x22d3ee);
-  var violet = new THREE.Color(0x7b61ff);
-  var pts = [];
-  for (var i = 0; i < COUNT; i++) {
-    var u = Math.random(), v = Math.random();
-    var theta = 2 * Math.PI * u, phi = Math.acos(2 * v - 1);
-    var r = RADIUS * (0.7 + 0.3 * Math.random());
-    var x = r * Math.sin(phi) * Math.cos(theta);
-    var y = r * Math.sin(phi) * Math.sin(theta);
-    var z = r * Math.cos(phi);
-    positions[i * 3] = x; positions[i * 3 + 1] = y; positions[i * 3 + 2] = z;
-    pts.push([x, y, z]);
-    var c = cyan.clone().lerp(violet, (y / RADIUS + 1) / 2);
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-  }
-
-  // soft round sprite for the points
-  var tex = (function () {
-    var c = document.createElement("canvas"); c.width = c.height = 64;
-    var g = c.getContext("2d");
-    var grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grd.addColorStop(0, "rgba(255,255,255,1)");
-    grd.addColorStop(0.3, "rgba(255,255,255,0.8)");
-    grd.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
-    var t = new THREE.CanvasTexture(c); return t;
-  })();
-
-  var pGeo = new THREE.BufferGeometry();
-  pGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  pGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  var pMat = new THREE.PointsMaterial({
-    size: 0.72, map: tex, vertexColors: true, transparent: true, opacity: 0.95,
-    depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
-  });
-  group.add(new THREE.Points(pGeo, pMat));
-
-  // Lines between nearby points (computed once; capped).
-  var linePos = [];
-  var LINK_DIST = 3.6, MAX_LINKS = 1200;
-  for (var a = 0; a < COUNT && linePos.length / 6 < MAX_LINKS; a++) {
-    for (var b = a + 1; b < COUNT; b++) {
-      var dx = pts[a][0] - pts[b][0], dy = pts[a][1] - pts[b][1], dz = pts[a][2] - pts[b][2];
-      if (dx * dx + dy * dy + dz * dz < LINK_DIST * LINK_DIST) {
-        linePos.push(pts[a][0], pts[a][1], pts[a][2], pts[b][0], pts[b][1], pts[b][2]);
-        if (linePos.length / 6 >= MAX_LINKS) break;
-      }
+  function render() {
+    const intent = parse(ask.value);
+    if (!intent) {
+      out.innerHTML = `<div class="try__kind"><span class="try__dot try__dot--ai"></span>Vai para a IA</div><p class="try__note">A IA responde com os dados dos seus computadores${ask.value.trim() ? "" : " quando você escrever algo"}. Ela não tem como bloquear, fotografar nem mandar nada: isso só nasce de um pedido seu, reconhecido por regras fixas.</p>`;
+      return;
     }
+    out.innerHTML = `<div class="try__kind"><span class="try__dot"></span>Pedido reconhecido</div><dl class="try__rows"><dt>Ação</dt><dd>${intent.kind}</dd><dt>Computador</dt><dd>${intent.device ? esc(intent.device) : "o bot pergunta qual"}</dd>${intent.argument ? `<dt>Arquivo</dt><dd>${esc(intent.argument)}</dd>` : ""}<dt>Aval</dt><dd>espera o seu PIN de 6 números</dd></dl><p class="try__note">Nada acontece até você digitar o PIN. Se ninguém aprovar, o pedido expira.</p>`;
   }
-  var lGeo = new THREE.BufferGeometry();
-  lGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(linePos), 3));
-  var lMat = new THREE.LineBasicMaterial({ color: 0x5aa2ff, transparent: true, opacity: 0.24 });
-  group.add(new THREE.LineSegments(lGeo, lMat));
+  ask.addEventListener("input", render);
+  document.querySelectorAll(".try__examples button").forEach((b) => b.addEventListener("click", () => { ask.value = b.textContent; render(); ask.focus(); }));
+  render();
 
-  function resize() {
-    var w = canvas.clientWidth || window.innerWidth;
-    var h = canvas.clientHeight || window.innerHeight;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
-    // On a wide (desktop) viewport the text sits on the left, so push the sphere to the right;
-    // on a narrow (mobile) viewport keep it centered above the text.
-    group.position.x = camera.aspect > 1.1 ? RADIUS * 0.5 : 0;
-  }
-  window.addEventListener("resize", resize);
-  resize();
+  /* Copy button on any data-copy element (install hint). */
+  document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copiado"; } catch { b.textContent = "Selecione e copie"; } setTimeout(() => { b.textContent = "Copiar"; }, 1800); }));
 
-  // pointer parallax
-  var targetX = 0, targetY = 0;
-  window.addEventListener("pointermove", function (e) {
-    targetX = (e.clientX / window.innerWidth - 0.5) * 0.6;
-    targetY = (e.clientY / window.innerHeight - 0.5) * 0.6;
-  }, { passive: true });
-
-  group.rotation.set(0.3, 0.2, 0);
-
-  if (reduceMotion) { renderer.render(scene, camera); return; } // static frame, no loop
-
-  var running = true;
-  document.addEventListener("visibilitychange", function () { running = !document.hidden; if (running) loop(); });
-
-  function loop() {
-    if (!running) return;
-    group.rotation.y += 0.0016;
-    group.rotation.x += 0.0006;
-    camera.position.x += (targetX * 3 - camera.position.x) * 0.04;
-    camera.position.y += (-targetY * 3 - camera.position.y) * 0.04;
-    camera.lookAt(0, 0, 0);
-    renderer.render(scene, camera);
-    requestAnimationFrame(loop);
-  }
-  loop();
+  /* The command list. */
+  const cmds = [
+    ["Bloquear a tela", "agora", "Trava a sessão do computador na hora. No Mac, apaga a tela."],
+    ["Foto da webcam", "agora", "Uma foto pela câmera do computador, entregue no seu Telegram."],
+    ["Mandar um arquivo", "agora", "Um arquivo da pasta compartilhada do agente chega no Telegram, até o limite de tamanho."],
+    ["Saúde dos computadores", "agora", "CPU, memória, disco, temperatura e há quanto tempo está ligado, a cada minuto."],
+    ["Alertas inteligentes", "agora", "Avisa quando o disco enche, a temperatura sobe ou um computador some, sem repetir o mesmo alerta."],
+    ["Histórico", "agora", "Tudo o que foi pedido, aprovado, negado ou entregue, num registro que não se apaga."],
+    ["Foto de quem errar a senha", "em breve", "Quando alguém digitar a senha errada no computador, o Aval tira uma foto e avisa você."],
+    ["Desligar e reiniciar", "em breve", "Desligar, reiniciar ou suspender, também com o seu PIN."]
+  ];
+  const list = document.getElementById("cmds"), filter = document.getElementById("filter"), empty = document.getElementById("cmds-empty");
+  list.innerHTML = cmds.map(([name, tag, more], i) => `<button type="button" class="cmd" role="option" aria-selected="${i === 0}" id="cmd-${i}"><span class="cmd__name"><span>${name}</span><span class="cmd__tag${tag === "agora" ? "" : " cmd__tag--soon"}">${tag === "agora" ? "Disponível" : "Em breve"}</span></span><span class="cmd__more">${more}</span></button>`).join("");
+  const items = [...list.querySelectorAll(".cmd")];
+  const select = (el) => items.forEach((it) => it.setAttribute("aria-selected", String(it === el)));
+  items.forEach((it) => { it.addEventListener("mouseenter", () => matchMedia("(hover: hover)").matches && select(it)); it.addEventListener("click", () => select(it)); });
+  filter.addEventListener("input", () => {
+    const q = filter.value.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+    let first = null;
+    items.forEach((it) => { const hit = it.textContent.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").includes(q); it.hidden = !hit; if (hit && !first) first = it; });
+    empty.hidden = first !== null; if (first) select(first);
+  });
+  filter.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const visible = items.filter((it) => !it.hidden); const cur = visible.findIndex((it) => it.getAttribute("aria-selected") === "true");
+    const next = visible[(cur + (e.key === "ArrowDown" ? 1 : -1) + visible.length) % visible.length]; if (next) select(next);
+  });
 })();
