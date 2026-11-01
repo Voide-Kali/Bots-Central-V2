@@ -48,7 +48,10 @@ class TelegramClient:
         return data.get("result")
 
     def get_updates(self, *, offset: int | None, timeout: int = 25) -> list[dict[str, Any]]:
-        payload: dict[str, Any] = {"timeout": timeout, "allowed_updates": ["message"]}
+        payload: dict[str, Any] = {
+            "timeout": timeout,
+            "allowed_updates": ["message", "callback_query"],
+        }
         if offset is not None:
             payload["offset"] = offset
         result = self._call("getUpdates", payload)
@@ -99,5 +102,21 @@ class TelegramClient:
                 "chat_id": chat_id,
                 "text": text[:MAX_MESSAGE_CHARS],
                 "disable_web_page_preview": True,
+            },
+        )
+
+    def answer_callback_query(self, callback_query_id: str) -> None:
+        self._call("answerCallbackQuery", {"callback_query_id": callback_query_id})
+
+    def send_menu_message(
+        self, chat_id: int, text: str, inline_keyboard: list[list[dict[str, str]]]
+    ) -> None:
+        self._call(
+            "sendMessage",
+            {
+                "chat_id": chat_id,
+                "text": text[:MAX_MESSAGE_CHARS],
+                "disable_web_page_preview": True,
+                "reply_markup": {"inline_keyboard": inline_keyboard},
             },
         )

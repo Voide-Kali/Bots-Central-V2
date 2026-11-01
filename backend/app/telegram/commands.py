@@ -32,8 +32,28 @@ HELP = (
     "/enviar PC arquivo — pede um arquivo da pasta compartilhada (código no e-mail)\n"
     "/aprovar 12345678 — confirma o pedido com o código do e-mail\n"
     "/desvincular — desliga este chat da sua conta\n"
+    "/menu — abre os botões do Aval\n"
     "/ajuda — esta mensagem"
 )
+MENU_KEYBOARD = [
+    [{"text": "💻 Computadores", "callback_data": "menu:status"}],
+    [
+        {"text": "📜 Histórico", "callback_data": "menu:history"},
+        {"text": "📤 Enviar arquivo", "callback_data": "menu:send"},
+    ],
+    [
+        {"text": "❔ Ajuda", "callback_data": "menu:help"},
+        {"text": "⚙️ Conta", "callback_data": "menu:account"},
+    ],
+]
+ACCOUNT_KEYBOARD = [
+    [{"text": "🔌 Desvincular Telegram", "callback_data": "account:unlink"}],
+    [{"text": "↩️ Voltar", "callback_data": "menu:home"}],
+]
+UNLINK_KEYBOARD = [[
+    {"text": "✅ Sim, desvincular", "callback_data": "unlink:confirm"},
+    {"text": "↩️ Cancelar", "callback_data": "unlink:cancel"},
+]]
 NOT_LINKED = (
     "Este chat não está vinculado.\n"
     "No painel do Bots Central, gere um código em “Vincular Telegram” e envie aqui:\n"
@@ -51,6 +71,8 @@ class LinkAdmission(Protocol):
 class Reply:
     chat_id: int
     text: str
+    inline_keyboard: list[list[dict[str, str]]] | None = None
+    callback_query_id: str | None = None
 
 
 def _private_message(update: dict[str, Any]) -> tuple[int, int, str] | None:
@@ -68,6 +90,34 @@ def _private_message(update: dict[str, Any]) -> tuple[int, int, str] | None:
     if not isinstance(chat_id, int) or not isinstance(user_id, int) or chat_id != user_id:
         return None
     return chat_id, user_id, body[:512]
+
+
+def _private_callback(update: dict[str, Any]) -> tuple[str, int, int, str] | None:
+    callback = update.get("callback_query")
+    if not isinstance(callback, dict):
+        return None
+    message = callback.get("message")
+    sender = callback.get("from")
+    query_id = callback.get("id")
+    data = callback.get("data")
+    if not isinstance(message, dict) or not isinstance(sender, dict):
+        return None
+    chat = message.get("chat")
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    user_id = sender.get("id")
+    if (
+        not isinstance(query_id, str)
+        or not isinstance(data, str)
+        or len(data) > 64
+        or not isinstance(chat, dict)
+        or chat.get("type") != "private"
+        or not isinstance(chat_id, int)
+        or not isinstance(user_id, int)
+        or chat_id != user_id
+        or sender.get("is_bot") is True
+    ):
+        return None
+    return query_id, chat_id, user_id, data
 
 
 def _command(body: str) -> tuple[str, str]:
@@ -109,6 +159,13 @@ def handle_update(
     model: assistant.ChatModel | None = None,
     actions: ActionDeps | None = None,
 ) -> Reply | None:
+    callback = _private_callback(update)
+    if callback is not None:
+        return _handle_callback(
+            callback,
+            session_factory=session_factory,
+            actions=actions,
+        )
     parsed = _private_message(update)
     if parsed is None:
         return None
@@ -130,7 +187,11 @@ def handle_update(
             )
         except (linking.InvalidLinkCode, linking.AlreadyLinked):
             return Reply(chat_id, "Código inválido ou expirado. Gere um novo no painel.")
-        return Reply(chat_id, "✅ Chat vinculado à sua conta.\n\n" + HELP)
+        return Reply(
+            chat_id,
+            "✅ Chat vinculado à sua conta.\n\n" + HELP,
+            inline_keyboard=MENU_KEYBOARD,
+        )
 
     with session_factory() as session:
         user_id = linking.linked_user_id(
@@ -138,12 +199,16 @@ def handle_update(
         )
         if user_id is None:
             return Reply(chat_id, NOT_LINKED)
+        if name in {"/start", "/menu"}:
+            return Reply(chat_id, "🏠 Painel do Aval\nEscolha uma opção:", MENU_KEYBOARD)
         if name == "/status":
             return Reply(chat_id, status_text(session, user_id))
         if name == "/historico":
             rows = audit.list_for_user(session, user_id=user_id, limit=10)
             body_text = "\n".join(audit.label(row) for row in rows) or "Nenhuma ação registrada."
             return Reply(chat_id, "🧾 Últimas ações:\n" + body_text)
+        if name == "/ajuda":
+            return Reply(chat_id, HELP, MENU_KEYBOARD)
     if not body.startswith("/"):
         return _ask(chat_id, user_id, body, session_factory, admission, model)
     if name in {"/enviar", "/aprovar"}:
@@ -161,6 +226,71 @@ def handle_update(
         linking.unlink_chat(session_factory, chat_id=chat_id)
         return Reply(chat_id, "Chat desvinculado. Você não receberá mais alertas aqui.")
     return Reply(chat_id, HELP)
+
+
+def _handle_callback(
+    callback: tuple[str, int, int, str],
+    *,
+    session_factory: SessionFactory,
+    actions: ActionDeps | None,
+) -> Reply:
+    query_id, chat_id, telegram_user_id, data = callback
+    with session_factory() as session:
+        user_id = linking.linked_user_id(
+            session, chat_id=chat_id, telegram_user_id=telegram_user_id
+        )
+        if user_id is None:
+            return Reply(chat_id, NOT_LINKED, callback_query_id=query_id)
+        if data == "menu:home":
+            return Reply(
+                chat_id, "🏠 Painel do Aval\nEscolha uma opção:", MENU_KEYBOARD, query_id
+            )
+        if data == "menu:status":
+            return Reply(
+                chat_id, status_text(session, user_id), MENU_KEYBOARD, query_id
+            )
+        if data == "menu:history":
+            rows = audit.list_for_user(session, user_id=user_id, limit=10)
+            text_reply = "\n".join(audit.label(row) for row in rows) or "Nenhuma ação registrada."
+            return Reply(chat_id, "🧾 Últimas ações:\n" + text_reply, MENU_KEYBOARD, query_id)
+        if data == "menu:send":
+            if actions is None:
+                text_reply = "Envio de arquivo não está ativado neste servidor."
+            else:
+                text_reply = (
+                    "📤 Para pedir um arquivo, envie:\n"
+                    "/enviar NOME-DO-PC nome-do-arquivo.pdf\n\n"
+                    "O pedido só é executado depois da aprovação pelo código enviado ao seu e-mail."
+                )
+            return Reply(chat_id, text_reply, MENU_KEYBOARD, query_id)
+        if data == "menu:help":
+            return Reply(chat_id, HELP, MENU_KEYBOARD, query_id)
+        if data == "menu:account":
+            return Reply(chat_id, "⚙️ Conta\nEscolha uma opção:", ACCOUNT_KEYBOARD, query_id)
+        if data == "account:unlink":
+            return Reply(
+                chat_id,
+                "Quer mesmo desvincular este Telegram? Alertas e pedidos em andamento "
+                "serão cancelados.",
+                UNLINK_KEYBOARD,
+                query_id,
+            )
+        if data == "unlink:cancel":
+            return Reply(
+                chat_id, "Desvinculação cancelada.", MENU_KEYBOARD, query_id
+            )
+        if data == "unlink:confirm":
+            linking.unlink_chat(session_factory, chat_id=chat_id)
+            return Reply(
+                chat_id,
+                "🔌 Telegram desvinculado. Você não receberá mais alertas aqui.",
+                callback_query_id=query_id,
+            )
+    return Reply(
+        chat_id,
+        "Esse botão expirou. Envie /menu para abrir o menu novamente.",
+        callback_query_id=query_id,
+    )
 
 
 def _ask(

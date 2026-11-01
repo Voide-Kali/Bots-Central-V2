@@ -36,6 +36,20 @@ def _msg(
     }
 
 
+def _callback(
+    data: str, *, chat: int = CHAT, sender: int | None = None, kind: str = "private"
+) -> dict[str, Any]:
+    return {
+        "update_id": 2,
+        "callback_query": {
+            "id": "callback-1",
+            "from": {"id": chat if sender is None else sender, "is_bot": False},
+            "message": {"chat": {"id": chat, "type": kind}},
+            "data": data,
+        },
+    }
+
+
 class _Admission:
     def __init__(self, result: bool | None = True) -> None:
         self.result = result
@@ -68,6 +82,8 @@ def test_code_normalization() -> None:
         {"message": "x"},
         _msg("/status", kind="group"),
         _msg("/status", sender=CHAT + 1),
+        _callback("menu:status", kind="group"),
+        _callback("menu:status", sender=CHAT + 1),
         {
             "message": {
                 "chat": {"id": CHAT, "type": "private"},
@@ -114,6 +130,48 @@ def test_client_rejects_bad_tokens_and_never_leaks_the_url(monkeypatch: pytest.M
         client.get_updates(offset=None)
     assert secret not in repr(caught.value) and caught.value.__cause__ is None
     assert caught.value.__suppress_context__
+
+
+def test_client_receives_callback_updates_and_sends_inline_keyboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    requests: list[urllib.request.Request] = []
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b'{"ok":true,"result":[]}'
+
+    def capture(request: urllib.request.Request, **_kwargs: object) -> Response:
+        requests.append(request)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", capture)
+    client = telegram_client.TelegramClient(SecretStr("123456:SECRET-token"))
+    client.get_updates(offset=None)
+    keyboard = [[{"text": "Computadores", "callback_data": "menu:status"}]]
+    client.send_menu_message(123, "Painel", keyboard)
+    client.answer_callback_query("callback-1")
+
+    updates_body = requests[0].data
+    menu_body = requests[1].data
+    acknowledgement_body = requests[2].data
+    assert isinstance(updates_body, bytes)
+    assert isinstance(menu_body, bytes)
+    assert isinstance(acknowledgement_body, bytes)
+    updates = json.loads(updates_body)
+    assert updates["allowed_updates"] == ["message", "callback_query"]
+    menu = json.loads(menu_body)
+    assert menu["reply_markup"] == {"inline_keyboard": keyboard}
+    acknowledgement = json.loads(acknowledgement_body)
+    assert acknowledgement == {"callback_query_id": "callback-1"}
 
 
 # --- PostgreSQL ------------------------------------------------------------------------
@@ -187,6 +245,56 @@ def test_link_status_and_unlink_flow(factory: sessionmaker[Session]) -> None:
     assert bye is not None and "desvinculado" in bye.text
     after = commands.handle_update(_msg("/status"), session_factory=factory, admission=_Admission())
     assert after is not None and after.text == commands.NOT_LINKED
+
+
+@pytest.mark.postgresql
+def test_inline_menu_rechecks_link_and_confirms_unlink(factory: sessionmaker[Session]) -> None:
+    user_id, device_id, private = _active_device(factory)
+    device_online.heartbeat(factory, device_id=device_id, jws=_beat(private, device_id, 1, VALID))
+    _link(factory, user_id)
+
+    menu = commands.handle_update(
+        _msg("/start"), session_factory=factory, admission=_Admission()
+    )
+    assert menu is not None and menu.inline_keyboard is not None
+    labels = [button["text"] for row in menu.inline_keyboard for button in row]
+    assert labels == ["💻 Computadores", "📜 Histórico", "📤 Enviar arquivo", "❔ Ajuda", "⚙️ Conta"]
+
+    status = commands.handle_update(
+        _callback("menu:status"), session_factory=factory, admission=_Admission()
+    )
+    assert status is not None and "telemetry-agent — online" in status.text
+    assert status.callback_query_id == "callback-1" and status.inline_keyboard is not None
+
+    wrong_user = commands.handle_update(
+        _callback("account:unlink", sender=CHAT + 1),
+        session_factory=factory,
+        admission=_Admission(),
+    )
+    assert wrong_user is None
+    assert linking.is_linked(factory, user_id=user_id)
+
+    prompt = commands.handle_update(
+        _callback("account:unlink"), session_factory=factory, admission=_Admission()
+    )
+    assert prompt is not None and "Quer mesmo desvincular" in prompt.text
+    assert prompt.inline_keyboard is not None
+
+    cancelled = commands.handle_update(
+        _callback("unlink:cancel"), session_factory=factory, admission=_Admission()
+    )
+    assert cancelled is not None and linking.is_linked(factory, user_id=user_id)
+
+    confirmed = commands.handle_update(
+        _callback("unlink:confirm"), session_factory=factory, admission=_Admission()
+    )
+    assert confirmed is not None and "desvinculado" in confirmed.text
+    assert not linking.is_linked(factory, user_id=user_id)
+
+    stale = commands.handle_update(
+        _callback("menu:status"), session_factory=factory, admission=_Admission()
+    )
+    assert stale is not None and stale.text == commands.NOT_LINKED
 
 
 @pytest.mark.postgresql
