@@ -51,14 +51,11 @@
 	}
 }
 
-# Private tailnet entrance (HTTPS with the *.ts.net certificate). Always on.
-{$SERVER_HOSTNAME} {
-	import site
-}
-
-# Public entrance for Tailscale Funnel (ADR-030). Funnel terminates TLS and forwards plain HTTP
-# here; this listener is reachable only through the 127.0.0.1 port published in compose, i.e. via
-# the Funnel. Serving plain HTTP (no redirect) avoids an HTTPS redirect loop through the Funnel.
+# Single entrance (ADR-031): plain HTTP on :8080, reachable only via the 127.0.0.1:8082 port in
+# compose. Tailscale `serve`/`funnel` owns :443 on the tailnet address, terminates TLS, and forwards
+# BOTH tailnet and public traffic here. The web no longer binds the tailnet :443 itself (that
+# collided with the Funnel on :443). Serving plain HTTP (no auto-HTTPS, no redirect) avoids a TLS
+# loop through the Funnel. Start it with: sudo tailscale funnel --bg --https=443 http://127.0.0.1:8082
 :8080 {
 	import site
 }
