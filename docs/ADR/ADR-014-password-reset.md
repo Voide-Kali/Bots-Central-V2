@@ -1,6 +1,7 @@
 # ADR-014: Recuperação de senha por código de e-mail
 
-Status: proposto (2026-10-21) — **exige aprovação explícita** (mudança de autenticação).
+Status: **aceito (2026-10-21), implementado na `main`** (`app/auth/password_reset.py`). A recuperação
+por código de e-mail continua valendo; o PIN do ADR-016 é para aprovar ações, não para recuperar senha.
 
 ## Contexto
 

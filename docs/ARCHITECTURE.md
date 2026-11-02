@@ -36,7 +36,8 @@ fala pela rede privada Tailscale.
 - O agente nunca recebe credencial de usuário; ele se autentica por assinatura com a própria
   chave em cada requisição, com sequência anti-replay compartilhada entre heartbeat e comandos.
 - Ação sobre um computador só existe como **comando tipado**, criado pelo dono e aprovado por um
-  segundo fator (código no e-mail). Não há execução de shell.
+  segundo fator: o **PIN pessoal de 6 dígitos** no Telegram (ADR-016). O código por e-mail segue
+  para cadastro e recuperação de senha. Não há execução de shell.
 - A IA não tem ferramentas: recebe um retrato de dados do próprio usuário e devolve texto.
 - Toda ação relevante gera um evento de auditoria na mesma transação.
 
