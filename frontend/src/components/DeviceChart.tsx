@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent, ReactElement } from "react";
 import type { DevicesApi } from "../api/client";
 import type { DeviceTelemetry } from "../api/contracts";
@@ -40,7 +40,6 @@ function ago(seconds: number): string {
 }
 
 function Chart({ metric, points, now, range }: { readonly metric: Metric; readonly points: readonly Point[]; readonly now: number; readonly range: Range }): ReactElement {
-  const gradient = useId();
   const [hover, setHover] = useState<Point>();
   // Draw in real pixels so the labels are never stretched.
   const frame = useRef<HTMLDivElement>(null);
@@ -53,33 +52,34 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
     return () => { observer.disconnect(); };
   }, []);
   const span = RANGES[range].seconds * 1000;
-  const top = metric.key === "temp" ? Math.max(100, Math.ceil(Math.max(0, ...points.map((p) => p.v)) / 10) * 10) : metric.max;
-  const x = (t: number): number => PAD_L + ((t - (now - span)) / span) * (W - PAD_L - PAD_R);
+  const visiblePoints = useMemo(() => points.filter((point) => point.t >= now - span && point.t <= now + 5_000), [now, points, span]);
+  const top = metric.key === "temp" ? Math.max(100, Math.ceil(Math.max(0, ...visiblePoints.map((p) => p.v)) / 10) * 10) : metric.max;
+  const x = (t: number): number => PAD_L + Math.max(0, Math.min(1, (t - (now - span)) / span)) * (W - PAD_L - PAD_R);
   const y = (v: number): number => PAD_T + (1 - Math.min(Math.max(v, 0), top) / top) * (H - PAD_T - PAD_B);
 
   // Split where samples are missing, so an offline period is not drawn as a ramp.
   const segments = useMemo(() => {
     const out: Point[][] = [];
     let current: Point[] = [];
-    for (const point of points) {
+    for (const point of visiblePoints) {
       const previous = current[current.length - 1];
       if (previous && point.t - previous.t > RANGES[range].gap) { out.push(current); current = []; }
       current.push(point);
     }
     if (current.length) out.push(current);
     return out;
-  }, [points, range]);
+  }, [range, visiblePoints]);
 
-  const last = points[points.length - 1];
-  const peak = points.reduce<Point | undefined>((best, p) => (best === undefined || p.v > best.v ? p : best), undefined);
-  const low = points.reduce<Point | undefined>((best, p) => (best === undefined || p.v < best.v ? p : best), undefined);
-  const average = points.length ? points.reduce((sum, p) => sum + p.v, 0) / points.length : null;
+  const last = visiblePoints[visiblePoints.length - 1];
+  const peak = visiblePoints.reduce<Point | undefined>((best, p) => (best === undefined || p.v > best.v ? p : best), undefined);
+  const low = visiblePoints.reduce<Point | undefined>((best, p) => (best === undefined || p.v < best.v ? p : best), undefined);
+  const average = visiblePoints.length ? visiblePoints.reduce((sum, p) => sum + p.v, 0) / visiblePoints.length : null;
 
   function onMove(event: PointerEvent<SVGSVGElement>): void {
     const box = event.currentTarget.getBoundingClientRect();
     const t = now - span + ((event.clientX - box.left) / box.width * W - PAD_L) / (W - PAD_L - PAD_R) * span;
     let best: Point | undefined;
-    for (const p of points) if (best === undefined || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+    for (const p of visiblePoints) if (best === undefined || Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
     setHover(best);
   }
 
@@ -91,28 +91,21 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
       <span className="chart__meta num">{hover ? new Date(hover.t).toLocaleTimeString("pt-BR") : peak && low && average !== null ? `pico ${number.format(peak.v)} · baixa ${number.format(low.v)} · média ${number.format(average)}` : "sem medições"}</span>
     </figcaption>
     <div ref={frame}><svg className="chart__svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric.label}: ${shown ? number.format(shown.v) + " " + metric.unit : "sem medições"}`} onPointerMove={onMove} onPointerLeave={() => setHover(undefined)}>
-      <defs>
-        <linearGradient id={gradient} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="var(--pen)" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="var(--pen)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
       {[0, 0.25, 0.5, 0.75, 1].map((f) => <g key={f}>
         <line className="chart__grid" x1={PAD_L} x2={W - PAD_R} y1={y(top * f)} y2={y(top * f)} />
         <text className="chart__tick" x={PAD_L - 6} y={y(top * f) + 3} textAnchor="end">{number.format(top * f)}</text>
       </g>)}
       {[1, 0.5, 0].map((f) => <text className="chart__tick" key={f} x={x(now - span * f)} y={H - 5} textAnchor={f === 1 ? "start" : f === 0 ? "end" : "middle"}>{ago((span * f) / 1000)}</text>)}
       {segments.map((segment, index) => {
+        if (segment.length === 1) {
+          const point = segment[0]!;
+          return <circle className="chart__sample" cx={x(point.t)} cy={y(point.v)} key={index} r="3" />;
+        }
         const line = segment.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-        const first = segment[0]!;
-        const end = segment[segment.length - 1]!;
-        return <g key={index}>
-          <path d={`${line} L${x(end.t).toFixed(1)},${y(0)} L${x(first.t).toFixed(1)},${y(0)} Z`} fill={`url(#${gradient})`} />
-          <path className="chart__line" d={line} />
-        </g>;
+        return <path className="chart__line" d={line} key={index} />;
       })}
-      {peak && points.length > 2 ? <g className="chart__mark chart__mark--peak"><circle cx={x(peak.t)} cy={y(peak.v)} r="3.5" /><text x={x(peak.t)} y={Math.max(y(peak.v) - 7, 10)} textAnchor="middle">pico</text></g> : null}
-      {low && points.length > 2 && low.v !== peak?.v ? <g className="chart__mark"><circle cx={x(low.t)} cy={y(low.v)} r="3" /></g> : null}
+      {peak && visiblePoints.length > 2 ? <g className="chart__mark chart__mark--peak"><circle cx={x(peak.t)} cy={y(peak.v)} r="3.5" /><text x={x(peak.t)} y={Math.max(y(peak.v) - 7, 10)} textAnchor="middle">pico</text></g> : null}
+      {low && visiblePoints.length > 2 && low.v !== peak?.v ? <g className="chart__mark"><circle cx={x(low.t)} cy={y(low.v)} r="3" /></g> : null}
       {last ? <circle className="chart__now" cx={x(last.t)} cy={y(last.v)} r="4" /> : null}
       {hover ? <g className="chart__cursor"><line x1={x(hover.t)} x2={x(hover.t)} y1={PAD_T} y2={H - PAD_B} /><circle cx={x(hover.t)} cy={y(hover.v)} r="4" /></g> : null}
     </svg></div>
@@ -157,7 +150,7 @@ export function DeviceChart({ api, deviceId, onUnauthenticated }: { readonly api
 
   const series = useMemo(() => METRICS.map((metric) => ({
     metric,
-    points: samples.flatMap((sample) => { const v = metric.value(sample); const t = Date.parse(sample.recordedAt); return v === null || !Number.isFinite(t) ? [] : [{ t, v }]; })
+    points: samples.flatMap((sample) => { const v = metric.value(sample); const t = Date.parse(sample.recordedAt); return v === null || !Number.isFinite(t) ? [] : [{ t, v }]; }).sort((a, b) => a.t - b.t)
   })).filter((item) => item.metric.key !== "temp" || item.points.length > 0), [samples]);
 
   if (!api.history) return null;
