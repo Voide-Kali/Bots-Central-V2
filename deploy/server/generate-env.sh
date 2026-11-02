@@ -14,6 +14,10 @@ TAILSCALE_IP=REPLACE_ME
 # Folder on the 1 TB data disk (already mounted at /mnt/storage) for daily database dumps
 BACKUP_DIR=/mnt/storage/bots-central-backups
 BACKUP_KEEP_DAYS=14
+# Backups cifrados (ADR-033): chave PUBLICA age do destinatario. Gere um par no SEU computador com
+#   age-keygen -o aval-backup-key.txt
+# guarde o arquivo (chave privada) em lugar seguro FORA do servidor, e cole aqui a linha "Public key".
+BACKUP_AGE_RECIPIENT=REPLACE_ME_age1...
 
 # --- Database (generated) ------------------------------------------------
 POSTGRES_DB=bots_central
