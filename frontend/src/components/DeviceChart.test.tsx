@@ -33,4 +33,12 @@ describe("DeviceChart", () => {
     expect((devices.history as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3);
     vi.useRealTimers();
   });
+
+  it("shows an isolated sample as a point instead of drawing a false line across a gap", async () => {
+    const devices = api([sample(80, 30), sample(2, 40), sample(1, 45)]);
+    render(<DeviceChart api={devices} deviceId="d1" onUnauthenticated={vi.fn()} />);
+    expect(await screen.findByText("pico 45 · baixa 30 · média 38,3")).toBeVisible();
+    expect(document.querySelectorAll(".chart__sample")).toHaveLength(2);
+    expect(document.querySelectorAll(".chart__line")).toHaveLength(2);
+  });
 });
