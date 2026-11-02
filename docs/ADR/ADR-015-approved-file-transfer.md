@@ -1,6 +1,8 @@
 # ADR-015: Primeira ação remota — enviar arquivo, aprovado por código de e-mail
 
-Status: proposto (2026-10-21) — **exige aprovação explícita** (protocolo do agente + ação remota).
+Status: **aceito (2026-10-21), implementado na `main`** (`app/api/v1/routes/device_actions.py`,
+`app/devices/commands.py`). Mudança desde a proposta: a aprovação passou a ser pelo **PIN de 6 dígitos**
+no Telegram (ADR-016), não mais pelo código de e-mail; o catálogo de ações cresceu (ADR-016/020).
 
 ## Contexto
 

@@ -1,9 +1,13 @@
 # Threat Model — AUTH + SECURITY MODEL
 
-Status: análise de desenho da Fase 2A com controles parciais implementados na Fase 3A:
-limiter PostgreSQL para endpoints anônimos de e-mail, limites de body, guarda Argon2,
-respostas genéricas, página LINK inerte e delivery pós-resposta. Login, sessões,
-recovery, Gate, auditoria durável e demais mitigações continuam requisitos futuros.
+Status: começou como análise de desenho da Fase 2A, mas **o MVP já está integrado na `main`**.
+Hoje estão implementados: login e sessões (tokens opacos, digests no banco), recuperação de
+senha por código de e-mail (ADR-014), aprovação de ações por PIN de 6 dígitos no Telegram
+(ADR-016), comando tipado + ação de enviar arquivo (ADR-015) e demais ações do catálogo (ADR-020
+etc.), identidade de dispositivo (Ed25519 + JWS, sequência anti-replay) e auditoria durável
+append-only (0010). O estado autoritativo do que está pronto é o **`CURRENT_STATE.md`** — é a
+referência; onde este documento ainda disser "futuro", leia como a análise original de desenho.
+Continuam de fato futuros: o aplicativo de celular e a IA de e-mail (#66).
 
 ## Escopo, ativos e limites de confiança
 
