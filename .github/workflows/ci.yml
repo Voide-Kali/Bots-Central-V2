@@ -91,6 +91,23 @@ jobs:
         run: >-
           docker run --rm -v "$PWD/deploy/server:/work" -w /work
           caddy:2.10-alpine caddy validate --config downloads.Caddyfile --adapter caddyfile
+      - name: Validate compose file
+        # Catches YAML/anchor/interpolation mistakes in compose.yaml (e.g. a broken env anchor or a
+        # typo'd ${VAR}) that the Python/TS jobs never see. A throwaway .env just satisfies the
+        # env_file reference and the ${VAR} interpolation; no real secrets.
+        working-directory: deploy/server
+        run: |
+          cat > .env <<'ENV'
+          SERVER_HOSTNAME=example.ts.net
+          POSTGRES_DB=bots_central
+          POSTGRES_USER=bots_central
+          POSTGRES_PASSWORD=dummy
+          APP_DB_USER=aval_app
+          APP_DB_PASSWORD=dummy
+          BACKUP_DIR=/tmp/backups
+          ENV
+          docker compose config --quiet
+          rm -f .env
 
   secrets:
     runs-on: ubuntu-latest

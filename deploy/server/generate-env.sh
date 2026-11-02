@@ -17,8 +17,13 @@ BACKUP_KEEP_DAYS=14
 
 # --- Database (generated) ------------------------------------------------
 POSTGRES_DB=bots_central
+# Owner/superuser role: used ONLY by migrations (DDL). Never by the app services.
 POSTGRES_USER=bots_central
 POSTGRES_PASSWORD=$(rand)
+# Least-privilege application role (ADR-032): backend + telegram connect as this. Only DML, owns
+# nothing, cannot touch the audit trigger. Create it once with ./setup-app-role.sh after the db is up.
+APP_DB_USER=aval_app
+APP_DB_PASSWORD=$(rand)
 
 # --- Security keys (generated; never share) -----------------------------
 ABUSE_CONTROL_HMAC_KEY=$(rand)
