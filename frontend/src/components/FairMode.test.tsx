@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../api";
 import type { AuditEvent, Device, DeviceTelemetry } from "../api/contracts";
@@ -25,9 +25,10 @@ function api(devices: readonly Device[], events: readonly AuditEvent[]): ApiClie
 }
 
 describe("FairMode", () => {
-  it("shows the fleet, a PROTEGIDO status when all online, and the live activity feed", async () => {
+  it("shows the fleet, an accurate online status, and the live activity feed", async () => {
     render(<FairMode api={api([device("tropa", "online", 72), device("MacMaker", "online", 15)], [event])} onUnauthenticated={vi.fn()} />);
-    expect(await screen.findByText("PROTEGIDO")).toBeVisible();
+    expect(await screen.findByText("TODOS ONLINE")).toBeVisible();
+    expect(screen.queryByText("PROTEGIDO")).toBeNull();
     expect(screen.getByText("2 de 2 online")).toBeVisible();
     // Fleet tiles with the computers and their CPU.
     expect(screen.getAllByText("tropa").length).toBeGreaterThan(0);
@@ -39,8 +40,19 @@ describe("FairMode", () => {
 
   it("warns when a computer is offline", async () => {
     render(<FairMode api={api([device("tropa", "online", 10), device("MacMaker", "offline", 0)], [])} onUnauthenticated={vi.fn()} />);
-    expect(await screen.findByText("ATENCAO")).toBeVisible();
+    expect(await screen.findByText("ATENÇÃO")).toBeVisible();
     expect(screen.getByText("1 de 2 online")).toBeVisible();
     expect(screen.getByText("Aguardando atividade...")).toBeVisible();
+  });
+
+  it("limits the wall display to the eight most recent audit events", async () => {
+    const events = Array.from({ length: 12 }, (_, index) => ({
+      ...event,
+      occurredAt: new Date(Date.now() - index * 60_000).toISOString(),
+      name: `PC-${index}`
+    }));
+    render(<FairMode api={api([device("tropa", "online", 72)], events)} onUnauthenticated={vi.fn()} />);
+    const list = await screen.findByRole("list");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(8);
   });
 });

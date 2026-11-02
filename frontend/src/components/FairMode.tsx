@@ -15,8 +15,9 @@ import { ACTION_LABELS, eventDetail } from "./HistoryPanel";
 
 const DEVICES_EVERY = 8_000;
 const EVENTS_EVERY = 5_000;
-const FEATURE_EVERY = 12_000;
-const ACTORS: Readonly<Record<string, string>> = { user: "voce", device: "computador", system: "sistema", telegram: "Telegram" };
+const FEATURE_EVERY = 60_000;
+const MAX_VISIBLE_EVENTS = 8;
+const ACTORS: Readonly<Record<string, string>> = { user: "você", device: "computador", system: "sistema", telegram: "Telegram" };
 
 function pct(used: number | null, total: number | null): number | null {
   return used !== null && total ? Math.round((used / total) * 100) : null;
@@ -49,8 +50,8 @@ function Feed({ events }: { readonly events: readonly AuditEvent[] }): ReactElem
     return <p className="fair-feed__empty">Aguardando atividade...</p>;
   }
   return <ul className="fair-feed__list">
-    {events.map((event) => <li className={event.outcome === "failure" || event.outcome === "denied" ? "fair-feed__row fair-feed__row--alert" : "fair-feed__row"} key={`${event.occurredAt}-${event.action}`}>
-      <span className="fair-feed__time num">{when(event.occurredAt)}</span>
+    {events.slice(0, MAX_VISIBLE_EVENTS).map((event) => <li className={event.outcome === "failure" || event.outcome === "denied" ? "fair-feed__row fair-feed__row--alert" : "fair-feed__row"} key={`${event.occurredAt}-${event.action}`}>
+      <time className="fair-feed__time num" dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
       <span className="fair-feed__what">{ACTION_LABELS[event.action] ?? event.action}</span>
       <span className="fair-feed__detail">{eventDetail(event)}{event.actor in ACTORS ? ` - ${ACTORS[event.actor]}` : ""}</span>
     </li>)}
@@ -89,7 +90,8 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
 
   const featuredDevice = active.length > 0 ? active[featured % active.length] : undefined;
   const online = active.filter((device) => device.status === "online").length;
-  const safe = active.length > 0 && online === active.length;
+  const allOnline = active.length > 0 && online === active.length;
+  const statusLabel = active.length === 0 ? "SEM COMPUTADORES" : online === 0 ? "NENHUM ONLINE" : allOnline ? "TODOS ONLINE" : "ATENÇÃO";
 
   function fullscreen(): void {
     const element = frame.current;
@@ -101,8 +103,8 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
   return <section className="fair" ref={frame}>
     <header className="fair__top">
       <div className="fair__brand"><Brand /></div>
-      <div className={safe ? "fair__status fair__status--safe" : "fair__status fair__status--warn"}>
-        <span className="fair__status-label">{active.length === 0 ? "SEM COMPUTADORES" : safe ? "PROTEGIDO" : "ATENCAO"}</span>
+      <div aria-live="polite" className={allOnline ? "fair__status fair__status--online" : "fair__status fair__status--warning"} role="status">
+        <span className="fair__status-label">{statusLabel}</span>
         <span className="fair__status-sub num">{online} de {active.length} online</span>
       </div>
       <div className="fair__meta">
@@ -114,12 +116,12 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
     <div className="fair__grid">
       <div className="fair__chart">
         {featuredDevice ? <>
-          <div className="fair__chart-head"><span className="fair__chart-name">{featuredDevice.name}</span><span className="fair__chart-live">ao vivo</span></div>
+          <div className="fair__chart-head"><span className="fair__chart-name">{featuredDevice.name}</span><span className="fair__chart-period">Atualização do gráfico</span></div>
           <DeviceChart api={api.devices} deviceId={featuredDevice.id} key={featuredDevice.id} onUnauthenticated={onUnauthenticated} />
         </> : <div className="fair__chart-empty"><p>Nenhum computador ativo para exibir.</p></div>}
       </div>
       <aside className="fair__feed" aria-label="Atividade recente">
-        <h2 className="fair__feed-title">Atividade</h2>
+        <h2 className="fair__feed-title">Atividade recente</h2>
         <Feed events={events} />
       </aside>
     </div>
