@@ -55,10 +55,10 @@ describe("DevicesPage", () => {
     renderDevices();
     await waitForDevices();
     const items = within(screen.getByRole("navigation", { name: "Navegação do Device Center" })).getAllByRole("button");
-    expect(items.map((item) => item.textContent?.replace("Soon", "").trim())).toEqual(["Devices", "Automations", "Notifications", "History", "Security", "Settings"]);
+    expect(items.map((item) => item.querySelector(".sidebar-item__label")?.textContent)).toEqual(["Dispositivos", "Automações", "Notificações", "Histórico", "Segurança", "Configurações"]);
     expect(items[0]).toHaveAttribute("aria-current", "page");
-    fireEvent.click(screen.getByRole("button", { name: /Automations/ }));
-    expect(screen.getByText("Automations estará disponível em uma próxima versão.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Automações/ }));
+    expect(screen.getByText("Automações estará disponível em uma próxima versão.")).toBeVisible();
     expect(window.location.pathname).not.toBe("/automations");
   });
 
