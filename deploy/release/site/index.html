@@ -251,7 +251,8 @@ button, input { font: inherit; color: inherit; }
 .foot__cols h3 { font-size: 15px; font-weight: 500; margin-bottom: 8px; }
 .foot__cols li { margin-top: 4px; color: #3c3f45; }
 .foot__name { display: block; margin-top: 72px; overflow: clip; height: .78em; font-family: var(--display); font-size: clamp(140px, 31vw, 520px); line-height: .92; letter-spacing: -0.01em; color: #0b0d10; text-shadow: 0 2px 0 #c4c6ca, 0 6px 0 #aeb1b6, 0 18px 30px rgb(0 0 0 / .25); }
-.foot__legal { display: flex; justify-content: space-between; gap: 16px; margin-top: 24px; font-size: 13.5px; color: #3c3f45; }
+.foot__legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; margin-top: 24px; font-size: 13.5px; color: #3c3f45; }
+.foot__legal-links { display: flex; gap: 16px; }
 
 /* ---------- Motion ---------- */
 @media (prefers-reduced-motion: no-preference) {
@@ -455,7 +456,7 @@ button, input { font: inherit; color: inherit; }
     </div>
   </div>
   <span class="foot__name" aria-hidden="true">Aval</span>
-  <div class="foot__legal"><span>Aval, 2026. Projeto de Lucas Bittencourt, IFMS Campus Nova Andradina. As telas usam dados de exemplo.</span><a class="textlink" href="#topo">Voltar ao topo</a></div>
+  <div class="foot__legal"><span>Aval, 2026. Projeto de Lucas Bittencourt, IFMS Campus Nova Andradina. As telas usam dados de exemplo.</span><span class="foot__legal-links"><a class="textlink" href="privacidade.html">Privacidade</a><a class="textlink" href="termos.html">Termos</a><a class="textlink" href="#topo">Voltar ao topo</a></span></div>
 </footer>
 
 <script src="./app.js"></script>
