@@ -129,6 +129,8 @@ HTML
 # before paint, app.js runs the interactions, and the design ships its own fonts/ and img/.
 rm -f "$OUT/styles.css" "$OUT/three.min.js"
 cp "$SITE/boot.js" "$SITE/app.js" "$OUT/"
+# Legal pages (ADR-029): privacidade e termos, servidas junto da landing.
+cp "$SITE/legal.css" "$SITE/privacidade.html" "$SITE/termos.html" "$OUT/"
 rm -rf "$OUT/fonts" "$OUT/img"
 cp -r "$SITE/fonts" "$SITE/img" "$OUT/"
 cards_file="$(mktemp)"; printf '%s\n' "$cards" > "$cards_file"

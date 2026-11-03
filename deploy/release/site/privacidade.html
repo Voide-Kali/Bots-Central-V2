@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Política de Privacidade — Aval</title>
+<meta name="description" content="Como o Aval trata (ou não trata) os seus dados. Esta página pública não usa cookies nem coleta dados.">
+<meta name="theme-color" content="#0b0d10">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="top">
+    <a class="mark" href="./" aria-label="Aval, início"><svg viewBox="0 0 40 24" aria-hidden="true"><path d="M3 13.5c3.2 2.4 5.6 5.2 7.4 8C15.6 12.8 24 5.4 37 2.5"/></svg><span>Aval</span></a>
+    <a class="back" href="./">Voltar ao site</a>
+  </div>
+
+  <h1>Política de Privacidade</h1>
+  <p class="updated">Última atualização: 2 de novembro de 2026.</p>
+
+  <p>Esta política explica, de forma direta, quais dados o Aval trata e quais <strong>não</strong> trata. O resumo honesto: <strong>esta página pública não usa cookies, não usa ferramentas de análise (analytics) e não coleta nenhum dado seu</strong>. Dados pessoais só existem quando você cria uma conta e pareia um computador no serviço — e, mesmo aí, ficam no servidor do responsável, não em servidores de terceiros.</p>
+
+  <h2>Quem é o responsável</h2>
+  <dl class="meta">
+    <dt>Responsável</dt><dd>Lucas Bittencourt de Oliveira Pina — projeto Aval (pesquisa do curso Técnico em Informática, IFMS, Campus Nova Andradina).</dd>
+    <dt>Contato (encarregado de dados)</dt><dd><a href="mailto:aval.app.br@gmail.com">aval.app.br@gmail.com</a></dd>
+  </dl>
+
+  <h2>Esta página pública (o site de apresentação e download)</h2>
+  <ul>
+    <li><strong>Não usa cookies.</strong> Nada é gravado no seu navegador.</li>
+    <li><strong>Não usa analytics nem pixels de rastreamento.</strong> Não medimos nem perfilamos sua visita.</li>
+    <li><strong>Não coleta dados.</strong> Navegar e baixar o instalador não envia nenhuma informação pessoal para nós. Os campos interativos da página (o "escreva um pedido" e a busca de funções) rodam só no seu navegador e não enviam nada.</li>
+    <li>Como qualquer site, o servidor pode registrar temporariamente dados técnicos de acesso (como endereço IP) para operação e segurança; esses registros não são usados para identificar ou perfilar você e são descartados na rotação normal dos logs.</li>
+  </ul>
+
+  <h2>O serviço Aval (quando você cria uma conta)</h2>
+  <p>Se você usar o Aval para administrar os seus próprios computadores, o serviço trata os dados abaixo, apenas para funcionar:</p>
+  <ul>
+    <li><strong>Conta:</strong> seu e-mail (para login e verificação) e o material de sessão. Senhas são guardadas apenas como hash (Argon2id); nunca em texto claro.</li>
+    <li><strong>PIN de aprovação:</strong> guardado apenas como HMAC (uma impressão digital criptográfica) — o PIN em si nunca é armazenado.</li>
+    <li><strong>Computadores pareados:</strong> nome, sistema operacional, identidade do dispositivo (chave pública) e telemetria de estado (CPU, memória, disco, temperatura, tempo ligado).</li>
+    <li><strong>Auditoria:</strong> registro de ações (quem pediu, o quê, quando e o resultado), sem conteúdo sensível — não guardamos o PIN, nem o texto das suas mensagens, nem o conteúdo dos arquivos.</li>
+  </ul>
+
+  <h2>Onde ficam e com quem são compartilhados</h2>
+  <ul>
+    <li>Os dados ficam em um <strong>servidor do próprio responsável</strong>, acessível somente pela rede privada (Tailscale). Não há servidor nosso na internet pública guardando seus dados.</li>
+    <li><strong>Não vendemos, alugamos nem compartilhamos</strong> seus dados com terceiros. Não há publicidade.</li>
+    <li>Para enviar e-mails do sistema (verificação, recuperação), usamos um provedor de e-mail (Gmail) apenas como meio de entrega da mensagem.</li>
+  </ul>
+
+  <h2>Base legal e finalidade (LGPD)</h2>
+  <p>Tratamos os dados acima com base na <strong>execução do serviço que você solicitou</strong> e no seu <strong>consentimento</strong> ao criar a conta (art. 7º da LGPD). A finalidade é única: operar a plataforma que você mesmo pediu. Não há tratamento para marketing ou perfilamento.</p>
+
+  <h2>Por quanto tempo guardamos</h2>
+  <ul>
+    <li>Telemetria dos computadores: histórico curto (cerca de 7 dias).</li>
+    <li>Conta e auditoria: enquanto a conta existir; apagados quando você pede a exclusão.</li>
+  </ul>
+
+  <h2>Seus direitos (LGPD, art. 18)</h2>
+  <p>Você pode, a qualquer momento, pedir <strong>acesso, correção, exclusão, portabilidade</strong> dos seus dados ou revogar o consentimento. Para exercer, escreva para <a href="mailto:aval.app.br@gmail.com">aval.app.br@gmail.com</a>; respondemos no prazo da lei. Como o serviço é autogerido, você também controla boa parte desses dados direto no painel (apagar computadores, encerrar sessões, excluir a conta).</p>
+
+  <h2>Segurança</h2>
+  <p>Senhas com Argon2id, tokens guardados só como digest, comunicação dos dispositivos assinada (Ed25519), auditoria que não pode ser reescrita e backups cifrados. Nada perigoso acontece num computador sem o seu PIN.</p>
+
+  <h2>Crianças e adolescentes</h2>
+  <p>O Aval não é voltado ao público infantil e não coleta dados de crianças de forma intencional.</p>
+
+  <h2>Alterações</h2>
+  <p>Podemos atualizar esta política. A data no topo indica a versão vigente; mudanças relevantes serão sinalizadas aqui.</p>
+
+  <div class="note">
+    <strong>Aviso.</strong> Este texto é um documento de boa-fé de um projeto acadêmico, não é aconselhamento jurídico. Se o Aval passar a atender usuários reais em escala, consulte um advogado para adaptá-lo ao seu caso.
+  </div>
+
+  <div class="foot">
+    <a href="./">Início</a>
+    <a href="termos.html">Termos de Serviço</a>
+    <a href="mailto:aval.app.br@gmail.com">aval.app.br@gmail.com</a>
+    <a href="https://github.com/Voide-Kali/Bots-Central-V2">Código no GitHub</a>
+  </div>
+</main>
+</body>
+</html>
