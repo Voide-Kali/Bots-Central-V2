@@ -35,6 +35,13 @@ x-app-env: &app_env
     POSTGRES_PASSWORD: ""
     POSTGRES_USER: ""
 
+# Shared build for the backend image. INSTALL_GMAIL (default 0) keeps the image lean; set
+# INSTALL_GMAIL=1 in .env to bake in the read-only Gmail client for e-mail notices (ADR-024).
+x-backend-build: &backend_build
+  context: ../../backend
+  args:
+    INSTALL_GMAIL: ${INSTALL_GMAIL:-0}
+
 services:
   db:
     image: postgres:17-alpine
@@ -53,7 +60,7 @@ services:
     networks: [internal]
 
   migration:
-    build: ../../backend
+    build: *backend_build
     image: bots-central-backend:local
     command: ["alembic", "upgrade", "head"]
     <<: *owner_env   # migrations need DDL -> owner/superuser role
@@ -63,7 +70,7 @@ services:
     networks: [internal]
 
   backend:
-    build: ../../backend
+    build: *backend_build
     image: bots-central-backend:local
     restart: unless-stopped
     <<: *app_env   # least-privilege app role (ADR-032)
@@ -76,7 +83,7 @@ services:
       egress: {}  # SMTP to the system mailbox
 
   telegram:
-    build: ../../backend
+    build: *backend_build
     image: bots-central-backend:local
     restart: unless-stopped
     command: ["python", "-m", "app.telegram.bot"]
@@ -96,6 +103,11 @@ services:
       migration:
         condition: service_completed_successfully
     networks: [internal, egress]
+    # Gmail notices (ADR-024): mount the OAuth token read-only and point GMAIL_TOKEN_FILE at it
+    # in .env (e.g. GMAIL_TOKEN_FILE=/gmail/token.json). Reuses the token.json the old
+    # Kali-Bunker bot authorized. Harmless when e-mail notices are off (no token, feature idle).
+    volumes:
+      - ${GMAIL_CREDENTIALS_DIR:-./gmail}:/gmail:ro
 
   ollama:
     # Local LLM for the read-only assistant (ADR-013). Not published; reachable only

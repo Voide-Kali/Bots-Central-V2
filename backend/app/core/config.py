@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     assistant_ollama_url: str | None = None
     assistant_model: str = Field(default="qwen2.5:3b", pattern=r"^[A-Za-z0-9._:/-]{1,100}$")
     telegram_bot_username: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_]{5,32}$")
+    # E-mail notices (ADR-024), read-only. Off unless the owner e-mail, the mailbox and a Gmail
+    # OAuth token are all set. Ignore lists are comma-separated (Kali-Bunker style filters).
+    email_owner: str | None = None
+    email_ignore_senders: str = ""
+    email_ignore_sender_domains: str = "noreply,no-reply,newsletter,marketing"
+    email_ignore_subject_keywords: str = "promo,cupom,desconto,oferta"
+    gmail_token_file: str | None = None
+    gmail_account: str | None = None
+    gmail_api_timeout_seconds: int = Field(default=12, ge=3, le=120)
+    gmail_max_per_check: int = Field(default=5, ge=1, le=10)
 
     @field_validator("database_url")
     @classmethod
