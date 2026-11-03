@@ -115,7 +115,7 @@ class SmtpEmailVerificationDeliveryAdapter:
             # the challenge so the person types just the code (the code never goes in a URL).
             message.set_content(
                 "Olá! Para ativar sua conta no Aval:\n\n"
-                f"1. Abra: {self._public_origin}/verify?challenge={intent.challenge_id}\n"
+                f"1. Abra: {self._public_origin}/painel/verify?challenge={intent.challenge_id}\n"
                 f"2. Digite o código: {material[:4]} {material[4:]}\n\n"
                 "O código vale por pouco tempo. Se não foi você, ignore este e-mail.\n\n"
                 f"Identificador (se o link não abrir): {intent.challenge_id}\n"

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import type { ApiClient } from "../api";
 import { ApiError } from "../api";
-import { navigate } from "../app/navigation";
+import { appHref, navigate } from "../app/navigation";
 import { FormField } from "../components/FormField";
 import { PageStatus } from "../components/PageStatus";
 import { apiMessage } from "./shared";
@@ -49,7 +49,7 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
   if (!reset) return <section aria-labelledby="recover-title" className="auth-card">
     <h1 id="recover-title">Trocar a senha</h1>
     <PageStatus kind="error">A recuperação de senha não está disponível agora. Fale com quem administra o Aval.</PageStatus>
-    <p className="auth-card__links"><a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Voltar para o login</a></p>
+    <p className="auth-card__links"><a href={appHref("/login")} onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Voltar para o login</a></p>
   </section>;
 
   return <section className="auth-card" aria-labelledby="recover-title">
@@ -61,7 +61,7 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
       <FormField id="recover-email" name="email" type="email" label="E-mail da conta" autoComplete="email" inputMode="email" maxLength={320} required />
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}
       <button className="button button--primary" disabled={pending} type="submit">{pending ? "Enviando…" : "Enviar código"}</button>
-      <p className="auth-card__links">Lembrou? <a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></p>
+      <p className="auth-card__links">Lembrou? <a href={appHref("/login")} onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></p>
     </form>
     : <form className="form" onSubmit={confirm} noValidate>
       <PageStatus kind="notice">Se a conta existir, um código foi enviado para {email}.</PageStatus>

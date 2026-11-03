@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
-import { navigate } from "../app/navigation";
+import { appHref, navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
 
@@ -33,7 +33,7 @@ export function LoginPage(): ReactElement {
 
   return (
     <div className="auth-frame">
-      <header className="auth-frame__header"><a aria-label="Aval" className="brand-link" href="/login"><Brand withTagline /></a></header>
+      <header className="auth-frame__header"><a aria-label="Aval" className="brand-link" href={appHref("/login")}><Brand withTagline /></a></header>
       <main className="auth-frame__main">
         <section aria-labelledby="login-title" className="auth-card">
           <h1 id="login-title">Entrar</h1>
@@ -50,8 +50,8 @@ export function LoginPage(): ReactElement {
             {state.kind === "unavailable" ? <button className="link-button" onClick={() => void retryBootstrap()} type="button">Tentar de novo</button> : null}
           </form>
           <div className="auth-card__links">
-            <a href="/register" onClick={(event) => { event.preventDefault(); navigate("/register"); }}>Criar conta</a>
-            <a href="/recover" onClick={(event) => { event.preventDefault(); navigate("/recover"); }}>Esqueci minha senha</a>
+            <a href={appHref("/register")} onClick={(event) => { event.preventDefault(); navigate("/register"); }}>Criar conta</a>
+            <a href={appHref("/recover")} onClick={(event) => { event.preventDefault(); navigate("/recover"); }}>Esqueci minha senha</a>
           </div>
         </section>
       </main>
