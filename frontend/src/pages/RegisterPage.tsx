@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import type { ApiClient } from "../api";
 import { ApiError } from "../api";
-import { navigate } from "../app/navigation";
+import { appHref, navigate } from "../app/navigation";
 import { PageStatus } from "../components/PageStatus";
 import { apiMessage } from "./shared";
 
@@ -50,6 +50,6 @@ export function RegisterPage({ api }: { readonly api: ApiClient }): ReactElement
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}
       <button className="button button--primary" disabled={pending} type="submit">{pending ? "Criando conta…" : "Criar conta"}</button>
     </form>
-    <div className="auth-card__links"><span>Já tem conta?</span><a href="/login" onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></div>
+    <div className="auth-card__links"><span>Já tem conta?</span><a href={appHref("/login")} onClick={(event) => { event.preventDefault(); navigate("/login"); }}>Entrar</a></div>
   </section>;
 }

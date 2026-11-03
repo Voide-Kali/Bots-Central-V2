@@ -5,8 +5,23 @@ export type AppPath = "/register" | "/verify" | "/login" | "/devices" | "/recove
 
 const paths: readonly AppPath[] = ["/register", "/verify", "/login", "/devices", "/recover"];
 
+// The panel is served under this base path: Caddy routes /painel/* to the SPA and Vite builds
+// assets with `base: "/painel/"`. Keep the three in sync. The internal AppPath values stay
+// root-relative ("/login"); only the real URL carries the prefix.
+const BASE = "/painel";
+
+function stripBase(pathname: string): string {
+  if (pathname === BASE) return "/";
+  return pathname.startsWith(BASE + "/") ? pathname.slice(BASE.length) : pathname;
+}
+
+// Real URL for an in-app path, e.g. appHref("/login") === "/painel/login". Use it for <a href>.
+export function appHref(path: AppPath): string {
+  return BASE + path;
+}
+
 function currentPath(): AppPath {
-  const pathname = window.location.pathname as AppPath;
+  const pathname = stripBase(window.location.pathname) as AppPath;
   return paths.includes(pathname) ? pathname : "/login";
 }
 
@@ -20,8 +35,9 @@ export function useAppPath(): AppPath {
 }
 
 export function navigate(path: AppPath): void {
-  if (window.location.pathname !== path) {
-    window.history.pushState({}, "", path);
+  const target = BASE + path;
+  if (window.location.pathname !== target) {
+    window.history.pushState({}, "", target);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }

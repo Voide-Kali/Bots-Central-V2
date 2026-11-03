@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import type { ApiClient } from "../api";
 import { UnauthenticatedError } from "../api";
 import type { Device } from "../api/contracts";
-import { navigate } from "../app/navigation";
+import { appHref, navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
 import { DeviceActions } from "../components/DeviceActions";
@@ -240,7 +240,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           </li>
         </ol>
         <p>Quando o instalador pedir o código, cole o código de pareamento ao lado. Depois o computador aparece aqui como "aguardando seu aval" para você aprovar.</p>
-        <p className="callout__fine">Prefere não usar o terminal? <a href="/baixar" rel="noreferrer" target="_blank">Baixe um instalador pronto</a> para o seu sistema.</p>
+        <p className="callout__fine">Prefere não usar o terminal? <a href="/" rel="noreferrer" target="_blank">Baixe um instalador pronto</a> para o seu sistema.</p>
         <p className="callout__fine">Expira em <time dateTime={pairing.expiresAt}>{localTimestamp(pairing.expiresAt)}</time>.</p>
       </div>
       <div className="callout__side">
@@ -297,7 +297,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   return <div className="app">
     <a className="skip-link" href="#main-content">Pular para o conteúdo</a>
     <header className="topbar"><div className="topbar__inner">
-      <a aria-label="Aval" className="brand-link" href="/devices" onClick={(event) => { event.preventDefault(); setView("devices"); }}><Brand /></a>
+      <a aria-label="Aval" className="brand-link" href={appHref("/devices")} onClick={(event) => { event.preventDefault(); setView("devices"); }}><Brand /></a>
       <nav aria-label="Seções" className="tabs">{tabs.map((tab) => <button aria-current={view === tab.id ? "page" : undefined} className="tabs__tab" key={tab.id} onClick={() => { setView(tab.id); setFeedback(undefined); }} type="button">{tab.label}</button>)}</nav>
       <div className="profile-menu"><button aria-expanded={profileOpen} aria-haspopup="menu" className="profile-menu__button" onClick={() => setProfileOpen((open) => !open)} type="button"><span aria-hidden="true" className="profile-menu__initial">{profileName.slice(0, 1)}</span><span className="profile-menu__name">{profileName}</span><span aria-hidden="true" className="profile-menu__caret" /></button>{profileOpen ? <div role="menu"><button onClick={() => void signOut()} role="menuitem" type="button">Sair</button></div> : null}</div>
     </div></header>

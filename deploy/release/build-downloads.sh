@@ -7,7 +7,7 @@
 # Run on the server at deploy time, where the public URL is known:
 #   AVAL_SERVER=https://aval.SEU.ts.net ./deploy/release/build-downloads.sh
 #
-# Then Caddy serves the output at /baixar (see deploy/server/Caddyfile).
+# Caddy serves the landing + policies at / and the installer files at /baixar/* (ADR-034).
 set -euo pipefail
 
 SERVER="${AVAL_SERVER:-}"
@@ -19,17 +19,23 @@ REPO="$(cd "$HERE/../.." && pwd)"
 AGENT_DIR="$REPO/agent"
 BUNDLE_DIR="$AGENT_DIR/install/bundle"
 OUT="${AVAL_OUT:-$REPO/deploy/server/downloads}"
+# The landing + policies live at the OUT root (served at / by Caddy, ADR-034); the installer FILES
+# live under OUT/baixar (served at /baixar/*). Keep this split in sync with the Caddyfile.
+OUT_FILES="$OUT/baixar"
 ACTIONS="${AVAL_ACTIONS:-lock_screen,webcam_photo,network_scan}"
 SENSORS="${AVAL_SENSORS:-failed_login_photo}"
 VERSION="${AVAL_VERSION:-0.1.0+$(date -u +%Y%m%d%H%M)}"
 command -v go >/dev/null || { echo "Go nao encontrado." >&2; exit 1; }
 
-mkdir -p "$OUT"
+mkdir -p "$OUT_FILES"
 # Remove only what this script generates; keep a macOS .pkg dropped here by fazer-pkg.sh.
-rm -f "$OUT"/aval-instalar-linux-*.deb "$OUT"/aval-instalar-linux-*.deb.sha256 \
-  "$OUT"/aval-instalar-linux-*.run "$OUT"/aval-instalar-linux-*.run.sha256 \
-  "$OUT"/aval-instalar-macos-*.command "$OUT"/aval-instalar-macos-*.command.sha256 \
+rm -f "$OUT_FILES"/aval-instalar-linux-*.deb "$OUT_FILES"/aval-instalar-linux-*.deb.sha256 \
+  "$OUT_FILES"/aval-instalar-linux-*.run "$OUT_FILES"/aval-instalar-linux-*.run.sha256 \
+  "$OUT_FILES"/aval-instalar-macos-*.command "$OUT_FILES"/aval-instalar-macos-*.command.sha256 \
   "$OUT"/index.html
+# Clean up installers left at the OUT root by older builds (before the /baixar split, ADR-034).
+rm -f "$OUT"/aval-instalar-*.deb "$OUT"/aval-instalar-*.deb.sha256 \
+  "$OUT"/aval-instalar-*.command "$OUT"/aval-instalar-*.command.sha256 2>/dev/null || true
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -52,7 +58,7 @@ build_one() {
   tar -czf "$payload" -C "$stage" .
   local runner script
   if [ "$os" = linux ]; then runner='install-linux.sh'; else runner='install-macos.sh'; fi
-  script="$OUT/$out_name"
+  script="$OUT_FILES/$out_name"
   {
     printf '#!/usr/bin/env bash\n'
     printf 'set -euo pipefail\n'
@@ -82,7 +88,7 @@ build_linux_deb() { # goarch, deb_arch
   (cd "$AGENT_DIR" && GOOS=linux GOARCH="$goarch" CGO_ENABLED=0 \
     go build -trimpath -ldflags "-s -w" -o "$stage/aval-agent" ./cmd/bots-central-agent)
   AVAL_SERVER="$SERVER" AVAL_ACTIONS="$ACTIONS" AVAL_SENSORS="$SENSORS" AVAL_VERSION="$VERSION" \
-    bash "$HERE/build-deb.sh" "$deb_arch" "$stage/aval-agent" "$OUT" "$REPO"
+    bash "$HERE/build-deb.sh" "$deb_arch" "$stage/aval-agent" "$OUT_FILES" "$REPO"
 }
 
 build_one macos darwin arm64 "aval-instalar-macos-apple-silicon.command"
@@ -96,12 +102,12 @@ build_linux_deb arm64 arm64
 # and injected into the page placeholder; the rest of the page ships as-is.
 SITE="$HERE/site"
 card() { # title, file, note
-  local title="$1" file="$2" note="$3" digest; digest="$(cat "$OUT/$file.sha256")"
+  local title="$1" file="$2" note="$3" digest; digest="$(cat "$OUT_FILES/$file.sha256")"
   cat <<HTML
         <article class="card">
           <h4>$title</h4>
           <p class="note">$note</p>
-          <a class="dl" href="./$file" download>Baixar</a>
+          <a class="dl" href="baixar/$file" download>Baixar</a>
           <p class="sum">SHA-256<br><code>$digest</code></p>
         </article>
 HTML
@@ -110,8 +116,8 @@ HTML
 # A macOS .pkg (clique duplo, sem terminal) so existe se fazer-pkg.sh foi rodado num Mac e o
 # arquivo foi colocado aqui. Quando existe, aparece como opcao preferida no macOS.
 pkg_card=""
-if [ -f "$OUT/aval-instalar-macos.pkg" ]; then
-  sha "$OUT/aval-instalar-macos.pkg" > "$OUT/aval-instalar-macos.pkg.sha256"
+if [ -f "$OUT_FILES/aval-instalar-macos.pkg" ]; then
+  sha "$OUT_FILES/aval-instalar-macos.pkg" > "$OUT_FILES/aval-instalar-macos.pkg.sha256"
   pkg_card="$(card "macOS — instalador (.pkg)" "aval-instalar-macos.pkg" "Clique duplo, sem terminal. Universal (Apple Silicon e Intel).")"
 fi
 

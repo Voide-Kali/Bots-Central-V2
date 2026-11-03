@@ -242,7 +242,7 @@ def test_code_email_is_portuguese_and_links_only_the_challenge() -> None:
     )
     body = message.get_content()
     assert message["Subject"] == "Aval: confirme seu e-mail"
-    assert f"https://aval.example.ts.net/verify?challenge={challenge}" in body
+    assert f"https://aval.example.ts.net/painel/verify?challenge={challenge}" in body
     assert "1234 5678" in body
     assert "12345678" not in body.split("verify?")[1].split("\n")[0]  # code never in the URL
 
