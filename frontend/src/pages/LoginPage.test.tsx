@@ -33,7 +33,7 @@ describe("LoginPage", () => {
     expect(screen.getByText("a IA que só age com o seu aval")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Entrar" })).toBeVisible();
     fireEvent.click(screen.getByRole("link", { name: "Esqueci minha senha" }));
-    expect(window.location.pathname).toBe("/recover");
+    expect(window.location.pathname).toBe("/painel/recover");
     window.history.pushState({}, "", "/login");
   });
 

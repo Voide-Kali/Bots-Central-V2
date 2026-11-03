@@ -37,7 +37,7 @@ describe("Register and verify", () => {
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "minha senha do aval 2026" } });
     fireEvent.change(screen.getByLabelText("Repita a senha"), { target: { value: "minha senha do aval 2026" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar conta" }));
-    await waitFor(() => expect(window.location.pathname).toBe("/verify"));
+    await waitFor(() => expect(window.location.pathname).toBe("/painel/verify"));
     expect(window.sessionStorage.getItem("aval.pending-email")).toBe("voce@example.test");
   });
 
