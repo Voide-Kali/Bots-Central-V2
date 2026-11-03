@@ -4,6 +4,7 @@ import type { ApiClient } from "../api";
 import { ApiError } from "../api";
 import { appHref, navigate } from "../app/navigation";
 import { PageStatus } from "../components/PageStatus";
+import { PasswordStrength } from "../components/PasswordStrength";
 import { apiMessage } from "./shared";
 
 export const MIN_PASSWORD = 15;
@@ -45,6 +46,7 @@ export function RegisterPage({ api }: { readonly api: ApiClient }): ReactElement
         <label htmlFor="register-password">Senha</label>
         <input aria-describedby="register-password-hint" autoComplete="new-password" id="register-password" maxLength={1024} name="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} />
         <p className={long ? "form-field__hint form-field__hint--ok" : "form-field__hint"} id="register-password-hint">{long ? "Tamanho ok." : `Pelo menos ${MIN_PASSWORD} caracteres — faltam ${MIN_PASSWORD - password.length}. Ex.: "minha senha do aval 2026".`}</p>
+        <PasswordStrength password={password} minLength={MIN_PASSWORD} />
       </div>
       <div className="form-field"><label htmlFor="register-password-confirmation">Repita a senha</label><input autoComplete="new-password" id="register-password-confirmation" maxLength={1024} name="password-confirmation" required type="password" /></div>
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}

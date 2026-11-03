@@ -463,3 +463,19 @@ input:disabled { background: var(--raised); color: var(--faint); }
   .fair__chart { min-height: 360px; }
   .fair__feed { max-height: 320px; }
 }
+
+/* Password strength meter (register + recover): four bars that fill and shift red->amber->green. */
+.pw-strength { margin-top: 10px; }
+.pw-strength__track { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.pw-strength__seg { height: 6px; border-radius: 3px; background: var(--track); transition: background-color .25s ease, transform .25s ease; transform-origin: center; }
+.pw-strength__seg--on { transform: scaleY(1.25); }
+.pw-strength[data-score="1"] .pw-strength__seg--on { background: var(--negative); }
+.pw-strength[data-score="2"] .pw-strength__seg--on { background: var(--warning); }
+.pw-strength[data-score="3"] .pw-strength__seg--on,
+.pw-strength[data-score="4"] .pw-strength__seg--on { background: var(--positive); }
+.pw-strength__label { margin: 7px 0 0; font-size: .85rem; color: var(--muted); transition: color .2s ease; }
+.pw-strength[data-score="1"] .pw-strength__label { color: var(--negative); }
+.pw-strength[data-score="2"] .pw-strength__label { color: var(--warning); }
+.pw-strength[data-score="3"] .pw-strength__label,
+.pw-strength[data-score="4"] .pw-strength__label { color: var(--positive); }
+@media (prefers-reduced-motion: reduce) { .pw-strength__seg { transition: none; } }
