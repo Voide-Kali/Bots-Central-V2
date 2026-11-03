@@ -5,6 +5,7 @@ import { ApiError } from "../api";
 import { navigate } from "../app/navigation";
 import { FormField } from "../components/FormField";
 import { PageStatus } from "../components/PageStatus";
+import { PasswordStrength } from "../components/PasswordStrength";
 import { apiMessage } from "./shared";
 
 function field(form: HTMLFormElement, name: string): string { return String(new FormData(form).get(name) ?? ""); }
@@ -14,6 +15,7 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [done, setDone] = useState(false);
+  const [password, setPassword] = useState("");
   const reset = api.passwordReset;
 
   async function requestCode(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -66,7 +68,8 @@ export function RecoverPage({ api }: { readonly api: ApiClient }): ReactElement 
     : <form className="form" onSubmit={confirm} noValidate>
       <PageStatus kind="notice">Se a conta existir, um código foi enviado para {email}.</PageStatus>
       <FormField id="recover-code" name="code" label="Código de 8 dígitos" autoComplete="one-time-code" inputMode="numeric" maxLength={9} required />
-      <FormField id="recover-password" name="password" type="password" label="Senha nova" autoComplete="new-password" minLength={15} maxLength={1024} hint="Use pelo menos 15 caracteres." required />
+      <FormField id="recover-password" name="password" type="password" label="Senha nova" autoComplete="new-password" minLength={15} maxLength={1024} hint="Use pelo menos 15 caracteres." required value={password} onChange={(event) => setPassword(event.target.value)} />
+      <PasswordStrength password={password} minLength={15} />
       <FormField id="recover-password-confirmation" name="password-confirmation" type="password" label="Confirmar senha nova" autoComplete="new-password" minLength={15} maxLength={1024} required />
       {error === undefined ? null : <PageStatus kind="error">{error}</PageStatus>}
       <button className="button button--primary" disabled={pending} type="submit">{pending ? "Alterando…" : "Alterar senha"}</button>
