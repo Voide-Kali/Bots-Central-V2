@@ -74,6 +74,17 @@ describe("HTTP API adapter", () => {
     ]);
   });
 
+  it("renames a device via POST /name", async () => {
+    accessTokenStore.replace("access-token");
+    const fetchMock = vi.fn().mockResolvedValue(json({ name: "Servidor" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpApiClient().devices.rename!("PC000", "Servidor")).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/v1/devices/PC000/name");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "Servidor" });
+  });
+
   it("parses device telemetry and rejects malformed telemetry", async () => {
     accessTokenStore.replace("access-token");
     const base = { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0", fingerprint: null };

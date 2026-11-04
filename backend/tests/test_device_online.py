@@ -275,6 +275,39 @@ def test_pending_approval_and_heartbeat_replay_are_server_authoritative(
         device_online.heartbeat(factory, device_id=device_id, jws=signed)
 
 
+def test_rename_updates_owned_device_name(migrated_postgresql_engine: Engine) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    device_id, _fingerprint, _private, _ = _enroll(factory, user_id=user_id, session_id=session_id)
+    stored = device_online.rename(
+        factory, user_id=user_id, device_id=device_id, name="  Servidor   da   sala  "
+    )
+    assert stored == "Servidor da sala"
+    with factory() as session:
+        device = session.get(Device, device_id)
+        assert device is not None and device.name == "Servidor da sala"
+
+
+def test_rename_rejects_empty_or_too_long_name(migrated_postgresql_engine: Engine) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    device_id, _fingerprint, _private, _ = _enroll(factory, user_id=user_id, session_id=session_id)
+    for bad in ("", "   ", "x" * 121):
+        with pytest.raises(device_online.InvalidDeviceName):
+            device_online.rename(factory, user_id=user_id, device_id=device_id, name=bad)
+
+
+def test_rename_refuses_device_of_another_user(migrated_postgresql_engine: Engine) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    owner_id, owner_session = _identity(factory)
+    device_id, _fingerprint, _private, _ = _enroll(
+        factory, user_id=owner_id, session_id=owner_session
+    )
+    other_id, _ = _identity(factory)
+    with pytest.raises(device_online.DeviceNotFound):
+        device_online.rename(factory, user_id=other_id, device_id=device_id, name="roubado")
+
+
 def test_same_sequence_is_accepted_once_under_concurrency(
     migrated_postgresql_engine: Engine,
 ) -> None:

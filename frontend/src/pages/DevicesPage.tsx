@@ -196,6 +196,24 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
     } catch (error) { if (error instanceof UnauthenticatedError) invalidate(); else setFeedback("O servidor não aceitou a decisão. Atualize a lista e tente de novo."); }
     finally { actionLock.current = false; if (mounted.current) setActionBusy(false); }
   }
+  async function renameDevice(device: Device): Promise<void> {
+    if (actionLock.current || !api.devices.rename) return;
+    const answer = window.prompt(`Novo nome para "${device.name}":`, device.name);
+    if (answer === null) return;
+    const next = answer.trim().replace(/\s+/g, " ");
+    if (next === "" || next === device.name) return;
+    if (next.length > 120) { setFeedback("O nome precisa ter no máximo 120 caracteres."); return; }
+    actionLock.current = true;
+    setActionBusy(true);
+    setFeedback(undefined);
+    try {
+      await api.devices.rename(device.id, next);
+      if (!mounted.current) return;
+      setFeedback(`Computador renomeado para "${next}".`);
+      refresh();
+    } catch (error) { if (error instanceof UnauthenticatedError) invalidate(); else setFeedback("Não foi possível renomear. Atualize a lista e tente de novo."); }
+    finally { actionLock.current = false; if (mounted.current) setActionBusy(false); }
+  }
   const selectedDevice = devices.find((device) => device.id === selectedId);
   const pendingDevices = devices.filter((device) => device.lifecycleStatus === "pending");
 
@@ -282,7 +300,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           </div> : null}
           {filteredDevices.length === 0 ? <div className="empty">
             {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
-          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} renderActions={(device) => <DeviceActions api={api.devices} pinApi={api.actionPin} deviceId={device.id} onUnauthenticated={invalidate} />} selectedId={selectedId} />}
+          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} renderActions={(device) => <DeviceActions api={api.devices} pinApi={api.actionPin} deviceId={device.id} onUnauthenticated={invalidate} />} onRename={(device) => void renameDevice(device)} selectedId={selectedId} />}
         </section> : null}
       </div>
       {authenticated && (api.telegram || api.actionPin) ? <aside aria-labelledby="aval-heading" className="workspace__aside">

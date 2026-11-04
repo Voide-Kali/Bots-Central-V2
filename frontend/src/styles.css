@@ -479,3 +479,6 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .pw-strength[data-score="3"] .pw-strength__label,
 .pw-strength[data-score="4"] .pw-strength__label { color: var(--positive); }
 @media (prefers-reduced-motion: reduce) { .pw-strength__seg { transition: none; } }
+
+/* Botao de renomear dentro do detalhe de um computador. */
+.device__rename { display: flex; justify-content: flex-end; margin-bottom: 8px; }
