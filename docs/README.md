@@ -71,7 +71,7 @@ não está versionado.
 | [ADR-021](ADR/ADR-021-web-action-control.md) | Controle de ações pelo painel web. |
 | [ADR-022](ADR/ADR-022-battery-telemetry.md) | Nível de bateria na telemetria e alerta de bateria fraca. |
 | [ADR-023](ADR/ADR-023-assistant-context-and-events.md) | IA com contexto curto e leitura de eventos recentes. |
-| [ADR-024](ADR/ADR-024-email-notify.md) | Aviso e resumo de e-mails novos (leitura). |
+| [ADR-024](ADR/ADR-024-email-notify.md) | Aviso e resumo de e-mails novos (leitura) - revertido; movido para o repo gmail-telegram-bot. |
 | [ADR-025](ADR/ADR-025-session-idle-timeout.md) | Tempo de inatividade da sessão (logout em 1 hora). |
 | [ADR-026](ADR/ADR-026-download-site.md) | Site de download e instaladores sem terminal. |
 | [ADR-027](ADR/ADR-027-public-download-page.md) | Página de download pública (só `/baixar`), via Tailscale Funnel. |
