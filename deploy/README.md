@@ -91,7 +91,7 @@ Algo não funciona? Rode `./doctor.sh` nesta pasta. Ele confere `.env` (sem most
 |---|---|
 | Atualizar para a `main` | `git pull && docker compose --env-file .env up -d --build` |
 | Ver backups | `ls -lh /mnt/storage/bots-central-backups` |
-| Restaurar backup | `docker compose exec -T db pg_restore -U bots_central -d bots_central --clean < ARQUIVO.dump` |
+| Restaurar backup (cifrado, ADR-033) | `./restore-backup.sh ARQUIVO.dump.age chave-privada-age.txt` (a chave privada vem de fora do servidor; detalhes no topo do `restore-backup.sh`) |
 | Parar tudo | `docker compose down` (os dados ficam no volume) |
 
 ## Riscos conhecidos
