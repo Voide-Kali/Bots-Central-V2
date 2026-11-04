@@ -69,6 +69,10 @@ class DeviceRevoked(Exception):
     pass
 
 
+class InvalidDeviceName(Exception):
+    pass
+
+
 class StaleHeartbeat(Exception):
     pass
 
@@ -359,6 +363,38 @@ def reject(
             target_id=str(device_id),
             details={"name": device.name},
         )
+
+
+DEVICE_NAME_MAX = 120
+
+
+def clean_device_name(value: str) -> str:
+    """A display name the owner typed: trimmed, single-spaced, printable, 1..120 chars."""
+    cleaned = " ".join(value.split())
+    if not cleaned or len(cleaned) > DEVICE_NAME_MAX or any(not ch.isprintable() for ch in cleaned):
+        raise InvalidDeviceName
+    return cleaned
+
+
+def rename(
+    session_factory: SessionFactory, *, user_id: uuid.UUID, device_id: uuid.UUID, name: str
+) -> str:
+    """Set the owner-chosen display name of a device they own. Returns the stored name."""
+    cleaned = clean_device_name(name)
+    with session_factory() as session, session.begin():
+        device = _owned_device(session, user_id=user_id, device_id=device_id)
+        previous = device.name
+        device.name = cleaned
+        audit.record(
+            session,
+            user_id=user_id,
+            action="device.renamed",
+            actor="user",
+            target_type="device",
+            target_id=str(device_id),
+            details={"name": cleaned, "previous": previous},
+        )
+    return cleaned
 
 
 def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
