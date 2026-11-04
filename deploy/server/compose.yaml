@@ -35,12 +35,9 @@ x-app-env: &app_env
     POSTGRES_PASSWORD: ""
     POSTGRES_USER: ""
 
-# Shared build for the backend image. INSTALL_GMAIL (default 0) keeps the image lean; set
-# INSTALL_GMAIL=1 in .env to bake in the read-only Gmail client for e-mail notices (ADR-024).
+# Shared build for the backend image.
 x-backend-build: &backend_build
   context: ../../backend
-  args:
-    INSTALL_GMAIL: ${INSTALL_GMAIL:-0}
 
 services:
   db:
@@ -103,11 +100,6 @@ services:
       migration:
         condition: service_completed_successfully
     networks: [internal, egress]
-    # Gmail notices (ADR-024): mount the OAuth token read-only and point GMAIL_TOKEN_FILE at it
-    # in .env (e.g. GMAIL_TOKEN_FILE=/gmail/token.json). Reuses the token.json the old
-    # Kali-Bunker bot authorized. Harmless when e-mail notices are off (no token, feature idle).
-    volumes:
-      - ${GMAIL_CREDENTIALS_DIR:-./gmail}:/gmail:ro
 
   ollama:
     # Local LLM for the read-only assistant (ADR-013). Not published; reachable only

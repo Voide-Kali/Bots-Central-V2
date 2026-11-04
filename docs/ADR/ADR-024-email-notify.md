@@ -1,8 +1,13 @@
 # ADR-024: Aviso e resumo de e-mails novos (leitura)
 
-Status: **proposto em 23/10/2026**. Pedido do Voide (23/10): comecar o gerenciamento de e-mails.
-Primeiro passo: avisar e-mails novos no Telegram, com um resumo curto feito pela IA local. E
-LEITURA pura; a IA nunca responde, apaga nem envia e-mail.
+Status: **revertido em 2026-11-04**. Decidiu-se que ler e-mail nao faz parte do nucleo do Aval
+(controlar os computadores do dono com aval humano). O codigo foi removido da `main`; a feature
+continua, separada, no repositorio proprio **gmail-telegram-bot**. O registro abaixo fica como
+historico da decisao original.
+
+Status original: **proposto em 23/10/2026**. Pedido do Voide (23/10): comecar o gerenciamento de
+e-mails. Primeiro passo: avisar e-mails novos no Telegram, com um resumo curto feito pela IA local.
+E LEITURA pura; a IA nunca responde, apaga nem envia e-mail.
 
 ## Contexto
 
