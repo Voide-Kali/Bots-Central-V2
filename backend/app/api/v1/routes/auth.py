@@ -913,6 +913,25 @@ async def rename_device(
     return JSONResponse(status_code=200, content={"name": name}, headers=_NO_STORE_HEADERS)
 
 
+@devices_router.delete("/{device_id}", status_code=204)
+async def forget_device(device_id: uuid.UUID, request: Request) -> Response:
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        await _run_sync(
+            lambda: device_online.forget(
+                runtime.session_factory, user_id=principal.user_id, device_id=device_id
+            )
+        )
+    except device_online.DeviceNotFound:
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return Response(status_code=204, headers=_NO_STORE_HEADERS)
+
+
 @devices_router.post("/{device_id}/heartbeat")
 async def device_heartbeat(
     device_id: uuid.UUID, body: HeartbeatRequest, request: Request

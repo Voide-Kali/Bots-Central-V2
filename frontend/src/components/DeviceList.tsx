@@ -13,6 +13,8 @@ interface DeviceListProps {
   renderActions?(device: Device): ReactNode;
   /** Rename an open computer (the owner-chosen display name). */
   onRename?(device: Device): void;
+  /** Remove an open computer for good. */
+  onForget?(device: Device): void;
 }
 
 function selectWithKeyboard(event: KeyboardEvent<HTMLButtonElement>, select: () => void): void {
@@ -72,7 +74,7 @@ function Metric({ label, percent }: { readonly label: string; readonly percent: 
   </span>;
 }
 
-export function DeviceList({ devices, selectedId, onSelect, renderChart, renderActions, onRename }: DeviceListProps): ReactElement {
+export function DeviceList({ devices, selectedId, onSelect, renderChart, renderActions, onRename, onForget }: DeviceListProps): ReactElement {
   return <div className="device-table">
     <div aria-hidden="true" className="device-table__head">
       <span>Computador</span><span>Situação</span><span>Conexão</span><span className="num">CPU</span><span className="num">Memória</span><span className="num">Disco</span><span className="num">Temp.</span><span className="num">Visto</span>
@@ -93,7 +95,7 @@ export function DeviceList({ devices, selectedId, onSelect, renderChart, renderA
           <span className="device__seen num">{recency(device.lastSeenAt)}</span>
         </button>
         {selected ? <div aria-label={`Detalhes de ${device.name}`} className="device__details">
-          {onRename ? <div className="device__rename"><button className="button" onClick={() => onRename(device)} type="button">Renomear</button></div> : null}
+          {onRename || onForget ? <div className="device__rename">{onRename ? <button className="button" onClick={() => onRename(device)} type="button">Renomear</button> : null}{onForget ? <button className="button button--danger" onClick={() => onForget(device)} type="button">Remover</button> : null}</div> : null}
           {renderChart ? renderChart(device) : null}
           {device.lifecycleStatus === "active" && renderActions ? renderActions(device) : null}
           {device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}

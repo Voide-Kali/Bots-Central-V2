@@ -39,6 +39,8 @@ export interface DevicesApi {
   reject(id: string, fingerprint: string): Promise<void>;
   /** Set the owner-chosen display name. Optional so older fakes keep compiling. */
   rename?(id: string, name: string): Promise<void>;
+  /** Remove a device for good. Optional so older fakes keep compiling. */
+  forget?(id: string): Promise<void>;
   /** Samples of the last `minutes` (oldest first). Optional so older fakes keep compiling. */
   history?(id: string, minutes: number): Promise<readonly DeviceTelemetry[]>;
   /** ADR-018: keep this computer reporting every second for the next 60 s. */

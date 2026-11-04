@@ -308,6 +308,29 @@ def test_rename_refuses_device_of_another_user(migrated_postgresql_engine: Engin
         device_online.rename(factory, user_id=other_id, device_id=device_id, name="roubado")
 
 
+def test_forget_removes_owned_device(migrated_postgresql_engine: Engine) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    user_id, session_id = _identity(factory)
+    device_id, _fingerprint, _private, _ = _enroll(factory, user_id=user_id, session_id=session_id)
+    name = device_online.forget(factory, user_id=user_id, device_id=device_id)
+    assert name
+    with factory() as session:
+        assert session.get(Device, device_id) is None
+
+
+def test_forget_refuses_device_of_another_user(migrated_postgresql_engine: Engine) -> None:
+    factory = _factory(migrated_postgresql_engine)
+    owner_id, owner_session = _identity(factory)
+    device_id, _fingerprint, _private, _ = _enroll(
+        factory, user_id=owner_id, session_id=owner_session
+    )
+    other_id, _ = _identity(factory)
+    with pytest.raises(device_online.DeviceNotFound):
+        device_online.forget(factory, user_id=other_id, device_id=device_id)
+    with factory() as session:
+        assert session.get(Device, device_id) is not None
+
+
 def test_same_sequence_is_accepted_once_under_concurrency(
     migrated_postgresql_engine: Engine,
 ) -> None:

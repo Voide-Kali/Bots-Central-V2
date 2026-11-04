@@ -85,6 +85,16 @@ describe("HTTP API adapter", () => {
     expect(JSON.parse(String(init?.body))).toEqual({ name: "Servidor" });
   });
 
+  it("forgets a device via DELETE", async () => {
+    accessTokenStore.replace("access-token");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createHttpApiClient().devices.forget!("PC000")).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toContain("/api/v1/devices/PC000");
+    expect(init?.method).toBe("DELETE");
+  });
+
   it("parses device telemetry and rejects malformed telemetry", async () => {
     accessTokenStore.replace("access-token");
     const base = { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0", fingerprint: null };

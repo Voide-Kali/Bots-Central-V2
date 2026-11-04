@@ -84,6 +84,7 @@ LABELS = {
     "device.approved": "Dispositivo aprovado",
     "device.rejected": "Dispositivo rejeitado",
     "device.renamed": "Dispositivo renomeado",
+    "device.forgotten": "Dispositivo removido",
     "telegram.linked": "Telegram vinculado",
     "telegram.unlinked": "Telegram desvinculado",
     "auth.password_reset_requested": "Código de recuperação de senha pedido",
