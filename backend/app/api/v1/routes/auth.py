@@ -88,7 +88,7 @@ def _body_limit(path: str) -> int | None:
     if path.startswith("/api/v1/devices/") and "/commands/" in path and path.endswith("/result"):
         return 15 * 1024 * 1024  # 10 MB file as base64 plus the signed envelope
     if path.startswith("/api/v1/devices/") and (
-        path.endswith("/approve") or path.endswith("/reject")
+        path.endswith("/approve") or path.endswith("/reject") or path.endswith("/name")
     ):
         return 1024
     return _AUTH_BODY_LIMITS.get(path)
@@ -251,6 +251,10 @@ class EnrollmentRequest(_AuthRequest):
 
 class FingerprintRequest(_AuthRequest):
     fingerprint: str = Field(min_length=1, max_length=64)
+
+
+class DeviceNameRequest(_AuthRequest):
+    name: str = Field(min_length=1, max_length=120)
 
 
 class HeartbeatRequest(_AuthRequest):
@@ -881,6 +885,32 @@ async def reject_device(
     return JSONResponse(
         status_code=200, content={"lifecycle_status": "revoked"}, headers=_NO_STORE_HEADERS
     )
+
+
+@devices_router.post("/{device_id}/name")
+async def rename_device(
+    device_id: uuid.UUID, body: DeviceNameRequest, request: Request
+) -> Response:
+    principal = await _device_principal(request)
+    if principal is None:
+        return _generic_json_response(401, _INVALID_MESSAGE)
+    runtime = _runtime(request)
+    try:
+        name = await _run_sync(
+            lambda: device_online.rename(
+                runtime.session_factory,
+                user_id=principal.user_id,
+                device_id=device_id,
+                name=body.name,
+            )
+        )
+    except device_online.DeviceNotFound:
+        return _generic_json_response(404, _INVALID_MESSAGE)
+    except device_online.InvalidDeviceName:
+        return _generic_json_response(422, _INVALID_MESSAGE)
+    except Exception:
+        return _generic_json_response(503, _UNAVAILABLE_MESSAGE)
+    return JSONResponse(status_code=200, content={"name": name}, headers=_NO_STORE_HEADERS)
 
 
 @devices_router.post("/{device_id}/heartbeat")
