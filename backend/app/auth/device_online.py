@@ -13,7 +13,7 @@ from typing import Any, cast
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from jwt import InvalidTokenError
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
 from app.audit import events as audit
@@ -395,6 +395,30 @@ def rename(
             details={"name": cleaned, "previous": previous},
         )
     return cleaned
+
+
+def forget(session_factory: SessionFactory, *, user_id: uuid.UUID, device_id: uuid.UUID) -> str:
+    """Remove a device the owner owns, for good. Returns the removed device's name.
+
+    Deletes the device and its CASCADE children (telemetry, commands, events, live state). The
+    pairing tokens carry a RESTRICT foreign key, so they are cleared first. The audit trail
+    survives: audit rows reference the device by string id, never by a foreign key.
+    """
+    with session_factory() as session, session.begin():
+        device = _owned_device(session, user_id=user_id, device_id=device_id)
+        name = device.name
+        audit.record(
+            session,
+            user_id=user_id,
+            action="device.forgotten",
+            actor="user",
+            target_type="device",
+            target_id=str(device_id),
+            details={"name": name},
+        )
+        session.execute(delete(DevicePairingToken).where(DevicePairingToken.device_id == device_id))
+        session.execute(delete(Device).where(Device.id == device_id))
+    return name
 
 
 def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
