@@ -232,6 +232,10 @@ class HttpDevicesApi implements DevicesApi {
     await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/name`, { name });
   }
 
+  public async forget(id: string): Promise<void> {
+    await this.http.delete(`${paths.devices}/${encodeURIComponent(id)}`, { acceptedStatuses: [204] });
+  }
+
   public async history(id: string, minutes: number): Promise<readonly DeviceTelemetry[]> {
     if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new RangeError("minutes out of range");
     const response = await this.http.get(`${paths.devices}/${encodeURIComponent(id)}/telemetry?minutes=${minutes}`, { acceptedStatuses: [200] });
