@@ -69,9 +69,17 @@ describe("HTTP API adapter", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(createHttpApiClient().devices.list()).resolves.toEqual([
-      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null },
-      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:exact=", telemetry: null }
+      { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null, network: null },
+      { id: "pending-1", name: "Pending host", platform: "linux/amd64", status: "offline", lifecycleStatus: "pending", lastSeenAt: null, agentVersion: null, fingerprint: "SHA256:exact=", telemetry: null, network: null }
     ]);
+  });
+
+  it("parses the opt-in network location when present", async () => {
+    accessTokenStore.replace("access-token");
+    const fetchMock = vi.fn().mockResolvedValue(json({ devices: [{ id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycle_status: "active", last_seen_at: "2026-09-10T10:00:00Z", agent_version: "0.1.0", fingerprint: null, network: { public_ip: "203.0.113.9", local_ips: ["192.168.0.4"], reported_at: "2026-11-07T00:00:00Z" } }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const devices = await createHttpApiClient().devices.list();
+    expect(devices[0]!.network).toEqual({ publicIp: "203.0.113.9", localIps: ["192.168.0.4"], reportedAt: "2026-11-07T00:00:00Z" });
   });
 
   it("renames a device via POST /name", async () => {

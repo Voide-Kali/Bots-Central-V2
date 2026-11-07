@@ -47,7 +47,7 @@ from app.core.config import Settings
 from app.db.enums import EmailVerificationMaterialType
 from app.db.models import Device
 from app.db.session import get_engine
-from app.devices import telemetry
+from app.devices import network, telemetry
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 devices_router = APIRouter(prefix="/devices", tags=["devices"])
@@ -680,6 +680,7 @@ async def devices(request: Request) -> Response:
                     "telemetry": (
                         telemetry.to_json(latest[item.id]) if item.id in latest else None
                     ),
+                    "network": network.device_to_json(item),
                 }
                 for item in rows
             ]
