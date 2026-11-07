@@ -74,6 +74,12 @@ class Device(Base):
     public_key: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
     public_key_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_heartbeat_seq: Mapped[int | None] = mapped_column(Numeric(20, 0), nullable=True)
+    # Network location (ADR-036), opt-in. Latest only; filled by the heartbeat `net` claim.
+    last_public_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    last_local_ips: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    network_reported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

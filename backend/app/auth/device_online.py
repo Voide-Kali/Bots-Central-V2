@@ -20,7 +20,7 @@ from app.audit import events as audit
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import Device, DevicePairingToken, User
 from app.db.models import Session as DbSession
-from app.devices import telemetry
+from app.devices import network, telemetry
 
 SessionFactory = Callable[[], Session]
 PAIRING_TOKEN_BYTES = 32
@@ -427,7 +427,7 @@ def verify_heartbeat(*, device: Device, device_id: uuid.UUID, jws: str) -> int:
 
 def _verify_heartbeat_claims(
     *, device: Device, device_id: uuid.UUID, jws: str, audience: str = HEARTBEAT_AUDIENCE
-) -> tuple[int, telemetry.TelemetrySample | None]:
+) -> tuple[int, telemetry.TelemetrySample | None, network.NetworkInfo | None]:
     if device.lifecycle_status is DeviceLifecycleStatus.REVOKED:
         raise DeviceRevoked
     if device.lifecycle_status is not DeviceLifecycleStatus.ACTIVE:
@@ -450,7 +450,13 @@ def _verify_heartbeat_claims(
             sample = telemetry.parse_claim(claims["tel"])
         except telemetry.InvalidTelemetry as error:
             raise InvalidProof from error
-    return sequence, sample
+    net: network.NetworkInfo | None = None
+    if "net" in claims:
+        try:
+            net = network.parse_claim(claims["net"])
+        except network.InvalidNetwork as error:
+            raise InvalidProof from error
+    return sequence, sample, net
 
 
 def authenticate_heartbeat(
@@ -485,7 +491,7 @@ def live(session_factory: SessionFactory, *, device_id: uuid.UUID, jws: str) -> 
         device = session.scalar(select(Device).where(Device.id == device_id))
         if device is None:
             raise DeviceNotFound
-        sequence, sample = _verify_heartbeat_claims(
+        sequence, sample, _net = _verify_heartbeat_claims(
             device=device, device_id=device_id, jws=jws, audience=LIVE_AUDIENCE
         )
         row = session.execute(
@@ -530,7 +536,9 @@ def heartbeat(
         device = session.scalar(select(Device).where(Device.id == device_id))
         if device is None:
             raise DeviceNotFound
-        sequence, sample = _verify_heartbeat_claims(device=device, device_id=device_id, jws=jws)
+        sequence, sample, net = _verify_heartbeat_claims(
+            device=device, device_id=device_id, jws=jws
+        )
         accepted = session.execute(
             update(Device)
             .where(
@@ -545,6 +553,8 @@ def heartbeat(
         if accepted is not None:
             if sample is not None:
                 telemetry.store(session, device_id=device_id, sample=sample)
+            if net is not None:
+                network.store(device, net, now=accepted)
             return accepted
         current = session.scalar(select(Device.lifecycle_status).where(Device.id == device_id))
         if current is DeviceLifecycleStatus.REVOKED:

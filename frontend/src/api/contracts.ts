@@ -79,6 +79,14 @@ export interface Device {
   readonly agentVersion: string | null;
   readonly fingerprint: string | null;
   readonly telemetry: DeviceTelemetry | null;
+  readonly network?: DeviceNetwork | null;
+}
+
+/** Opt-in network location reported in the `net` heartbeat claim (ADR-036). */
+export interface DeviceNetwork {
+  readonly publicIp: string | null;
+  readonly localIps: readonly string[];
+  readonly reportedAt: string | null;
 }
 
 /** Latest system metrics accepted with a signed heartbeat (ADR-012). Null fields were not reported. */

@@ -96,6 +96,7 @@ export function DeviceList({ devices, selectedId, onSelect, renderChart, renderA
         </button>
         {selected ? <div aria-label={`Detalhes de ${device.name}`} className="device__details">
           {onRename || onForget ? <div className="device__rename">{onRename ? <button className="button" onClick={() => onRename(device)} type="button">Renomear</button> : null}{onForget ? <button className="button button--danger" onClick={() => onForget(device)} type="button">Remover</button> : null}</div> : null}
+          {device.network && (device.network.publicIp || device.network.localIps.length > 0) ? <p className="device__net">IP: {device.network.publicIp ?? device.network.localIps[0]}</p> : null}
           {renderChart ? renderChart(device) : null}
           {device.lifecycleStatus === "active" && renderActions ? renderActions(device) : null}
           {device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}

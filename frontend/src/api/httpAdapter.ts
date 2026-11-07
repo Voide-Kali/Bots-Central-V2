@@ -10,6 +10,7 @@ import type {
   ConsumeVerificationCodeRequest,
   ConsumeVerificationCodeResponse,
   Device,
+  DeviceNetwork,
   DeviceTelemetry,
   PairingResponse,
   LoginRequest,
@@ -133,8 +134,24 @@ function assertDevice(value: unknown, status: number): Device {
     lastSeenAt: value.last_seen_at,
     agentVersion: value.agent_version,
     fingerprint: value.fingerprint,
-    telemetry: assertTelemetry(value.telemetry, status)
+    telemetry: assertTelemetry(value.telemetry, status),
+    network: assertNetwork(value.network)
   };
+}
+
+function assertNetwork(value: unknown): DeviceNetwork | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const localIps = Array.isArray(value.local_ips)
+    ? value.local_ips.filter((item): item is string => typeof item === "string")
+    : [];
+  const publicIp = typeof value.public_ip === "string" ? value.public_ip : null;
+  const reportedAt = typeof value.reported_at === "string" ? value.reported_at : null;
+  if (publicIp === null && localIps.length === 0) {
+    return null;
+  }
+  return { publicIp, localIps, reportedAt };
 }
 
 function assertPairing(value: unknown, status: number): PairingResponse {
