@@ -13,6 +13,13 @@
 | [THREAT_MODEL.md](THREAT_MODEL.md) | Threat model: atores, superfícies de ataque, mitigações e riscos aceitos. |
 | [ROADMAP.md](ROADMAP.md) | Plano de entrega, princípios, orçamento e o que fica para depois da demo. |
 
+## Feira (apresentação)
+
+| Doc | Conteúdo |
+|---|---|
+| [FEIRA-ROTEIRO.md](FEIRA-ROTEIRO.md) | Roteiro da demo ao vivo: pitch, passo a passo, perguntas dos avaliadores e plano B. |
+| [FEIRA-TOUR-CODIGO.md](FEIRA-TOUR-CODIGO.md) | Tour guiado do código: componentes, camadas de segurança e onde achar cada coisa. |
+
 ## Conta, autenticação e banco
 
 | Documento | O que é |
