@@ -482,3 +482,6 @@ input:disabled { background: var(--raised); color: var(--faint); }
 
 /* Botao de renomear dentro do detalhe de um computador. */
 .device__rename { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+/* IP do computador no detalhe (ADR-036). */
+.device__net { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted, #a3a6ad); }
