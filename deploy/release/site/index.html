@@ -73,7 +73,14 @@ button, input { font: inherit; color: inherit; }
 .textlink:hover { text-decoration-color: var(--accent); }
 
 /* ---------- Hero ---------- */
-.hero { position: relative; min-height: 100svh; display: grid; grid-template-rows: auto 1fr auto; padding: 36px var(--margin) 64px; overflow: clip; perspective: 1400px; }
+.hero { position: relative; min-height: 100svh; display: grid; grid-template-rows: auto 1fr auto; padding: 36px var(--margin) 64px; overflow: clip; perspective: 1400px; background: var(--deep); color: #fff; --ink: #fff; --muted: rgb(255 255 255 / .74); }
+.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 82% 16%, rgb(255 255 255 / .1), transparent 42%), radial-gradient(circle at 12% 94%, rgb(255 96 106 / .14), transparent 46%); }
+.hero > * { position: relative; z-index: 2; }
+.hero .mark svg { stroke: #fff; }
+.hero .btn--accent { background: #fff; color: var(--accent); box-shadow: 0 2px 4px rgb(8 20 60 / .3), 0 18px 40px -14px rgb(8 20 60 / .5); }
+.hero .btn:not(.btn--accent) { background: transparent; color: #fff; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .55); }
+.hero .textlink { color: #fff; text-decoration-color: rgb(255 255 255 / .5); }
+.hero .textlink:hover { text-decoration-color: #fff; }
 .hero__bar { position: relative; z-index: 3; display: grid; grid-template-columns: 42% 1fr auto; align-items: center; }
 .mark { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
 .mark svg { width: 38px; height: 24px; fill: none; stroke: var(--accent); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -95,17 +102,17 @@ button, input { font: inherit; color: inherit; }
 /* The 3D seal: a stamped disc modelled from stacked layers. */
 .seal-stage { position: absolute; z-index: 1; right: 8%; top: 12%; width: clamp(220px, 26vw, 400px); aspect-ratio: 1; transform-style: preserve-3d; pointer-events: none; }
 .seal { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(calc(18deg + var(--ry, 0deg))) rotateY(calc(-28deg + var(--rx, 0deg))); transition: transform .6s var(--ease-out); }
-.seal__layer { position: absolute; inset: 0; border-radius: 50%; background: #1b47b8; transform: translateZ(calc(var(--z) * 1px)); }
-.seal__layer:nth-child(odd) { background: #14379f; }
+.seal__layer { position: absolute; inset: 0; border-radius: 50%; background: #dbe4fb; transform: translateZ(calc(var(--z) * 1px)); }
+.seal__layer:nth-child(odd) { background: #c6d4f6; }
 .seal__face { position: absolute; inset: 0; border-radius: 50%; transform: translateZ(14px); background:
-  radial-gradient(circle at 32% 26%, rgb(255 255 255 / .3), transparent 44%),
-  radial-gradient(circle at 50% 50%, #2a51c8 0 58%, #1b3fa6 59% 64%, #3b64da 65% 100%);
-  box-shadow: inset 0 0 0 3px rgb(255 255 255 / .18), inset 0 -10px 30px rgb(8 26 88 / .5); display: grid; place-items: center; }
+  radial-gradient(circle at 32% 26%, rgb(255 255 255 / .85), transparent 46%),
+  radial-gradient(circle at 50% 50%, #ffffff 0 58%, #dde6fa 59% 64%, #f3f6ff 65% 100%);
+  box-shadow: inset 0 0 0 3px rgb(14 53 157 / .14), inset 0 -10px 30px rgb(14 53 157 / .18); display: grid; place-items: center; }
 .seal__face svg { width: 62%; height: 62%; overflow: visible; }
-.seal__ring text { font-family: var(--display); font-size: 15.5px; letter-spacing: 3.4px; fill: rgb(255 255 255 / .88); }
-.seal__check { fill: none; stroke: var(--hot); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px rgb(255 96 106 / .55)); }
-.seal__back { position: absolute; inset: 0; border-radius: 50%; transform: translateZ(-14px) rotateY(180deg); background: radial-gradient(circle at 60% 30%, #2149b4, #11307f); }
-.seal-shadow { position: absolute; left: 10%; right: 10%; bottom: -26%; height: 18%; border-radius: 50%; background: rgb(14 53 157 / .38); filter: blur(28px); transform: rotateX(80deg); }
+.seal__ring text { font-family: var(--display); font-size: 15.5px; letter-spacing: 3.4px; fill: rgb(14 53 157 / .72); }
+.seal__check { fill: none; stroke: var(--hot); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 6px rgb(255 96 106 / .5)); }
+.seal__back { position: absolute; inset: 0; border-radius: 50%; transform: translateZ(-14px) rotateY(180deg); background: radial-gradient(circle at 60% 30%, #eaf0fe, #c6d4f6); }
+.seal-shadow { position: absolute; left: 10%; right: 10%; bottom: -26%; height: 18%; border-radius: 50%; background: rgb(6 16 54 / .5); filter: blur(28px); transform: rotateX(80deg); }
 
 /* ---------- Intro ---------- */
 .intro { padding-block: 160px 140px; }
