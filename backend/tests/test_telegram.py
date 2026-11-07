@@ -3,7 +3,7 @@
 import urllib.error
 import uuid
 from collections.abc import Generator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -15,9 +15,9 @@ from test_device_telemetry import VALID, _active_device, _beat, pg_cleanup  # no
 
 from app.auth import device_online
 from app.auth.abuse_control import AbuseControlUnavailable
-from app.db.models import Device, TelegramLink, TelegramLinkCode
+from app.db.models import Device, DeviceLifecycleStatus, TelegramLink, TelegramLinkCode
 from app.telegram import client as telegram_client
-from app.telegram import commands, linking
+from app.telegram import commands, formatting, linking
 from app.telegram.alerts import collect_presence_alerts
 
 CHAT = 424242
@@ -55,6 +55,40 @@ class _Admission:
 
 
 # --- pure ------------------------------------------------------------------------------
+
+
+def _card_device(**extra: Any) -> Device:
+    now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=UTC)
+    return Device(
+        name="meu-pc",
+        platform="linux",
+        agent_version="0.5.0",
+        lifecycle_status=DeviceLifecycleStatus.ACTIVE,
+        last_seen_at=now,
+        **extra,
+    )
+
+
+def test_device_card_shows_opted_in_network_ip() -> None:
+    now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=UTC)
+    device = _card_device(
+        last_public_ip="203.0.113.7", last_local_ips=["192.168.0.10", "10.0.0.5"]
+    )
+    card = formatting.device_card(device, "online", None, now)
+    assert "Rede: IP público 203.0.113.7 · local 192.168.0.10" in card
+
+
+def test_device_card_shows_local_ip_when_public_absent() -> None:
+    now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=UTC)
+    device = _card_device(last_public_ip=None, last_local_ips=["192.168.0.10"])
+    card = formatting.device_card(device, "online", None, now)
+    assert "Rede: local 192.168.0.10" in card
+
+
+def test_device_card_omits_network_when_not_reported() -> None:
+    now = datetime(2026, 11, 7, 12, 0, 0, tzinfo=UTC)
+    card = formatting.device_card(_card_device(), "online", None, now)
+    assert "Rede:" not in card
 
 
 def test_code_normalization() -> None:
