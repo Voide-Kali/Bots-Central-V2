@@ -26,6 +26,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/jws"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/netloc"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 )
 
@@ -210,11 +211,13 @@ func (c *HTTPClient) SendHeartbeat(ctx context.Context, model heartbeat.Model) e
 		Subject   string            `json:"sub"`
 		Sequence  uint64            `json:"seq"`
 		Telemetry *telemetry.Sample `json:"tel,omitempty"`
+		Network   *netloc.Info      `json:"net,omitempty"`
 	}{
 		Audience:  HeartbeatAudience,
 		Subject:   model.DeviceID,
 		Sequence:  sequence,
 		Telemetry: model.Telemetry,
+		Network:   model.Network,
 	})
 	if err != nil {
 		return err

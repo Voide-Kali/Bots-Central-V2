@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/identity"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/netloc"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/sensors"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/sequence"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
@@ -126,9 +128,15 @@ func main() {
 		dependencies.Executor = executor
 		logger.Info("approved commands are enabled", logging.Field{Key: "shared_folder", Value: fileConfig.SharedDir != ""}, logging.Field{Key: "actions", Value: strings.Join(fileConfig.AllowedActions, ",")})
 	}
-	if len(fileConfig.Sensors) > 0 {
-		if record, loadErr := enrollmentState.Load(); loadErr == nil && record.DeviceID != "" {
-			startFailedLoginSensor(ctx, logger, httpTransport, record.DeviceID)
+	for _, sensor := range fileConfig.Sensors {
+		switch sensor {
+		case "failed_login_photo":
+			if record, loadErr := enrollmentState.Load(); loadErr == nil && record.DeviceID != "" {
+				startFailedLoginSensor(ctx, logger, httpTransport, record.DeviceID)
+			}
+		case "network_location":
+			dependencies.Network = netloc.NewCollector(&http.Client{Timeout: 4 * time.Second})
+			logger.Info("network location sensor enabled")
 		}
 	}
 	runner, err := app.New(app.Config{HeartbeatInterval: fileConfig.HeartbeatInterval, TransportTimeout: fileConfig.TransportTimeout, BackoffInitial: fileConfig.BackoffInitial, BackoffMax: fileConfig.BackoffMax, AgentVersion: version, CapabilityVersion: app.DefaultCapabilityVersion}, dependencies)

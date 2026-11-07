@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/netloc"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 )
 
@@ -20,6 +21,8 @@ type Model struct {
 	CapabilityVersion string
 	// Telemetry is optional; nil sends a presence-only heartbeat.
 	Telemetry *telemetry.Sample
+	// Network is the opt-in location (ADR-036); nil sends no `net` claim.
+	Network *netloc.Info
 }
 
 func New(deviceID string, status hostinfo.Status, agentVersion string, timestamp time.Time, capabilityVersion string) (Model, error) {

@@ -14,6 +14,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/netloc"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/retry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
@@ -86,11 +87,18 @@ type EnrollmentState interface {
 
 type waitFunc func(context.Context, time.Duration) error
 
+// NetworkCollector gathers the opt-in network location (ADR-036). Optional; nil sends no `net`.
+type NetworkCollector interface {
+	Collect(ctx context.Context) *netloc.Info
+}
+
 // Dependencies make side effects explicit and enable deterministic tests.
 type Dependencies struct {
 	Collector HostCollector
 	// Telemetry is optional; nil keeps presence-only heartbeats.
 	Telemetry telemetry.Collector
+	// Network is optional opt-in location (ADR-036); nil keeps heartbeats address-free.
+	Network NetworkCollector
 	// Commands and Executor are optional; both must be set to enable ADR-015 actions.
 	Commands      CommandChannel
 	Executor      CommandExecutor
@@ -111,6 +119,7 @@ type Runner struct {
 	config     Config
 	collector  HostCollector
 	telemetry  telemetry.Collector
+	network    NetworkCollector
 	commands   CommandChannel
 	executor   CommandExecutor
 	live       LiveChannel
@@ -141,7 +150,7 @@ func New(config Config, dependencies Dependencies) (*Runner, error) {
 	if dependencies.Jitter == nil {
 		dependencies.Jitter = defaultJitter
 	}
-	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, commands: dependencies.Commands, executor: dependencies.Executor, live: dependencies.Live, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
+	return &Runner{config: config, collector: dependencies.Collector, telemetry: dependencies.Telemetry, network: dependencies.Network, commands: dependencies.Commands, executor: dependencies.Executor, live: dependencies.Live, enrollment: dependencies.Enrollment, transport: dependencies.Transport, logger: dependencies.Logger, now: dependencies.Now, wait: dependencies.Wait, jitter: dependencies.Jitter, onState: dependencies.OnStateChange, state: StateStarting}, nil
 }
 
 func validateConfig(config Config) error {
@@ -202,6 +211,11 @@ func (r *Runner) Run(ctx context.Context) (runErr error) {
 			if err == nil && r.telemetry != nil && lifecycle == enrollment.StatusActive {
 				sample := r.telemetry.Collect()
 				model.Telemetry = &sample
+			}
+			if err == nil && r.network != nil && lifecycle == enrollment.StatusActive {
+				netCtx, cancelNet := context.WithTimeout(ctx, 4*time.Second)
+				model.Network = r.network.Collect(netCtx)
+				cancelNet()
 			}
 			if err == nil {
 				r.setState(StateConnecting)
