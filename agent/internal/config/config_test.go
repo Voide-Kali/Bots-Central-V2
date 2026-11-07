@@ -36,6 +36,10 @@ func TestSensorsAreValidated(t *testing.T) {
 	if err != nil || len(config.Sensors) != 1 || config.Sensors[0] != "failed_login_photo" {
 		t.Fatalf("config=%+v err=%v", config, err)
 	}
+	loc, err := Parse([]byte(base + `"sensors":["network_location"]}`))
+	if err != nil || len(loc.Sensors) != 1 || loc.Sensors[0] != "network_location" {
+		t.Fatalf("network_location sensor rejected: config=%+v err=%v", loc, err)
+	}
 	for _, bad := range []string{`"sensors":["keylogger"]}`, `"sensors":["failed_login_photo","failed_login_photo"]}`} {
 		if _, err := Parse([]byte(base + bad)); err == nil {
 			t.Fatalf("expected rejection for %s", bad)

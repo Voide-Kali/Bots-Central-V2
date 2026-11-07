@@ -131,7 +131,7 @@ func Parse(data []byte) (Config, error) {
 	}
 	sensorSeen := map[string]bool{}
 	for _, sensor := range raw.Sensors {
-		if sensor != "failed_login_photo" {
+		if sensor != "failed_login_photo" && sensor != "network_location" {
 			return Config{}, fmt.Errorf("config: unknown sensor %q in sensors", sensor)
 		}
 		if sensorSeen[sensor] {
