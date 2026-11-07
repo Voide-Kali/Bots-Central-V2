@@ -83,6 +83,7 @@ export function DeviceList({ devices, selectedId, onSelect, renderChart, renderA
       const selected = device.id === selectedId;
       const select = (): void => onSelect(device.id);
       const telemetry = device.lifecycleStatus === "active" ? device.telemetry : null;
+      const offline = device.status !== "online";
       return <li className={`device device--${device.lifecycleStatus}${selected ? " device--open" : ""}`} key={device.id}>
         <button aria-expanded={selected} className="device__row" onClick={select} onKeyDown={(event) => selectWithKeyboard(event, select)} type="button">
           <span className="device__name"><strong>{device.name}</strong><span>{friendlyPlatform(device.platform)}{device.agentVersion ? ` · agente ${device.agentVersion}` : ""}</span></span>
@@ -96,14 +97,17 @@ export function DeviceList({ devices, selectedId, onSelect, renderChart, renderA
         </button>
         {selected ? <div aria-label={`Detalhes de ${device.name}`} className="device__details">
           {onRename || onForget ? <div className="device__rename">{onRename ? <button className="button" onClick={() => onRename(device)} type="button">Renomear</button> : null}{onForget ? <button className="button button--danger" onClick={() => onForget(device)} type="button">Remover</button> : null}</div> : null}
-          {device.network && (device.network.publicIp || device.network.localIps.length > 0) ? <p className="device__net">IP: {device.network.publicIp ?? device.network.localIps[0]}</p> : null}
+          {device.network && (device.network.publicIp || device.network.localIps.length > 0) ? <p className={offline ? "device__net device__net--stale" : "device__net"}>IP {device.network.publicIp ?? device.network.localIps[0]}<span className="device__when"> &middot; reportado {recency(device.network.reportedAt)}</span>{offline ? <span className="device__stale"> (pode estar desatualizado)</span> : null}</p> : null}
           {renderChart ? renderChart(device) : null}
           {device.lifecycleStatus === "active" && renderActions ? renderActions(device) : null}
+          {device.lifecycleStatus === "active" && device.telemetry ? <p className={offline ? "device__when device__when--stale" : "device__when"}>Telemetria recebida {recency(device.telemetry.recordedAt)}{offline ? <span className="device__stale"> &middot; computador offline, pode estar desatualizada</span> : null}</p> : null}
           {device.lifecycleStatus === "active" ? <TelemetryPanel telemetry={device.telemetry} /> : null}
           <dl className="facts">
             <div><dt>Situação</dt><dd>{lifecycleLabel(device.lifecycleStatus)}</dd></div>
             <div><dt>Conexão</dt><dd><ConnectionStatus presence={device.status} /></dd></div>
             <div><dt>Visto por último</dt><dd>{lastSeen(device.lastSeenAt)}</dd></div>
+            {telemetry ? <div><dt>Telemetria recebida</dt><dd>{recency(telemetry.recordedAt)}{offline ? " (pode estar desatualizada)" : ""}</dd></div> : null}
+            {device.network && device.network.reportedAt ? <div><dt>IP reportado</dt><dd>{recency(device.network.reportedAt)}{offline ? " (pode estar desatualizado)" : ""}</dd></div> : null}
             <div><dt>Sistema</dt><dd>{device.platform}</dd></div>
             <div><dt>Versão do agente</dt><dd>{device.agentVersion ?? "Não informada"}</dd></div>
             <div><dt>Identificador</dt><dd className="facts__mono">{device.id}</dd></div>

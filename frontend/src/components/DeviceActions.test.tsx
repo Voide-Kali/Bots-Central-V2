@@ -22,6 +22,13 @@ describe("DeviceActions", () => {
     expect(await screen.findByText(/crie um PIN/i)).toBeVisible();
   });
 
+  it("names the target computer and explains each action's effect and data sent", async () => {
+    render(<DeviceActions api={baseApi({ startAction: vi.fn(), actionStatus: vi.fn() })} pinApi={pin(true)} deviceId="d1" deviceName="meu-pc" onUnauthenticated={vi.fn()} />);
+    expect(await screen.findByText("Ações em meu-pc")).toBeVisible();
+    expect(screen.getByText(/tira uma foto da webcam e envia a imagem para você/i)).toBeVisible();
+    expect(screen.getByText(/lista os aparelhos na rede local e envia o texto/i)).toBeVisible();
+  });
+
   it("runs a network scan with the PIN and shows the result text", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const start = vi.fn(async (): Promise<StartActionResult> => ({ ok: true, commandId: "c1" }));
