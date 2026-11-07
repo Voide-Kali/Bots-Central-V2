@@ -14,6 +14,7 @@ import (
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/heartbeat"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/hostinfo"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/logging"
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/netloc"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/storage"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/telemetry"
 	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/transport"
@@ -461,5 +462,46 @@ func TestRunnerSendsLiveSamplesEverySecondWhileWatched(t *testing.T) {
 	// Then the 30 s wait is split in 10 s steps, asking "watching?" in between.
 	if len(waits) < 4 || waits[0] != time.Second || waits[1] != time.Second || waits[2] != time.Second || waits[3] != 10*time.Second {
 		t.Fatalf("waits = %v", waits)
+	}
+}
+
+type fakeNetwork struct{ info *netloc.Info }
+
+func (f fakeNetwork) Collect(context.Context) *netloc.Info { return f.info }
+
+func TestRunnerSendsNetworkWhenCollectorPresentAndActive(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
+	fake.OnSend = func(heartbeat.Model) { cancel() }
+	dependencies := testDependencies(fake, state)
+	ip := "203.0.113.7"
+	dependencies.Network = fakeNetwork{info: &netloc.Info{V: netloc.Version, PublicIP: &ip, LocalIPs: []string{"192.168.0.2"}}}
+	runner, err := New(testConfig(), dependencies)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_ = runner.Run(ctx)
+	calls := fake.Calls()
+	if len(calls) == 0 || calls[0].Network == nil || calls[0].Network.PublicIP == nil || *calls[0].Network.PublicIP != "203.0.113.7" {
+		t.Fatalf("network claim not sent: %+v", calls)
+	}
+}
+
+func TestRunnerOmitsNetworkWhenNoCollector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	fake := &transport.Fake{Results: []error{nil}}
+	state := &testEnrollment{record: enrollment.Record{DeviceID: "device-1", Status: enrollment.StatusActive}}
+	fake.OnSend = func(heartbeat.Model) { cancel() }
+	runner, err := New(testConfig(), testDependencies(fake, state))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_ = runner.Run(ctx)
+	calls := fake.Calls()
+	if len(calls) == 0 || calls[0].Network != nil {
+		t.Fatalf("expected no network claim: %+v", calls)
 	}
 }
