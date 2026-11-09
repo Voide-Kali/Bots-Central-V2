@@ -18,6 +18,15 @@ const EVENTS_EVERY = 5_000;
 const FEATURE_EVERY = 60_000;
 const MAX_VISIBLE_EVENTS = 8;
 const ACTORS: Readonly<Record<string, string>> = { user: "você", device: "computador", system: "sistema", telegram: "Telegram" };
+const PUBLIC_KEY = "aval.fair.publicMode";
+
+function readPublicMode(): boolean {
+  try {
+    return window.localStorage.getItem(PUBLIC_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 function pct(used: number | null, total: number | null): number | null {
   return used !== null && total ? Math.round((used / total) * 100) : null;
@@ -27,7 +36,7 @@ function when(timestamp: string): string {
   return new Intl.DateTimeFormat("pt-BR", { timeStyle: "medium" }).format(new Date(timestamp));
 }
 
-function Tile({ device }: { readonly device: Device }): ReactElement {
+function Tile({ device, name }: { readonly device: Device; readonly name: string }): ReactElement {
   const online = device.status === "online" && device.lifecycleStatus === "active";
   const sample = device.telemetry;
   const cpu = sample?.cpuPercent ?? null;
@@ -35,7 +44,7 @@ function Tile({ device }: { readonly device: Device }): ReactElement {
   return <div className={online ? "fair-tile fair-tile--on" : "fair-tile"}>
     <div className="fair-tile__head">
       <span className="fair-tile__dot" />
-      <span className="fair-tile__name">{device.name}</span>
+      <span className="fair-tile__name">{name}</span>
     </div>
     <div className="fair-tile__cpu num">{cpu !== null ? `${Math.round(cpu)}` : "--"}<small>% CPU</small></div>
     <div className="fair-tile__bars">
@@ -45,7 +54,7 @@ function Tile({ device }: { readonly device: Device }): ReactElement {
   </div>;
 }
 
-function Feed({ events }: { readonly events: readonly AuditEvent[] }): ReactElement {
+function Feed({ events, anonymous }: { readonly events: readonly AuditEvent[]; readonly anonymous: boolean }): ReactElement {
   if (events.length === 0) {
     return <p className="fair-feed__empty">Aguardando atividade...</p>;
   }
@@ -53,7 +62,7 @@ function Feed({ events }: { readonly events: readonly AuditEvent[] }): ReactElem
     {events.slice(0, MAX_VISIBLE_EVENTS).map((event) => <li className={event.outcome === "failure" || event.outcome === "denied" ? "fair-feed__row fair-feed__row--alert" : "fair-feed__row"} key={`${event.occurredAt}-${event.action}`}>
       <time className="fair-feed__time num" dateTime={event.occurredAt}>{when(event.occurredAt)}</time>
       <span className="fair-feed__what">{ACTION_LABELS[event.action] ?? event.action}</span>
-      <span className="fair-feed__detail">{eventDetail(event)}{event.actor in ACTORS ? ` - ${ACTORS[event.actor]}` : ""}</span>
+      <span className="fair-feed__detail">{anonymous ? (event.actor in ACTORS ? ACTORS[event.actor] : "") : `${eventDetail(event)}${event.actor in ACTORS ? ` - ${ACTORS[event.actor]}` : ""}`}</span>
     </li>)}
   </ul>;
 }
@@ -63,7 +72,23 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
   const [events, setEvents] = useState<readonly AuditEvent[]>([]);
   const [featured, setFeatured] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  const [publicMode, setPublicMode] = useState(readPublicMode);
   const frame = useRef<HTMLDivElement>(null);
+
+  const labels = useMemo(() => {
+    const map = new Map<string, string>();
+    [...devices].sort((a, b) => a.id.localeCompare(b.id)).forEach((device, index) => map.set(device.id, `Computador ${index + 1}`));
+    return map;
+  }, [devices]);
+  const displayName = useCallback((device: Device): string => (publicMode ? labels.get(device.id) ?? "Computador" : device.name), [publicMode, labels]);
+
+  const togglePublic = useCallback(() => {
+    setPublicMode((on) => {
+      const next = !on;
+      try { window.localStorage.setItem(PUBLIC_KEY, next ? "on" : "off"); } catch { /* per-viewer only */ }
+      return next;
+    });
+  }, []);
 
   const onError = useCallback((error: unknown) => { if (error instanceof UnauthenticatedError) onUnauthenticated(); }, [onUnauthenticated]);
 
@@ -109,6 +134,7 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
       </div>
       <div className="fair__meta">
         <span className="fair__clock num">{new Intl.DateTimeFormat("pt-BR", { timeStyle: "medium" }).format(now)}</span>
+        <button className="button" onClick={togglePublic} type="button" aria-pressed={publicMode}>{publicMode ? "Nomes ocultos" : "Nomes visíveis"}</button>
         <button className="button" onClick={fullscreen} type="button">Tela cheia</button>
       </div>
     </header>
@@ -116,19 +142,19 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
     <div className="fair__grid">
       <div className="fair__chart">
         {featuredDevice ? <>
-          <div className="fair__chart-head"><span className="fair__chart-name">{featuredDevice.name}</span><span className="fair__chart-period">Atualização do gráfico</span></div>
+          <div className="fair__chart-head"><span className="fair__chart-name">{displayName(featuredDevice)}</span><span className="fair__chart-period">Atualização do gráfico</span></div>
           <DeviceChart api={api.devices} deviceId={featuredDevice.id} key={featuredDevice.id} onUnauthenticated={onUnauthenticated} />
         </> : <div className="fair__chart-empty"><p>Nenhum computador ativo para exibir.</p></div>}
       </div>
       <aside className="fair__feed" aria-label="Atividade recente">
         <h2 className="fair__feed-title">Atividade recente</h2>
-        <Feed events={events} />
+        <Feed events={events} anonymous={publicMode} />
       </aside>
     </div>
 
     <footer className="fair__fleet">
       {active.length === 0 ? <span className="fair__fleet-empty">Adicione um computador para comecar.</span>
-        : active.map((device) => <Tile device={device} key={device.id} />)}
+        : active.map((device) => <Tile device={device} name={displayName(device)} key={device.id} />)}
     </footer>
     <p className="fair__tagline">Nada acontece nos computadores sem o aval do dono.</p>
   </section>;

@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../api";
 import type { AuditEvent, Device, DeviceTelemetry } from "../api/contracts";
 import { FairMode } from "./FairMode";
@@ -25,17 +25,31 @@ function api(devices: readonly Device[], events: readonly AuditEvent[]): ApiClie
 }
 
 describe("FairMode", () => {
-  it("shows the fleet, an accurate online status, and the live activity feed", async () => {
+  beforeEach(() => {
+    try { window.localStorage.clear(); } catch { /* ignore */ }
+  });
+
+  it("hides real computer names and event details by default for a public wall", async () => {
     render(<FairMode api={api([device("tropa", "online", 72), device("MacMaker", "online", 15)], [event])} onUnauthenticated={vi.fn()} />);
     expect(await screen.findByText("TODOS ONLINE")).toBeVisible();
-    expect(screen.queryByText("PROTEGIDO")).toBeNull();
     expect(screen.getByText("2 de 2 online")).toBeVisible();
-    // Fleet tiles with the computers and their CPU.
-    expect(screen.getAllByText("tropa").length).toBeGreaterThan(0);
+    // Generic labels instead of the real names, and the CPU still shows.
+    expect(screen.getAllByText("Computador 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Computador 2").length).toBeGreaterThan(0);
+    expect(screen.queryByText("tropa")).toBeNull();
+    expect(screen.queryByText("MacMaker")).toBeNull();
     expect(screen.getByText("72")).toBeVisible();
-    expect(screen.getByText("MacMaker")).toBeVisible();
-    // The live activity feed shows the friendly label of the event.
+    // The feed still shows the action label, but not the target name in the detail.
     expect(await screen.findByText("Ação concluída pelo agente")).toBeVisible();
+  });
+
+  it("reveals the real names and details when the owner turns public mode off", async () => {
+    render(<FairMode api={api([device("tropa", "online", 72), device("MacMaker", "online", 15)], [event])} onUnauthenticated={vi.fn()} />);
+    expect((await screen.findAllByText("Computador 1")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Nomes ocultos" }));
+    expect((await screen.findAllByText("tropa")).length).toBeGreaterThan(0);
+    expect(screen.getByText("MacMaker")).toBeVisible();
+    expect(screen.queryByText("Computador 1")).toBeNull();
   });
 
   it("warns when a computer is offline", async () => {
