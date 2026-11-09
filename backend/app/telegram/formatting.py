@@ -33,6 +33,23 @@ def _uptime(seconds: int) -> str:
     return f"{days} d {hours} h" if days else f"{hours} h {seconds % 3600 // 60} min"
 
 
+def _network_line(device: Device) -> str | None:
+    """One plain-text line with the IP the owner opted into reporting (ADR-036).
+
+    Shown only to the device's own owner, same information the panel already shows.
+    """
+    public_ip = device.last_public_ip
+    local_ips = device.last_local_ips or []
+    if not public_ip and not local_ips:
+        return None
+    parts: list[str] = []
+    if public_ip:
+        parts.append(f"IP público {public_ip}")
+    if local_ips:
+        parts.append(f"local {local_ips[0]}")
+    return "Rede: " + " · ".join(parts)
+
+
 def friendly_platform(platform: str) -> str:
     return PLATFORMS.get(platform.split("/", 1)[0].lower(), platform)
 
@@ -84,7 +101,11 @@ def device_card(
     ]
     if device.lifecycle_status.value == "pending":
         lines += ["", "Aprove no painel comparando o código mostrado no computador."]
-    elif sample is not None:
+        return "\n".join(lines)
+    net_line = _network_line(device)
+    if net_line:
+        lines += ["", net_line]
+    if sample is not None:
         lines.append("")
         if sample.cpu_percent is not None:
             lines.append(f"CPU: {sample.cpu_percent:.0f}%")
