@@ -46,6 +46,40 @@ your-secret-input-command | ./bots-central-agent -config ./config.json -pairing-
 The displayed fingerprint is byte-for-byte compatible with the Backend:
 `SHA256:<unpadded-base64url-SHA-256-of-raw-Ed25519-public-key>`.
 
+## Desinstalar e remover as chaves locais
+
+Remover o computador no painel apaga o computador e a telemetria do servidor (a
+auditoria e preservada), mas **nao** desinstala o agente nem apaga a chave
+privada no proprio computador. Para tirar o acesso de vez, desinstale o agente e
+apague o `state_dir` (que contem a chave Ed25519 e o estado de pareamento).
+
+Linux (Kali/Debian/Ubuntu, servico systemd):
+
+```bash
+sudo systemctl disable --now aval-agent
+sudo rm -f /etc/systemd/system/aval-agent.service
+sudo rm -rf /etc/systemd/system/aval-agent.service.d
+sudo systemctl daemon-reload
+sudo rm -rf /var/lib/aval-agent        # apaga a chave Ed25519 e o estado de pareamento
+sudo rm -rf /etc/aval-agent            # configuracao
+sudo rm -f  /usr/local/bin/aval-agent  # binario
+# opcional: remover o usuario de servico e a pasta compartilhada
+sudo userdel aval-agent 2>/dev/null || true
+sudo rm -rf /srv/aval-compartilhado
+```
+
+macOS (LaunchAgent do seu usuario, sem sudo):
+
+```bash
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/br.app.aval.agent.plist" 2>/dev/null || true
+rm -f  "$HOME/Library/LaunchAgents/br.app.aval.agent.plist"
+rm -rf "$HOME/Library/Application Support/Aval"   # binario, estado e a chave Ed25519
+```
+
+Depois de apagar o `state_dir`, o agente perde a identidade e nao consegue mais
+se autenticar. Se o computador ainda aparecer no painel, remova-o la tambem para
+apagar a telemetria; parear de novo gera uma chave nova.
+
 ## Configuration and transport
 
 `backend_base_url` is one HTTPS origin with no embedded credentials, path,

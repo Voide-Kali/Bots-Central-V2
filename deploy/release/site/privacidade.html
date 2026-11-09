@@ -40,6 +40,7 @@
     <li><strong>Conta:</strong> seu e-mail (para login e verificação) e o material de sessão. Senhas são guardadas apenas como hash (Argon2id); nunca em texto claro.</li>
     <li><strong>PIN de aprovação:</strong> guardado apenas como HMAC (uma impressão digital criptográfica) — o PIN em si nunca é armazenado.</li>
     <li><strong>Computadores pareados:</strong> nome, sistema operacional, identidade do dispositivo (chave pública) e telemetria de estado (CPU, memória, disco, temperatura, tempo ligado).</li>
+    <li><strong>Localização de rede (opcional, desligada por padrão):</strong> um sensor que o dono ativa por computador (<code>network_location</code>). Quando ligado, o computador informa ao servidor o seu <strong>IP público</strong> e os <strong>IPs locais</strong> das interfaces, para ajudar a localizar um notebook. Fica desligado até você ativar.</li>
     <li><strong>Auditoria:</strong> registro de ações (quem pediu, o quê, quando e o resultado), sem conteúdo sensível — não guardamos o PIN, nem o texto das suas mensagens, nem o conteúdo dos arquivos.</li>
   </ul>
 
@@ -48,6 +49,7 @@
     <li>Os dados ficam em um <strong>servidor do próprio responsável</strong>, acessível somente pela rede privada (Tailscale). Não há servidor nosso na internet pública guardando seus dados.</li>
     <li><strong>Não vendemos, alugamos nem compartilhamos</strong> seus dados com terceiros. Não há publicidade.</li>
     <li>Para enviar e-mails do sistema (verificação, recuperação), usamos um provedor de e-mail (Gmail) apenas como meio de entrega da mensagem.</li>
+    <li>Com o sensor de <strong>localização de rede</strong> ligado (opcional, desligado por padrão), o computador consulta um serviço externo (<strong>api.ipify.org</strong>) só para descobrir o próprio IP público. Essa é a única consulta a terceiros feita pelo agente; nenhum outro dado seu é enviado a esse serviço. Com o sensor desligado, nenhuma consulta acontece.</li>
   </ul>
 
   <h2>Base legal e finalidade (LGPD)</h2>

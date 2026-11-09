@@ -216,7 +216,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   }
   async function forgetDevice(device: Device): Promise<void> {
     if (actionLock.current || !api.devices.forget) return;
-    if (!window.confirm(`Remover o computador "${device.name}"? Ele some do painel e precisará ser pareado de novo para voltar.`)) return;
+    if (!window.confirm(`Remover o computador "${device.name}"?\n\nIsso apaga o computador e a telemetria dele do painel. O histórico de auditoria (quem fez o que) é preservado. Para voltar, ele precisa ser pareado de novo. O agente continua instalado no computador: para tirar o acesso de vez, desinstale o agente e apague as chaves locais (veja agent/README).`)) return;
     actionLock.current = true;
     setActionBusy(true);
     setFeedback(undefined);
@@ -314,7 +314,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           </div> : null}
           {filteredDevices.length === 0 ? <div className="empty">
             {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}
-          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} renderActions={(device) => <DeviceActions api={api.devices} pinApi={api.actionPin} deviceId={device.id} onUnauthenticated={invalidate} />} onRename={(device) => void renameDevice(device)} onForget={(device) => void forgetDevice(device)} selectedId={selectedId} />}
+          </div> : <DeviceList devices={filteredDevices} onSelect={selectDevice} renderChart={(device) => device.lifecycleStatus === "active" ? <DeviceChart api={api.devices} deviceId={device.id} onUnauthenticated={invalidate} /> : null} renderActions={(device) => <DeviceActions api={api.devices} pinApi={api.actionPin} deviceId={device.id} deviceName={device.name} onUnauthenticated={invalidate} />} onRename={(device) => void renameDevice(device)} onForget={(device) => void forgetDevice(device)} selectedId={selectedId} />}
         </section> : null}
       </div>
       {authenticated && (api.telegram || api.actionPin) ? <aside aria-labelledby="aval-heading" className="workspace__aside">
