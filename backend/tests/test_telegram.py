@@ -15,7 +15,8 @@ from test_device_telemetry import VALID, _active_device, _beat, pg_cleanup  # no
 
 from app.auth import device_online
 from app.auth.abuse_control import AbuseControlUnavailable
-from app.db.models import Device, DeviceLifecycleStatus, TelegramLink, TelegramLinkCode
+from app.db.enums import DeviceLifecycleStatus
+from app.db.models import Device, TelegramLink, TelegramLinkCode
 from app.telegram import client as telegram_client
 from app.telegram import commands, formatting, linking
 from app.telegram.alerts import collect_presence_alerts
