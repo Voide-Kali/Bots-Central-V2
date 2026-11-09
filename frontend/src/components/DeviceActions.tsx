@@ -9,10 +9,10 @@ import { UnauthenticatedError } from "../api/errors";
  * phone is far: trigger here, type the PIN, see the result. Same core, no new power.
  */
 
-const ACTIONS: ReadonlyArray<{ readonly kind: ActionKind; readonly label: string }> = [
-  { kind: "lock_screen", label: "Bloquear tela" },
-  { kind: "webcam_photo", label: "Foto" },
-  { kind: "network_scan", label: "Rede" }
+const ACTIONS: ReadonlyArray<{ readonly kind: ActionKind; readonly label: string; readonly effect: string }> = [
+  { kind: "lock_screen", label: "Bloquear tela", effect: "trava a tela deste computador. Nenhum dado é enviado a você." },
+  { kind: "webcam_photo", label: "Foto", effect: "tira uma foto da webcam e envia a imagem para você." },
+  { kind: "network_scan", label: "Rede", effect: "lista os aparelhos na rede local e envia o texto para você." }
 ];
 
 const TERMINAL = new Set(["completed", "delivered", "failed", "expired", "denied"]);
@@ -31,10 +31,11 @@ const PIN_MESSAGES: Readonly<Record<string, string>> = {
   failed: "Não foi possível iniciar a ação agora."
 };
 
-export function DeviceActions({ api, pinApi, deviceId, onUnauthenticated }: {
+export function DeviceActions({ api, pinApi, deviceId, deviceName, onUnauthenticated }: {
   readonly api: DevicesApi;
   readonly pinApi?: ActionPinApi;
   readonly deviceId: string;
+  readonly deviceName?: string;
   onUnauthenticated(): void;
 }): ReactElement | null {
   const [pin, setPin] = useState("");
@@ -110,9 +111,12 @@ export function DeviceActions({ api, pinApi, deviceId, onUnauthenticated }: {
 
   return <section aria-label="Ações" className="action-panel">
     <div className="action-panel__head">
-      <span className="action-panel__title">Ações</span>
+      <span className="action-panel__title">{deviceName ? `Ações em ${deviceName}` : "Ações"}</span>
       <span className="action-panel__note">Toda ação pede o seu PIN.</span>
     </div>
+    <ul className="action-panel__effects">
+      {ACTIONS.map((action) => <li key={action.kind}><strong>{action.label}</strong>: {action.effect}</li>)}
+    </ul>
     <div className="action-panel__row">
       <label className="action-panel__pin">
         <span className="sr-only">PIN de 6 números</span>
