@@ -3,8 +3,10 @@
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 # Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
 #   sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan ./install-linux.sh https://...
-# Optional ADR-019 sensor (a photo to your Telegram when someone types a wrong password):
-#   sudo AVAL_SENSORS=failed_login_photo ./install-linux.sh https://...
+# Optional sensors (comma-separated), off by default:
+#   failed_login_photo (ADR-019): a photo to your Telegram on a wrong password (Linux only).
+#   network_location (ADR-036): reports this computer's public/local IP in the heartbeat.
+#   sudo AVAL_SENSORS=network_location ./install-linux.sh https://...
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
 SERVER="${1:-}"
@@ -28,9 +30,11 @@ SENSORS_JSON=""
 IFS=',' read -ra SENSORS <<< "${AVAL_SENSORS:-}"
 for sensor in "${SENSORS[@]+"${SENSORS[@]}"}"; do
   case "$sensor" in
-    failed_login_photo) SENSORS_JSON="\"failed_login_photo\"";;
+    failed_login_photo|network_location)
+      [ -n "$SENSORS_JSON" ] && SENSORS_JSON="$SENSORS_JSON, "
+      SENSORS_JSON="$SENSORS_JSON\"$sensor\"";;
     "") ;;
-    *) echo "Unknown sensor: $sensor (use failed_login_photo)" >&2; exit 1;;
+    *) echo "Unknown sensor: $sensor (use failed_login_photo or network_location)" >&2; exit 1;;
   esac
 done
 
