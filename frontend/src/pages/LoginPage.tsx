@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from "react";
 import { appHref, navigate } from "../app/navigation";
 import { useSession } from "../app/session";
 import { Brand } from "../components/Brand";
+import { Seal3D } from "../components/Seal3D";
 
 function read(form: HTMLFormElement, name: string): string {
   return String(new FormData(form).get(name) ?? "");
@@ -35,7 +36,13 @@ export function LoginPage(): ReactElement {
     <div className="auth-frame">
       <header className="auth-frame__header"><a aria-label="Aval" className="brand-link" href={appHref("/login")}><Brand withTagline /></a></header>
       <main className="auth-frame__main">
-        <section aria-labelledby="login-title" className="auth-card">
+        <div className="auth-split">
+          <aside className="auth-hero">
+            <Seal3D />
+            <p className="auth-hero__tag">Nada acontece<br />sem o seu <span>aval</span></p>
+            <p className="auth-hero__sub">O agente nos seus computadores só executa uma ação depois que você aprova. Nada automático, nada sem o seu visto.</p>
+          </aside>
+          <section aria-labelledby="login-title" className="auth-card auth-card--split">
           <h1 id="login-title">Entrar</h1>
           <p className="auth-card__lead">Veja seus computadores e aprove o que a IA pedir para fazer.</p>
           <form className="form" onSubmit={submit} noValidate>
@@ -53,7 +60,8 @@ export function LoginPage(): ReactElement {
             <a href={appHref("/register")} onClick={(event) => { event.preventDefault(); navigate("/register"); }}>Criar conta</a>
             <a href={appHref("/recover")} onClick={(event) => { event.preventDefault(); navigate("/recover"); }}>Esqueci minha senha</a>
           </div>
-        </section>
+          </section>
+        </div>
       </main>
       <footer className="auth-frame__footer">Nada acontece nos seus computadores sem o seu aval.</footer>
     </div>

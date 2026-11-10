@@ -25,11 +25,11 @@ const RANGES: Readonly<Record<Range, { readonly minutes: number; readonly second
 };
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
-const H = 150;
-const PAD_L = 34;
-const PAD_R = 8;
-const PAD_T = 12;
-const PAD_B = 20;
+const H = 180;
+const PAD_L = 36;
+const PAD_R = 10;
+const PAD_T = 14;
+const PAD_B = 22;
 
 interface Point { readonly t: number; readonly v: number }
 
@@ -102,7 +102,9 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
           return <circle className="chart__sample" cx={x(point.t)} cy={y(point.v)} key={index} r="3" />;
         }
         const line = segment.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
-        return <path className="chart__line" d={line} key={index} />;
+        const baseline = (H - PAD_B).toFixed(1);
+        const area = `M${x(segment[0]!.t).toFixed(1)},${baseline} ${segment.map((p) => `L${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")} L${x(segment[segment.length - 1]!.t).toFixed(1)},${baseline} Z`;
+        return <g key={index}><path className="chart__area" d={area} /><path className="chart__line" d={line} /></g>;
       })}
       {peak && visiblePoints.length > 2 ? <g className="chart__mark chart__mark--peak"><circle cx={x(peak.t)} cy={y(peak.v)} r="3.5" /><text x={x(peak.t)} y={Math.max(y(peak.v) - 7, 10)} textAnchor="middle">pico</text></g> : null}
       {low && visiblePoints.length > 2 && low.v !== peak?.v ? <g className="chart__mark"><circle cx={x(low.t)} cy={y(low.v)} r="3" /></g> : null}

@@ -148,6 +148,35 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .auth-card__fine { color: var(--muted); font-size: var(--fs-small); }
 .auth-frame__footer, .app__footer { padding: 24px 16px 32px; color: var(--faint); font-size: var(--fs-small); text-align: center; }
 
+/* Split entry: a living 3D seal on blue, the form kept quiet on white. */
+.auth-split { display: grid; grid-template-columns: 1.02fr 0.98fr; width: min(100% - 32px, 940px); margin: 0 auto; border-radius: 16px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow-2); border: 1px solid var(--border); }
+.auth-hero { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 26px; padding: 48px; background: var(--primary); color: #fff; overflow: hidden; }
+.auth-hero::after { content: ""; position: absolute; right: -130px; bottom: -130px; width: 340px; height: 340px; border-radius: 50%; background: radial-gradient(circle at 42% 42%, rgb(255 96 106 / .24), transparent 62%); pointer-events: none; }
+.auth-hero > * { position: relative; z-index: 1; }
+.auth-hero__tag { font-size: clamp(32px, 4.4vw, 44px); line-height: 1.02; font-weight: 700; letter-spacing: -0.02em; }
+.auth-hero__tag span { color: var(--negative); }
+.auth-hero__sub { max-width: 34ch; color: rgb(255 255 255 / .82); line-height: 1.55; }
+.auth-card--split { width: auto; border: 0; border-radius: 0; box-shadow: none; padding: 48px 44px; align-content: center; }
+@media (max-width: 720px) {
+  .auth-split { grid-template-columns: 1fr; width: min(100% - 32px, 440px); }
+  .auth-hero { padding: 36px 32px 32px; align-items: center; text-align: center; }
+  .auth-card--split { padding: 32px; }
+}
+
+.seal3d-stage { position: relative; width: 168px; height: 168px; transform-style: preserve-3d; animation: seal-float 7s ease-in-out infinite; }
+.seal3d { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateX(15deg) rotateY(-20deg); animation: seal-wobble 7s ease-in-out infinite; }
+.seal3d__layer { position: absolute; inset: 0; border-radius: 50%; background: #dbe4fb; transform: translateZ(calc(var(--z) * 1px)); }
+.seal3d__layer:nth-child(odd) { background: #c6d4f6; }
+.seal3d__face { position: absolute; inset: 0; border-radius: 50%; transform: translateZ(14px); background: radial-gradient(circle at 32% 26%, #ffffff, #e7edfa 70%); box-shadow: inset 0 0 0 3px rgb(14 53 157 / .14), inset 0 -10px 30px rgb(14 53 157 / .16); display: grid; place-items: center; }
+.seal3d__face svg { width: 78%; height: 78%; overflow: visible; }
+.seal3d__ring text { font-family: var(--font); font-size: 12.5px; font-weight: 600; letter-spacing: 2.2px; fill: rgb(14 53 157 / .55); }
+.seal3d__check { fill: none; stroke: var(--negative); stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 2px 5px rgb(255 96 106 / .45)); }
+.seal3d__back { position: absolute; inset: 0; border-radius: 50%; transform: translateZ(-14px) rotateY(180deg); background: radial-gradient(circle at 60% 30%, #eaf0fe, #c6d4f6); }
+.seal3d__shadow { position: absolute; left: 14%; right: 14%; bottom: -12%; height: 15%; border-radius: 50%; background: rgb(6 16 54 / .4); filter: blur(22px); }
+@keyframes seal-wobble { 0%, 100% { transform: rotateX(15deg) rotateY(-23deg); } 50% { transform: rotateX(10deg) rotateY(-1deg); } }
+@keyframes seal-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@media (prefers-reduced-motion: reduce) { .seal3d-stage, .seal3d { animation: none; } }
+
 /* ---------- App shell: no sidebar, a 48px bar over one centred column ---------- */
 .app { display: grid; min-height: 100vh; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
 .topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: saturate(1.4) blur(8px); border-bottom: 1px solid var(--border); box-shadow: var(--shadow-1); }
@@ -280,10 +309,11 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .chart__value { justify-self: end; font-size: 22px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .chart__value small { color: var(--muted); font-size: 12px; font-weight: 400; }
 .chart__meta { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
-.chart__svg { display: block; width: 100%; height: 150px; margin-top: 6px; overflow: visible; touch-action: none; }
+.chart__svg { display: block; width: 100%; height: 180px; margin-top: 8px; overflow: visible; touch-action: none; }
 .chart__grid { stroke: var(--rule); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart__tick { fill: var(--faint); font-size: 10px; font-family: var(--font); }
-.chart__line { fill: none; stroke: var(--pen); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.chart__area { fill: color-mix(in srgb, var(--pen) 11%, transparent); stroke: none; }
+.chart__line { fill: none; stroke: var(--pen); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .chart__sample { fill: var(--pen); stroke: var(--surface); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .chart__now { fill: var(--pen); stroke: var(--surface); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .chart__mark circle { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
