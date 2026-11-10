@@ -5,7 +5,7 @@ import type { Device } from "../api/contracts";
 import { SessionProvider } from "../app/session";
 import { createHttpApiClient } from "../api/httpAdapter";
 import { accessTokenStore } from "../api/memoryAccessToken";
-import { DevicesPage } from "./DevicesPage";
+import { DevicesPage, sortDevices } from "./DevicesPage";
 
 const serverDevices: readonly Device[] = [
   { id: "PC000", name: "PC000", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: { recordedAt: "2026-09-10T10:00:00Z", cpuPercent: 37.5, load1: 0.8, cpuCount: 8, memoryTotalBytes: 16 * 1024 ** 3, memoryUsedBytes: 4 * 1024 ** 3, diskTotalBytes: 512 * 1024 ** 3, diskUsedBytes: 128 * 1024 ** 3, temperatureC: 51.5, uptimeSeconds: 90_061 } },
@@ -386,5 +386,47 @@ describe("Device Online pairing and decisions", () => {
     fireEvent.click(screen.getByRole("button", { name }));
     await screen.findByText("Acesso necessário");
     expect(accessTokenStore.read()).toBeUndefined();
+  });
+});
+
+describe("sortDevices", () => {
+  function make(id: string, name: string, status: Device["status"], cpu: number | null, lastSeenAt: string | null): Device {
+    return { id, name, platform: "linux/amd64", status, lifecycleStatus: "active", lastSeenAt, agentVersion: "0.1.0", fingerprint: null, telemetry: cpu === null ? null : { recordedAt: "2026-09-10T10:00:00Z", cpuPercent: cpu, load1: null, cpuCount: 4, memoryTotalBytes: 100, memoryUsedBytes: 40, diskTotalBytes: null, diskUsedBytes: null, temperatureC: null, uptimeSeconds: 1 } };
+  }
+  const bravo = make("B", "Bravo", "online", 10, "2026-09-10T09:00:00Z");
+  const alpha = make("A", "Alpha", "offline", 80, "2026-09-10T12:00:00Z");
+  const charlie = make("C", "Charlie", "online", 50, "2026-09-10T11:00:00Z");
+  const list = [bravo, alpha, charlie];
+
+  it("puts online computers first, then by name", () => {
+    expect(sortDevices(list, "status").map((d) => d.id)).toEqual(["B", "C", "A"]);
+  });
+  it("sorts by name", () => {
+    expect(sortDevices(list, "name").map((d) => d.id)).toEqual(["A", "B", "C"]);
+  });
+  it("sorts by CPU, highest first", () => {
+    expect(sortDevices(list, "cpu").map((d) => d.id)).toEqual(["A", "C", "B"]);
+  });
+  it("sorts by last seen, most recent first", () => {
+    expect(sortDevices(list, "recent").map((d) => d.id)).toEqual(["A", "C", "B"]);
+  });
+  it("does not mutate the input", () => {
+    const before = list.map((d) => d.id);
+    sortDevices(list, "name");
+    expect(list.map((d) => d.id)).toEqual(before);
+  });
+});
+
+describe("DevicesPage sort control", () => {
+  it("reorders the list when the sort changes", async () => {
+    const devices: readonly Device[] = [
+      { id: "ZED", name: "Zebra", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null },
+      { id: "AAA", name: "Abelha", platform: "linux/amd64", status: "online", lifecycleStatus: "active", lastSeenAt: "2026-09-10T10:00:00Z", agentVersion: "0.1.0", fingerprint: null, telemetry: null }
+    ];
+    renderDevices(fakeClient(async () => devices));
+    await screen.findByRole("button", { name: /Zebra/ });
+    fireEvent.change(screen.getByLabelText("Ordenar"), { target: { value: "name" } });
+    const order = screen.getAllByRole("button").map((b) => b.textContent ?? "").filter((t) => t.includes("Abelha") || t.includes("Zebra"));
+    expect(order[0]).toContain("Abelha");
   });
 });
