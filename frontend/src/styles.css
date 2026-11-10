@@ -287,6 +287,9 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .action-panel__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .action-panel__pin input { width: 120px; min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); font-size: var(--fs-body); letter-spacing: .25em; box-shadow: var(--shadow-press); }
 .action-panel__buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-panel__power { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.action-panel__power-title { font-weight: 600; }
+.action-panel__confirm { display: inline-flex; gap: 6px; }
 .action-panel__result { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-small); }
 .action-panel__result--error { border-color: color-mix(in srgb, var(--negative) 30%, var(--border)); color: var(--negative); }
 .action-panel__scan { margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-small); color: var(--muted); }

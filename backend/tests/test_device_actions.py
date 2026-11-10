@@ -128,3 +128,27 @@ def test_network_scan_is_delivered_as_text_and_reported_once(setup: Any) -> None
     assert "192.168.1.1 - gw" in mine[0]
     # Reported once; the scan text is dropped from the database afterwards.
     assert [n for n in commands.pending_deliveries(factory)[1] if n.chat_id == CHAT] == []
+
+
+def test_power_digest_vector_matches_the_agent() -> None:
+    device = uuid.UUID("11111111-1111-4111-8111-111111111111")
+    expected = hashlib.sha256(f"aval-action-v1\npower\n{device}\nreboot".encode()).hexdigest()
+    assert commands.action_digest("power", device, "reboot") == expected
+
+
+@pytest.mark.postgresql
+def test_power_requires_a_known_mode(setup: Any) -> None:
+    factory, user_id, device_id, _ = setup
+    for bad in ("", "halt", "poweroff"):
+        with pytest.raises(commands.UnknownAction):
+            commands.request_action(
+                factory, KEY, user_id=user_id, chat_id=CHAT, kind="power",
+                device_id=device_id, argument=bad,
+            )
+    intent = commands.request_action(
+        factory, KEY, user_id=user_id, chat_id=CHAT, kind="power",
+        device_id=device_id, argument="reboot",
+    )
+    subject, body = commands.approval_email(intent)
+    assert "reiniciar o computador" in subject
+    assert "reinicia agora" in body

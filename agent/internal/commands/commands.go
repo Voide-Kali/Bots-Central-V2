@@ -2,8 +2,11 @@
 // may hand to the agent (ADR-015, ADR-016):
 //
 //   - send_file: read one regular file, by bare name, from the shared folder;
-//   - lock_screen, webcam_photo: run one fixed program with fixed arguments,
-//     only if listed in allowed_actions.
+//   - lock_screen, webcam_photo, network_scan: run one fixed program with fixed
+//     arguments, only if listed in allowed_actions;
+//   - power: shut down, reboot or suspend the machine (mode in file_name), only if
+//     listed in allowed_actions. The agent answers "ok" first, then acts after a short
+//     grace period so the result reaches the server before the computer goes down.
 //
 // Every command carries a digest of exactly what the owner approved; the agent
 // recomputes it and refuses on mismatch. There is no shell and no free text.
@@ -18,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -25,7 +29,10 @@ import (
 const DigestPrefix = "aval-action-v1"
 
 // Actions that need explicit opt-in through allowed_actions.
-var KnownActions = map[string]bool{"lock_screen": true, "webcam_photo": true, "network_scan": true}
+var KnownActions = map[string]bool{"lock_screen": true, "webcam_photo": true, "network_scan": true, "power": true}
+
+// PowerModes are the only arguments the power action accepts (ADR-016).
+var PowerModes = map[string]bool{"shutdown": true, "reboot": true, "suspend": true}
 
 // MaxFileBytes mirrors the backend limit.
 const MaxFileBytes = 10 * 1024 * 1024
@@ -57,9 +64,10 @@ type Result struct {
 // Executor runs approved commands: files from one shared folder and the
 // actions the owner enabled on this computer.
 type Executor struct {
-	sharedDir string
-	allowed   map[string]bool
-	system    System
+	sharedDir  string
+	allowed    map[string]bool
+	system     System
+	powerGrace time.Duration // delay before powering off, so the result reaches the server first
 }
 
 // NewExecutor needs at least a shared folder or one allowed action.
@@ -80,7 +88,7 @@ func NewExecutor(sharedDir string, allowedActions []string) (*Executor, error) {
 	if sharedDir != "" {
 		sharedDir = filepath.Clean(sharedDir)
 	}
-	return &Executor{sharedDir: sharedDir, allowed: allowed, system: hostSystem{}}, nil
+	return &Executor{sharedDir: sharedDir, allowed: allowed, system: hostSystem{}, powerGrace: defaultPowerGrace}, nil
 }
 
 // ValidFileName accepts a bare file name only (same rules as the backend).
@@ -123,6 +131,14 @@ func (e *Executor) Execute(command Command) Result {
 			return Result{Error: "disabled"}
 		}
 		return e.networkScan()
+	case "power":
+		if !PowerModes[command.FileName] { // the mode travels in file_name; digest already bound it
+			return Result{Error: "digest"}
+		}
+		if !e.allowed[command.Type] {
+			return Result{Error: "disabled"}
+		}
+		return e.power(command.FileName)
 	default:
 		return Result{Error: "disabled"}
 	}

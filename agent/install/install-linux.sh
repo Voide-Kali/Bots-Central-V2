@@ -2,7 +2,7 @@
 # Install the Aval agent as a hardened systemd service (Kali/Debian/Ubuntu).
 # Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
 # Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
-#   sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan ./install-linux.sh https://...
+#   sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan,power ./install-linux.sh https://...
 # Optional sensors (comma-separated), off by default:
 #   failed_login_photo (ADR-019): a photo to your Telegram on a wrong password (Linux only).
 #   network_location (ADR-036): reports this computer's public/local IP in the heartbeat.
@@ -20,9 +20,9 @@ ACTIONS_JSON=""
 IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
 for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
   case "$action" in
-    lock_screen|webcam_photo|network_scan) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    lock_screen|webcam_photo|network_scan|power) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
     "") ;;
-    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan)" >&2; exit 1;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan,power)" >&2; exit 1;;
   esac
 done
 
@@ -87,7 +87,8 @@ fi
 echo "==> Actions: ${AVAL_ACTIONS:-none}"
 DROPIN=/etc/systemd/system/aval-agent.service.d
 rm -f "$DROPIN/webcam.conf" "$DROPIN/journal.conf" "$DROPIN/scan.conf" \
-  /etc/polkit-1/rules.d/49-aval-agent-lock.rules
+  /etc/polkit-1/rules.d/49-aval-agent-lock.rules \
+  /etc/polkit-1/rules.d/49-aval-agent-power.rules
 case ",${AVAL_ACTIONS:-}," in *,lock_screen,*)
   # Let only the aval-agent user ask logind to lock the sessions (nothing else).
   install -d -m 0755 /etc/polkit-1/rules.d
@@ -98,6 +99,28 @@ polkit.addRule(function (action, subject) {
   }
 });
 RULE
+  ;;
+esac
+
+case ",${AVAL_ACTIONS:-}," in *,power,*)
+  # power (ADR-016): let only the aval-agent user ask logind to power off, reboot or suspend.
+  # The agent runs "systemctl poweroff|reboot|suspend"; logind (PID 1) does the work, so the
+  # service itself needs no extra capabilities, only this polkit authorization.
+  install -d -m 0755 /etc/polkit-1/rules.d
+  cat > /etc/polkit-1/rules.d/49-aval-agent-power.rules <<'RULE'
+polkit.addRule(function (action, subject) {
+  if (subject.user == "aval-agent" && (
+      action.id == "org.freedesktop.login1.power-off" ||
+      action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+      action.id == "org.freedesktop.login1.reboot" ||
+      action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
+      action.id == "org.freedesktop.login1.suspend" ||
+      action.id == "org.freedesktop.login1.suspend-multiple-sessions")) {
+    return polkit.Result.YES;
+  }
+});
+RULE
+  echo "==> Action: desligar, reiniciar e suspender liberados para este computador (com aval)."
   ;;
 esac
 case ",${AVAL_ACTIONS:-},${AVAL_SENSORS:-}," in *,webcam_photo,*|*,failed_login_photo,*)
