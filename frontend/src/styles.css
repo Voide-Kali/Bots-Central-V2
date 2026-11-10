@@ -10,35 +10,35 @@
 
 /* Dark only (decided by Voide, 21/10/2026): off-white details, square corners, real depth. */
 :root {
-  --ground: #08090b;
-  --surface: #121317;
-  --raised: #191b20;
-  --active: #23252b;
-  --border: #24262c;
-  --rule: #1c1e23;
-  --control: #3a3d45;
-  --text: #ecedef;
-  --muted: #a3a6ad;
-  --faint: #8b8e96;
-  --primary: #ecedef;
-  --on-primary: #08090b;
-  --secondary: #23252b;
-  --pen: #5b95f0;
-  --track: #2a2d34;
-  --positive: #3fc07a;
-  --negative: #f0687c;
-  --warning: #f0b65a;
-  --pill-positive-bg: #14261b; --pill-positive-ink: #5fd394;
-  --pill-negative-bg: #2c161b; --pill-negative-ink: #f58d9c;
-  --pill-warning-bg: #2a2111; --pill-warning-ink: #f3c06f; --pill-warning-edge: #5a4718;
-  --pill-neutral-bg: #23252b; --pill-neutral-ink: #c8c9cd;
-  --focus: #8ab4ff;
+  --ground: #f4f7fc;
+  --surface: #ffffff;
+  --raised: #f7f9fe;
+  --active: #e9f0fc;
+  --border: #e3e8f2;
+  --rule: #edf0f7;
+  --control: #c6d0e4;
+  --text: #0b1640;
+  --muted: #5b6686;
+  --faint: #8a93a9;
+  --primary: #0e359d;
+  --on-primary: #ffffff;
+  --secondary: #e9f0fc;
+  --pen: #0e359d;
+  --track: #e3e8f2;
+  --positive: #1aa35a;
+  --negative: #ff606a;
+  --warning: #c9820a;
+  --pill-positive-bg: #e6f6ec; --pill-positive-ink: #0f7a3d;
+  --pill-negative-bg: #ffe7e9; --pill-negative-ink: #c62f3b;
+  --pill-warning-bg: #fbf1d9; --pill-warning-ink: #8a5e00; --pill-warning-edge: #ecdba8;
+  --pill-neutral-bg: #eef1f8; --pill-neutral-ink: #45506e;
+  --focus: #0e359d;
 
-  /* Flat surfaces keep the dashboard readable and restrained. */
+  /* Soft, blue-tinted depth to lift cards off the light ground. */
   --edge-light: none;
-  --shadow-1: none;
-  --shadow-2: none;
-  --shadow-press: none;
+  --shadow-1: 0 1px 2px rgb(14 53 157 / .05), 0 1px 3px rgb(14 53 157 / .06);
+  --shadow-2: 0 4px 12px rgb(14 53 157 / .07), 0 12px 28px -10px rgb(14 53 157 / .14);
+  --shadow-press: inset 0 1px 2px rgb(14 53 157 / .12);
 
   --font: "Geist Variable", "Geist", Inter, system-ui, sans-serif;
   --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -47,9 +47,9 @@
   --column: 1152px;
   --gap: 24px;
   --card-pad: 20px;
-  --radius-card: 3px;
-  --radius-control: 2px;
-  --radius-chip: 2px;
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --radius-chip: 999px;
   --control-height: 36px;
   --row-height: 56px;
   --fs-title: 24px;
@@ -57,7 +57,7 @@
   --fs-body: 14px;
   --fs-small: 12px;
 
-  color-scheme: dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--ground);
   font-family: var(--font);
@@ -99,7 +99,7 @@ h3 { font-size: var(--fs-body); line-height: 20px; font-weight: 600; }
 .button:hover { border-color: var(--control); background: var(--active); }
 .button:active { background: var(--secondary); box-shadow: none; }
 .button--primary { border-color: var(--primary); background: var(--primary); color: var(--on-primary); box-shadow: none; }
-.button--primary:hover { border-color: #fff; background: #d9dade; box-shadow: none; }
+.button--primary:hover { border-color: #0a2a7e; background: #0a2a7e; box-shadow: var(--shadow-1); }
 .button--danger { background: transparent; color: var(--negative); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--negative) 45%, transparent); }
 .button--danger:hover { background: var(--pill-negative-bg); }
 .button:disabled { cursor: not-allowed; background: var(--secondary); color: var(--faint); transform: none; box-shadow: none; }
@@ -150,14 +150,15 @@ input:disabled { background: var(--raised); color: var(--faint); }
 
 /* ---------- App shell: no sidebar, a 48px bar over one centred column ---------- */
 .app { display: grid; min-height: 100vh; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
-.topbar { position: sticky; top: 0; z-index: 5; background: var(--ground); border-bottom: 1px solid var(--border); box-shadow: none; }
+.topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: saturate(1.4) blur(8px); border-bottom: 1px solid var(--border); box-shadow: var(--shadow-1); }
 .topbar__inner { display: flex; align-items: center; gap: 32px; width: min(100% - 48px, var(--column)); height: 52px; margin: 0 auto; }
 .tabs { display: flex; align-self: stretch; gap: 24px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs__tab { position: relative; padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; }
 .tabs__tab:hover { color: var(--text); }
 .tabs__tab[aria-current="page"] { color: var(--text); }
-.tabs__tab[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--text); box-shadow: 0 0 10px rgb(255 255 255 / .45); }
+.tabs__tab[aria-current="page"] { color: var(--pen); }
+.tabs__tab[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--pen); }
 .profile-menu { position: relative; margin-left: auto; }
 .profile-menu__button { display: inline-flex; align-items: center; gap: 8px; height: 32px; max-width: 280px; padding: 0 10px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); cursor: pointer; }
 .profile-menu__button:hover, .profile-menu__button[aria-expanded="true"] { background: var(--active); color: var(--text); }
@@ -255,7 +256,7 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .action-panel__effects { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--muted); font-size: var(--fs-small); }
 .action-panel__effects strong { color: var(--text); font-weight: 600; }
 .action-panel__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.action-panel__pin input { width: 120px; min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-body); letter-spacing: .25em; box-shadow: inset 0 1px 3px rgb(0 0 0 / .6); }
+.action-panel__pin input { width: 120px; min-height: var(--control-height); padding: 0 12px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); font-size: var(--fs-body); letter-spacing: .25em; box-shadow: var(--shadow-press); }
 .action-panel__buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .action-panel__result { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-small); }
 .action-panel__result--error { border-color: color-mix(in srgb, var(--negative) 30%, var(--border)); color: var(--negative); }
@@ -318,7 +319,7 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .install-steps__os { font-weight: 600; }
 
 /* ---------- "Seu aval": the three keys, each with its seal ---------- */
-.workspace__aside { display: grid; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: linear-gradient(180deg, #16181d, var(--surface) 120px); box-shadow: var(--shadow-2); }
+.workspace__aside { display: grid; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-card); background: linear-gradient(180deg, var(--active), var(--surface) 120px); box-shadow: var(--shadow-1); }
 .aside__head { padding: 16px var(--card-pad) 12px; }
 .aside__head p { margin-top: 2px; color: var(--muted); font-size: var(--fs-small); }
 .seal-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 14px var(--card-pad); border-top: 1px solid var(--rule); }
