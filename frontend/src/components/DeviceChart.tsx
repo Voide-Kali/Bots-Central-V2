@@ -20,8 +20,8 @@ const METRICS: readonly Metric[] = [
 ];
 
 const RANGES: Readonly<Record<Range, { readonly minutes: number; readonly seconds: number; readonly every: number; readonly gap: number; readonly label: string }>> = {
-  live: { minutes: 2, seconds: 120, every: 1_000, gap: 5_000, label: "Ao vivo" },
-  hour: { minutes: 60, seconds: 3_600, every: 10_000, gap: 95_000, label: "1 hora" }
+  live: { minutes: 2, seconds: 120, every: 1_000, gap: 65_000, label: "Ao vivo" },
+  hour: { minutes: 60, seconds: 3_600, every: 10_000, gap: 185_000, label: "1 hora" }
 };
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });

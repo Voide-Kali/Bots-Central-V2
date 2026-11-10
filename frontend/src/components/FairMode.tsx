@@ -5,6 +5,7 @@ import type { AuditEvent, Device } from "../api/contracts";
 import { UnauthenticatedError } from "../api/errors";
 import { Brand } from "./Brand";
 import { DeviceChart } from "./DeviceChart";
+import { Seal3D } from "./Seal3D";
 import { ACTION_LABELS, eventDetail } from "./HistoryPanel";
 
 /*
@@ -127,7 +128,7 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
 
   return <section className="fair" ref={frame}>
     <header className="fair__top">
-      <div className="fair__brand"><Brand /></div>
+      <div className="fair__brand"><Seal3D /><Brand /></div>
       <div aria-live="polite" className={allOnline ? "fair__status fair__status--online" : "fair__status fair__status--warning"} role="status">
         <span className="fair__status-label">{statusLabel}</span>
         <span className="fair__status-sub num">{online} de {active.length} online</span>
@@ -156,6 +157,6 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
       {active.length === 0 ? <span className="fair__fleet-empty">Adicione um computador para comecar.</span>
         : active.map((device) => <Tile device={device} name={displayName(device)} key={device.id} />)}
     </footer>
-    <p className="fair__tagline">Nada acontece nos computadores sem o aval do dono.</p>
+    <p className="fair__tagline">Nada acontece nos computadores sem o <b>aval</b> do dono.</p>
   </section>;
 }
