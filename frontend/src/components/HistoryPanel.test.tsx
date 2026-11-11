@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AuditApi } from "../api/client";
+import type { AuditEvent } from "../api/contracts";
 import { UnauthenticatedError } from "../api/errors";
-import { HistoryPanel } from "./HistoryPanel";
+import { HistoryPanel, toCsv } from "./HistoryPanel";
 
 describe("HistoryPanel", () => {
   it("lists events with friendly labels and marks failures", async () => {
@@ -26,7 +27,46 @@ describe("HistoryPanel", () => {
     expect(screen.getByText("PIN incorreto")).toBeVisible();
     expect(screen.getByText("Senha errada no computador")).toBeVisible();
     expect(screen.getByText("tropa · tela de login")).toBeVisible();
-    expect(api.list).toHaveBeenCalledWith(50);
+    expect(api.list).toHaveBeenCalledWith(100);
+  });
+
+  it("filters to failures only and searches by text", async () => {
+    const api: AuditApi = {
+      list: vi.fn(async () => [
+        { occurredAt: "2026-10-21T12:00:00+00:00", actor: "user", action: "auth.login", outcome: "success", name: null },
+        { occurredAt: "2026-10-21T11:00:00+00:00", actor: "telegram", action: "pin.failed", outcome: "denied", name: null }
+      ])
+    };
+    render(<HistoryPanel api={api} onUnauthenticated={vi.fn()} />);
+    expect(await screen.findByText("Login no painel")).toBeVisible();
+    expect(screen.getByText("PIN incorreto")).toBeVisible();
+    // "Só falhas" hides the successful login.
+    fireEvent.click(screen.getByRole("button", { name: "Só falhas" }));
+    expect(screen.queryByText("Login no painel")).toBeNull();
+    expect(screen.getByText("PIN incorreto")).toBeVisible();
+    // Back to all, then search narrows to the login.
+    fireEvent.click(screen.getByRole("button", { name: "Todos" }));
+    fireEvent.change(screen.getByPlaceholderText("Buscar por evento, detalhe ou autor"), { target: { value: "login" } });
+    expect(screen.getByText("Login no painel")).toBeVisible();
+    expect(screen.queryByText("PIN incorreto")).toBeNull();
+  });
+
+  it("builds a semicolon-separated CSV with a header and ISO timestamp", () => {
+    const events: readonly AuditEvent[] = [
+      { occurredAt: "2026-10-21T07:00:00+00:00", actor: "device", action: "sensor.failed_login", outcome: "denied", name: "tropa", source: "gdm-password" }
+    ];
+    const csv = toCsv(events);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe('"Data e hora";"Evento";"Detalhe";"Por";"Resultado";"Quando (ISO)"');
+    expect(lines[1]).toContain('"Senha errada no computador"');
+    expect(lines[1]).toContain('"tropa · tela de login"');
+    expect(lines[1]).toContain('"negado"');
+    expect(lines[1]).toContain('"2026-10-21T07:00:00+00:00"');
+  });
+
+  it("escapes quotes in CSV fields", () => {
+    const csv = toCsv([{ occurredAt: "2026-10-21T07:00:00+00:00", actor: "user", action: "device.approved", outcome: "success", name: 'PC "casa"' }]);
+    expect(csv).toContain('"PC ""casa"""');
   });
 
   it("shows an empty state and reports an expired session", async () => {
