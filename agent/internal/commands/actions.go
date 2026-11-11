@@ -25,6 +25,9 @@ const defaultPowerGrace = 3 * time.Second
 // errUnsupported marks a platform without a supported way to do the action.
 var errUnsupported = errors.New("unsupported")
 
+// errNoNetwork: the host has no private IPv4 network small enough to scan (see maxScanHosts).
+var errNoNetwork = errors.New("no_network")
+
 // System runs the fixed programs behind each action. Tests replace it.
 type System interface {
 	LockScreen(ctx context.Context) error
@@ -98,6 +101,9 @@ func okEmpty() Result {
 }
 
 func failure(err error) string {
+	if errors.Is(err, errNoNetwork) {
+		return "no_network"
+	}
 	if errors.Is(err, errUnsupported) || errors.Is(err, exec.ErrNotFound) {
 		return "unsupported"
 	}
