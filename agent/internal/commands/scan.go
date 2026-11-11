@@ -133,11 +133,15 @@ func (hostSystem) NetworkScan(ctx context.Context) ([]byte, error) {
 	if len(targets) == 0 {
 		return nil, errUnsupported
 	}
-	path, err := exec.LookPath("nmap")
+	// launchd gives a LaunchAgent a minimal PATH without Homebrew, so look there explicitly.
+	path, err := exec.LookPath(firstExisting("/opt/homebrew/bin/nmap", "/usr/local/bin/nmap", "nmap"))
 	if err != nil {
 		return nil, err
 	}
-	args := append([]string{"-sn", "-oG", "-"}, targets...)
+	return runNmap(ctx, path, append([]string{"-sn", "-oG", "-"}, targets...))
+}
+
+func runNmap(ctx context.Context, path string, args []string) ([]byte, error) {
 	command := exec.CommandContext(ctx, path, args...)
 	var out bytes.Buffer
 	command.Stdin = nil
