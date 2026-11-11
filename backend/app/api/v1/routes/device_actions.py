@@ -27,14 +27,15 @@ from app.devices import commands
 
 device_actions_router = APIRouter(prefix="/devices", tags=["devices"])
 
-# Only actions that take no argument are offered from the panel (send_file needs a file name
-# and its own flow). Must stay a subset of the ADR-016 catalogue.
-WEB_ACTIONS = frozenset({"lock_screen", "webcam_photo", "network_scan"})
+# Actions offered from the panel. send_file needs a file name and keeps its own flow; power
+# carries its mode in ``mode``. Must stay a subset of the ADR-016 catalogue.
+WEB_ACTIONS = frozenset({"lock_screen", "webcam_photo", "network_scan", "power"})
 
 
 class ActionRequest(_AuthRequest):
     kind: str
     pin: str = Field(min_length=6, max_length=6)
+    mode: str | None = None  # only for power: shutdown | reboot | suspend
 
 
 async def _require_principal(request: Request) -> uuid.UUID | Response:
@@ -57,6 +58,13 @@ async def start_action(device_id: uuid.UUID, body: ActionRequest, request: Reque
         return user_id
     if body.kind not in WEB_ACTIONS:
         return _generic_json_response(400, _INVALID_MESSAGE)
+    argument = ""
+    if body.kind == "power":
+        if body.mode not in commands.POWER_MODES:
+            return _generic_json_response(400, _INVALID_MESSAGE)
+        argument = body.mode
+    elif body.mode is not None:
+        return _generic_json_response(400, _INVALID_MESSAGE)
     key = AbuseControlKey.from_settings(runtime.settings)
     try:
         command_id, check = await _run_sync(
@@ -67,6 +75,7 @@ async def start_action(device_id: uuid.UUID, body: ActionRequest, request: Reque
                 device_id=device_id,
                 kind=body.kind,
                 pin=body.pin,
+                argument=argument,
             )
         )
     except commands.DeviceNotFoundForUser:

@@ -15,9 +15,9 @@ ACTIONS_JSON=""
 IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
 for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
   case "$action" in
-    lock_screen|webcam_photo|network_scan) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    lock_screen|webcam_photo|network_scan|power) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
     "") ;;
-    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan)" >&2; exit 1;;
+    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan,power)" >&2; exit 1;;
   esac
 done
 

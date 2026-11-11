@@ -265,11 +265,11 @@ class HttpDevicesApi implements DevicesApi {
     await this.http.postJson(`${paths.devices}/${encodeURIComponent(id)}/watch`, {}, { acceptedStatuses: [204] });
   }
 
-  public async startAction(id: string, kind: ActionKind, pin: string): Promise<StartActionResult> {
+  public async startAction(id: string, kind: ActionKind, pin: string, mode?: string): Promise<StartActionResult> {
     const response = await this.http.postJson(
       `${paths.devices}/${encodeURIComponent(id)}/actions`,
-      { kind, pin },
-      { acceptedStatuses: [202, 404, 409, 422, 423] }
+      mode ? { kind, pin, mode } : { kind, pin },
+      { acceptedStatuses: [202, 400, 404, 409, 422, 423] }
     );
     if (response.status === 202) {
       const value = await readKnownJson<unknown>(response);

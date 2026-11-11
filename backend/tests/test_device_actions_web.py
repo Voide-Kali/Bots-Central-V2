@@ -112,3 +112,36 @@ def test_web_action_hidden_from_other_users(pinned: Any) -> None:
         factory, user_id=uuid.uuid4(), device_id=device_id, command_id=command_id
     )
     assert stranger is None  # never reveal another user's command
+
+
+@pytest.mark.postgresql
+def test_web_power_reboot_runs_with_pin_and_reports_mode(pinned: Any) -> None:
+    factory, user_id, device_id, private = pinned
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    command_id, check = commands.start_web_action(
+        factory, KEY, user_id=user_id, device_id=device_id, kind="power", pin="482913",
+        argument="reboot",
+    )
+    assert check.ok and command_id is not None
+    command = _poll(factory, private, device_id, 101)
+    assert command is not None
+    assert command["type"] == "power" and command["file_name"] == "reboot"
+    # The digest binds the mode: the agent recomputes Digest("power", device_id, "reboot").
+    assert command["digest"] == commands.action_digest("power", device_id, "reboot")
+    _result(factory, private, device_id, command_id, 102, b"")
+    status = commands.web_action_status(
+        factory, user_id=user_id, device_id=device_id, command_id=command_id
+    )
+    assert status is not None and status.status == "completed"
+    assert status.message == "Computador telemetry-agent vai reiniciar."
+
+
+@pytest.mark.postgresql
+def test_web_power_rejects_unknown_mode(pinned: Any) -> None:
+    factory, user_id, device_id, private = pinned
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    with pytest.raises(commands.UnknownAction):
+        commands.start_web_action(
+            factory, KEY, user_id=user_id, device_id=device_id, kind="power", pin="482913",
+            argument="halt",
+        )
