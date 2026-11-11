@@ -138,7 +138,7 @@ esac
 case ",$ACTIONS," in *,network_scan,*)
   command -v nmap >/dev/null || (command -v apt-get >/dev/null && apt-get install -y nmap) || true
   install -d -m 0755 "$DROPIN"
-  printf '[Service]\nAmbientCapabilities=CAP_NET_RAW\nCapabilityBoundingSet=CAP_NET_RAW\nRestrictAddressFamilies=AF_PACKET\n' > "$DROPIN/scan.conf"
+  printf '[Service]\nAmbientCapabilities=CAP_NET_RAW\nCapabilityBoundingSet=CAP_NET_RAW\n' > "$DROPIN/scan.conf"
   ;;
 esac
 case ",$SENSORS," in *,failed_login_photo,*)

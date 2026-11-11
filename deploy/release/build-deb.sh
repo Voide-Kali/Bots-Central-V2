@@ -106,7 +106,7 @@ case ",$ACTIONS,$SENSORS," in *,webcam_photo,*|*,failed_login_photo,*)
 esac
 case ",$ACTIONS," in *,network_scan,*)
   install -d "$dropin"
-  printf '[Service]\nAmbientCapabilities=CAP_NET_RAW\nCapabilityBoundingSet=CAP_NET_RAW\nRestrictAddressFamilies=AF_PACKET\n' > "$dropin/scan.conf"
+  printf '[Service]\nAmbientCapabilities=CAP_NET_RAW\nCapabilityBoundingSet=CAP_NET_RAW\n' > "$dropin/scan.conf"
   ;;
 esac
 case ",$SENSORS," in *,failed_login_photo,*)

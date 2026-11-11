@@ -23,8 +23,7 @@ ProtectControlGroups=yes
 ProtectKernelModules=yes
 ProtectClock=yes
 ProtectHostname=yes
-# AF_NETLINK only lists the machine's own interfaces/routes (needed to read local IPs and by nmap).
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes

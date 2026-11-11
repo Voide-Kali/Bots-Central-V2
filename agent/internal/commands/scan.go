@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -139,15 +138,7 @@ func (hostSystem) NetworkScan(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	base := append([]string{"-sn", "-oG", "-"}, targets...)
-	if runtime.GOOS == "linux" {
-		// The service is not root but holds CAP_NET_RAW: --privileged makes nmap use ARP, which
-		// finds phones and TVs that ignore the TCP probes an unprivileged scan falls back to.
-		if out, err := runNmap(ctx, path, append([]string{"--privileged"}, base...)); err == nil {
-			return out, nil
-		}
-	}
-	return runNmap(ctx, path, base)
+	return runNmap(ctx, path, append([]string{"-sn", "-oG", "-"}, targets...))
 }
 
 func runNmap(ctx context.Context, path string, args []string) ([]byte, error) {
