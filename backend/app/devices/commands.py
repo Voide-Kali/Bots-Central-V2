@@ -69,6 +69,7 @@ ERROR_CODES = frozenset(
         "read_error",
         "disabled",
         "unsupported",
+        "no_network",
         "failed",
         "digest",
     }
@@ -931,6 +932,10 @@ def _closed_text(command: DeviceCommand) -> str:
         reasons["failed"] = "não há uma sessão gráfica para bloquear ou o sistema recusou"
     if command.kind == "network_scan":
         reasons["unsupported"] = "falta o programa nmap no computador"
+        reasons["no_network"] = (
+            "a rede em que este computador está é grande demais para varrer "
+            "(o Aval só varre redes locais de até 256 endereços)"
+        )
         reasons["failed"] = "a varredura não terminou ou não há rede local"
     if command.kind == "power":
         reasons["unsupported"] = "este sistema não suporta essa opção de energia"

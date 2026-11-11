@@ -247,3 +247,12 @@ func TestPowerRefusedWhenNotEnabled(t *testing.T) {
 		t.Fatal("disabled power must not run")
 	}
 }
+
+func TestFailureTellsNoNetworkApartFromMissingProgram(t *testing.T) {
+	if got := failure(errNoNetwork); got != "no_network" {
+		t.Fatalf("no scannable network: %q", got)
+	}
+	if got := failure(errUnsupported); got != "unsupported" {
+		t.Fatalf("missing program: %q", got)
+	}
+}
