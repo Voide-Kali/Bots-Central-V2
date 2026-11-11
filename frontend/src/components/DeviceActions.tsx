@@ -5,14 +5,22 @@ import type { ActionKind } from "../api/contracts";
 import { UnauthenticatedError } from "../api/errors";
 
 /*
- * Run a Telegram action from the panel (ADR-021), approved with the same PIN. For when the
- * phone is far: trigger here, type the PIN, see the result. Same core, no new power.
+ * Run a catalogue action from the panel (ADR-016, ADR-021), approved with the same PIN. For
+ * when the phone is far: trigger here, type the PIN, see the result. The power actions
+ * (shutdown/reboot/suspend) are destructive, so they ask for a second click to confirm on top
+ * of the PIN.
  */
 
 const ACTIONS: ReadonlyArray<{ readonly kind: ActionKind; readonly label: string; readonly effect: string }> = [
   { kind: "lock_screen", label: "Bloquear tela", effect: "trava a tela deste computador. Nenhum dado é enviado a você." },
   { kind: "webcam_photo", label: "Foto", effect: "tira uma foto da webcam e envia a imagem para você." },
   { kind: "network_scan", label: "Rede", effect: "lista os aparelhos na rede local e envia o texto para você." }
+];
+
+const POWER: ReadonlyArray<{ readonly mode: string; readonly label: string; readonly effect: string }> = [
+  { mode: "reboot", label: "Reiniciar", effect: "reinicia o computador agora; programas abertos fecham." },
+  { mode: "shutdown", label: "Desligar", effect: "desliga o computador agora; só liga de novo no botão." },
+  { mode: "suspend", label: "Suspender", effect: "coloca o computador em suspensão (sleep)." }
 ];
 
 const TERMINAL = new Set(["completed", "delivered", "failed", "expired", "denied"]);
@@ -39,7 +47,8 @@ export function DeviceActions({ api, pinApi, deviceId, deviceName, onUnauthentic
   onUnauthenticated(): void;
 }): ReactElement | null {
   const [pin, setPin] = useState("");
-  const [running, setRunning] = useState<ActionKind | null>(null);
+  const [running, setRunning] = useState<string | null>(null);
+  const [arming, setArming] = useState<string | null>(null); // power mode awaiting a confirm click
   const [outcome, setOutcome] = useState<Outcome>();
   const [configured, setConfigured] = useState<boolean>();
   const photoUrl = useRef<string | undefined>(undefined);
@@ -47,6 +56,7 @@ export function DeviceActions({ api, pinApi, deviceId, deviceName, onUnauthentic
 
   useEffect(() => {
     cancelled.current = false;
+    setArming(null);
     return () => {
       cancelled.current = true;
       if (photoUrl.current) { URL.revokeObjectURL(photoUrl.current); photoUrl.current = undefined; }
@@ -64,13 +74,15 @@ export function DeviceActions({ api, pinApi, deviceId, deviceName, onUnauthentic
 
   if (!api.startAction || !api.actionStatus) return null;
 
-  async function run(kind: ActionKind): Promise<void> {
+  async function run(kind: ActionKind, mode?: string): Promise<void> {
+    const key = mode ? `${kind}:${mode}` : kind;
     if (running || !/^[0-9]{6}$/.test(pin)) { if (!/^[0-9]{6}$/.test(pin)) setOutcome({ kind: "error", message: "Digite o seu PIN de 6 números." }); return; }
-    setRunning(kind);
+    setRunning(key);
+    setArming(null);
     setOutcome(undefined);
     if (photoUrl.current) { URL.revokeObjectURL(photoUrl.current); photoUrl.current = undefined; }
     try {
-      const started = await api.startAction!(deviceId, kind, pin);
+      const started = mode ? await api.startAction!(deviceId, kind, pin, mode) : await api.startAction!(deviceId, kind, pin);
       if (!started.ok) { setOutcome({ kind: "error", message: PIN_MESSAGES[started.reason] ?? PIN_MESSAGES.failed! }); return; }
       setPin("");
       for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
@@ -129,6 +141,27 @@ export function DeviceActions({ api, pinApi, deviceId, deviceName, onUnauthentic
           onClick={() => void run(action.kind)} type="button">
           {running === action.kind ? "Aguardando..." : action.label}
         </button>)}
+      </div>
+    </div>
+    <div className="action-panel__power">
+      <span className="action-panel__power-title">Energia</span>
+      <ul className="action-panel__effects">
+        {POWER.map((item) => <li key={item.mode}><strong>{item.label}</strong>: {item.effect}</li>)}
+      </ul>
+      <div className="action-panel__buttons">
+        {POWER.map((item) => {
+          const key = `power:${item.mode}`;
+          if (arming === item.mode) {
+            return <span className="action-panel__confirm" key={item.mode}>
+              <button className="button button--danger" disabled={running !== null} onClick={() => void run("power", item.mode)} type="button">
+                {running === key ? "Aguardando..." : `Confirmar ${item.label.toLowerCase()}`}
+              </button>
+              <button className="button" disabled={running !== null} onClick={() => setArming(null)} type="button">Cancelar</button>
+            </span>;
+          }
+          return <button className="button" disabled={running !== null} key={item.mode}
+            onClick={() => { setOutcome(undefined); setArming(item.mode); }} type="button">{item.label}</button>;
+        })}
       </div>
     </div>
     {outcome ? <div className={outcome.kind === "error" ? "action-panel__result action-panel__result--error" : "action-panel__result"} role="status">

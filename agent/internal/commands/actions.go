@@ -18,6 +18,10 @@ const MaxPhotoBytes = 5 * 1024 * 1024
 
 const actionTimeout = 20 * time.Second
 
+// defaultPowerGrace is how long the agent waits before powering off, so the "ok" result
+// reaches the server before the machine goes down. Tests set it to 0 to run synchronously.
+const defaultPowerGrace = 3 * time.Second
+
 // errUnsupported marks a platform without a supported way to do the action.
 var errUnsupported = errors.New("unsupported")
 
@@ -27,6 +31,8 @@ type System interface {
 	TakePhoto(ctx context.Context, path string) error
 	// NetworkScan returns nmap's greppable output for the host's own private subnets.
 	NetworkScan(ctx context.Context) ([]byte, error)
+	// Power turns the machine off, reboots it or suspends it; mode is one of PowerModes.
+	Power(ctx context.Context, mode string) error
 }
 
 func (e *Executor) lockScreen() Result {
@@ -35,6 +41,26 @@ func (e *Executor) lockScreen() Result {
 	if err := e.system.LockScreen(ctx); err != nil {
 		return Result{Error: failure(err)}
 	}
+	return okEmpty()
+}
+
+// power turns the machine off, reboots or suspends it. It answers "ok" right away and does the
+// deed after a short grace period, so the server records the result before the computer goes
+// down. mode has already been checked against PowerModes by Execute.
+func (e *Executor) power(mode string) Result {
+	do := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
+		defer cancel()
+		_ = e.system.Power(ctx, mode)
+	}
+	if e.powerGrace <= 0 { // tests run it synchronously
+		do()
+		return okEmpty()
+	}
+	go func() {
+		time.Sleep(e.powerGrace)
+		do()
+	}()
 	return okEmpty()
 }
 
@@ -102,6 +128,30 @@ func (hostSystem) TakePhoto(ctx context.Context, path string) error {
 	default:
 		return errUnsupported
 	}
+}
+
+func (hostSystem) Power(ctx context.Context, mode string) error {
+	switch runtime.GOOS {
+	case "linux":
+		switch mode {
+		case "shutdown":
+			return run(ctx, "systemctl", "poweroff")
+		case "reboot":
+			return run(ctx, "systemctl", "reboot")
+		case "suspend":
+			return run(ctx, "systemctl", "suspend")
+		}
+	case "darwin":
+		switch mode {
+		case "shutdown":
+			return run(ctx, "/sbin/shutdown", "-h", "now")
+		case "reboot":
+			return run(ctx, "/sbin/shutdown", "-r", "now")
+		case "suspend":
+			return run(ctx, "/usr/bin/pmset", "sleepnow")
+		}
+	}
+	return errUnsupported
 }
 
 func run(ctx context.Context, name string, args ...string) error {

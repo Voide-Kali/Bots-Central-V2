@@ -64,4 +64,32 @@ describe("DeviceActions", () => {
     expect(await screen.findByText("Digite o seu PIN de 6 números.")).toBeVisible();
     expect(start).not.toHaveBeenCalled();
   });
+
+  it("powers the computer only after a confirm, sending the mode", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const start = vi.fn(async (): Promise<StartActionResult> => ({ ok: true, commandId: "c1" }));
+    const status = vi.fn(async (): Promise<WebActionStatus> => ({ status: "completed", message: "Computador tropa vai reiniciar.", text: null, hasPhoto: false }));
+    render(<DeviceActions api={baseApi({ startAction: start, actionStatus: status })} pinApi={pin(true)} deviceId="d1" onUnauthenticated={vi.fn()} />);
+    await screen.findByText("Ações");
+    typePin("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Reiniciar" }));
+    expect(start).not.toHaveBeenCalled(); // first click only arms
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar reiniciar" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(start).toHaveBeenCalledWith("d1", "power", "482913", "reboot");
+    expect(screen.getByText("Computador tropa vai reiniciar.")).toBeVisible();
+    vi.useRealTimers();
+  });
+
+  it("lets the owner cancel a power action before confirming", async () => {
+    const start = vi.fn();
+    render(<DeviceActions api={baseApi({ startAction: start, actionStatus: vi.fn() })} pinApi={pin(true)} deviceId="d1" onUnauthenticated={vi.fn()} />);
+    await screen.findByText("Ações");
+    typePin("482913");
+    fireEvent.click(screen.getByRole("button", { name: "Desligar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("button", { name: /Confirmar desligar/i })).toBeNull();
+    expect(start).not.toHaveBeenCalled();
+  });
+
 });

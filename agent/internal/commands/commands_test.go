@@ -95,11 +95,13 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 }
 
 type fakeSystem struct {
-	locked  int
-	photo   []byte
-	scanRaw []byte
-	scanned int
-	err     error
+	locked    int
+	photo     []byte
+	scanRaw   []byte
+	scanned   int
+	powerMode string
+	powered   int
+	err       error
 }
 
 func (f *fakeSystem) LockScreen(context.Context) error {
@@ -120,6 +122,12 @@ func (f *fakeSystem) NetworkScan(context.Context) ([]byte, error) {
 		return nil, f.err
 	}
 	return f.scanRaw, nil
+}
+
+func (f *fakeSystem) Power(_ context.Context, mode string) error {
+	f.powered++
+	f.powerMode = mode
+	return f.err
 }
 
 func TestDigestMismatchIsRefusedBeforeAnything(t *testing.T) {
@@ -194,5 +202,48 @@ func TestDigestMatchesBackendFormat(t *testing.T) {
 	sum := sha256.Sum256([]byte("aval-action-v1\nlock_screen\n" + testDevice + "\n"))
 	if got != hex.EncodeToString(sum[:]) {
 		t.Fatal("digest format changed")
+	}
+}
+
+func TestPowerRunsOnlyApprovedModesWhenEnabled(t *testing.T) {
+	system := &fakeSystem{}
+	executor, err := NewExecutor("", []string{"power"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	executor.powerGrace = 0 // run synchronously in the test
+
+	if got := executor.Execute(approved("power", "halt")); got.OK || got.Error != "digest" {
+		t.Fatalf("bogus mode must be refused: %+v", got)
+	}
+	if system.powered != 0 {
+		t.Fatal("nothing may run for an unapproved mode")
+	}
+	for _, mode := range []string{"shutdown", "reboot", "suspend"} {
+		system.powerMode = ""
+		got := executor.Execute(approved("power", mode))
+		if !got.OK || len(got.Content) != 0 || system.powerMode != mode {
+			t.Fatalf("power %s: %+v (mode=%q)", mode, got, system.powerMode)
+		}
+	}
+	if system.powered != 3 {
+		t.Fatalf("expected 3 power calls, got %d", system.powered)
+	}
+}
+
+func TestPowerRefusedWhenNotEnabled(t *testing.T) {
+	system := &fakeSystem{}
+	executor, err := NewExecutor("", []string{"lock_screen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	executor.powerGrace = 0
+	if got := executor.Execute(approved("power", "reboot")); got.OK || got.Error != "disabled" {
+		t.Fatalf("power not enabled must be refused: %+v", got)
+	}
+	if system.powered != 0 {
+		t.Fatal("disabled power must not run")
 	}
 }

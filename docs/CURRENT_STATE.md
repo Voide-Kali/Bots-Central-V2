@@ -24,8 +24,8 @@ de cada mudança fica no PR e no git; o diário antigo está em [HISTORY.md](HIS
 | Telegram | Vínculo por código, menu de botões inline (estilo Kali-Bunker, sem teclado fixo antigo), `/painel`, `/computadores`, `/historico`, `/ia`, alertas online/offline; ações por botão e por frases de padrão fixo (`app/telegram/intents.py`, não é o modelo de IA) | [TELEGRAM.md](TELEGRAM.md), ADR-011, ADR-016 |
 | IA local | Ollama, **somente leitura**, sem ferramentas, só os dados do próprio usuário; sem caminho para iniciar ou aprovar ações | ADR-013 |
 | Aprovação de ações | **PIN de 6 dígitos** criado no painel (exige a senha da conta), guardado como HMAC; PINs óbvios recusados; 5 erros travam por 15 min. O **código de 8 dígitos por e-mail** continua como alternativa quando não há PIN configurado | ADR-016 (adendo), `app/auth/action_pin.py` |
-| Ações com aval | Catálogo fechado: `send_file`, `lock_screen`, `webcam_photo`, `network_scan`. Cada agente opta explicitamente em cada ação (`allowed_actions` no `config.json`; vazio = nenhuma). O backend assina um digest canônico (`aval-action-v1`) e o agente só executa se o digest bater, sem shell | ADR-015, ADR-016, ADR-020, `app/devices/commands.py` (`ACTIONS`) |
-| Ações pelo painel web | Paridade com o Telegram para `lock_screen`, `webcam_photo`, `network_scan`: `POST /devices/{id}/actions` pede e aprova com o PIN na mesma chamada; `GET` lê estado/resultado; foto por endpoint próprio. Mesmo núcleo e mesmo PIN, sem poder novo; comando do web tem `chat_id = NULL` e não vai ao Telegram | ADR-021, `app/api/v1/routes/device_actions.py` |
+| Ações com aval | Catálogo fechado: `send_file`, `lock_screen`, `webcam_photo`, `network_scan`, `power`. Cada agente opta explicitamente em cada ação (`allowed_actions` no `config.json`; vazio = nenhuma). O backend assina um digest canônico (`aval-action-v1`) e o agente só executa se o digest bater, sem shell | ADR-015, ADR-016, ADR-020, `app/devices/commands.py` (`ACTIONS`) |
+| Ações pelo painel web | Paridade com o Telegram para `lock_screen`, `webcam_photo`, `network_scan`, `power` (desligar/reiniciar/suspender, com confirmação): `POST /devices/{id}/actions` pede e aprova com o PIN na mesma chamada; `GET` lê estado/resultado; foto por endpoint próprio. Mesmo núcleo e mesmo PIN, sem poder novo; comando do web tem `chat_id = NULL` e não vai ao Telegram | ADR-021, `app/api/v1/routes/device_actions.py` |
 | Sensor de senha errada | Opcional e **desligado por padrão** (`AVAL_SENSORS=failed_login_photo`), **só Linux**: o agente lê `journalctl -f -o json`, e numa falha de autenticação tira uma foto e envia por `POST /devices/{id}/events` (JWS `aud bots-central:event:v1`). O texto do diário nunca sai do PC; só vai o nome do programa. Limite de 1 foto/min no agente e 5/10 min no servidor; foto entregue ao Telegram do dono e apagada | ADR-019, `agent/internal/sensors/failedlogin.go` |
 | Painel de administração | Aba **Admin** só quando `/auth/me` responde `role: admin`; rotas `/api/v1/admin/*` com o mesmo erro de rota inexistente. Mostra saúde, contagens, lista de usuários, falhas recentes e histórico de todos; **ativa conta pendente** (`admin.user_activated`). Não vê arquivos/fotos, PINs/senhas nem executa ações | ADR-017, `app/admin/`, `app/api/v1/routes/admin.py` |
 | Auditoria | Append-only (trigger no PostgreSQL), mesma transação da ação, sem segredos (nem PIN, nem rótulo, nem conteúdo) | `app/audit` |
@@ -41,9 +41,10 @@ de cada mudança fica no PR e no git; o diário antigo está em [HISTORY.md](HIS
 | `lock_screen` | `loginctl lock-sessions` (Linux) / `pmset displaysleepnow` (Mac) | só status | sim |
 | `webcam_photo` | `fswebcam` (Linux) / `imagesnap` (Mac), até 2 MB | foto | sim |
 | `network_scan` | `nmap -sn` só nas redes IPv4 privadas das próprias interfaces, sub-redes ≤ 256 endereços | texto | sim |
+| `power` | `systemctl poweroff\|reboot\|suspend` (Linux) / `shutdown`/`pmset sleepnow` (Mac); modo em `file_name`, responde "ok" e age após uma folga curta. Linux: regra polkit libera só o usuário `aval-agent` | só status | sim (com confirmação no painel) |
 
-Ações listadas no catálogo do ADR-016 mas **ainda não implementadas**: `unlock_screen`, `power`,
-`ban`, `apt_check`, `apt_upgrade`, `vault_reveal`/`vault_delete`. Ver
+Ações listadas no catálogo do ADR-016 mas **ainda não implementadas**: `unlock_screen`, `ban`,
+`apt_check`, `apt_upgrade`, `vault_reveal`/`vault_delete`. Ver
 [DISCREPANCIES-2026-10.md](DISCREPANCIES-2026-10.md).
 
 ## Validação

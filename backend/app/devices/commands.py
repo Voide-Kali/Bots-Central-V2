@@ -116,9 +116,69 @@ ACTIONS: dict[str, ActionSpec] = {
             "Nada é alterado no computador nem na rede."
         ),
     ),
+    # power is one action with a mode; its verb, done and risk are mode-aware (see helpers below).
+    "power": ActionSpec(
+        verb="mudar o estado do computador",
+        done="Estado de {name} alterado.",
+        returns_file=False,
+        risk="O computador desliga, reinicia ou suspende.",
+    ),
 }
 
 MAX_TEXT_RESULT_CHARS = 3500  # scan output shown in one Telegram message
+
+# The power action carries its mode in the command's ``file_name`` (the generic argument slot).
+POWER_MODES = ("shutdown", "reboot", "suspend")
+_POWER_VERB = {
+    "shutdown": "desligar o computador",
+    "reboot": "reiniciar o computador",
+    "suspend": "suspender o computador",
+}
+_POWER_DONE = {
+    "shutdown": "Computador {name} vai desligar.",
+    "reboot": "Computador {name} vai reiniciar.",
+    "suspend": "Computador {name} vai suspender.",
+}
+_POWER_RISK = {
+    "shutdown": "O computador desliga agora. Programas abertos fecham e so liga de novo no botao.",
+    "reboot": "O computador reinicia agora. Programas abertos fecham.",
+    "suspend": "O computador entra em suspensao (sleep) agora.",
+}
+
+
+def action_verb(kind: str, argument: str) -> str:
+    """What the action does, in Portuguese, mode-aware for power."""
+    if kind == "power":
+        return _POWER_VERB.get(argument, "mudar o estado do computador")
+    if kind == "send_file":
+        return f"enviar o arquivo {argument}"
+    spec = ACTIONS.get(kind)
+    return spec.verb if spec else "a ação"
+
+
+def action_done(kind: str, argument: str, name: str) -> str:
+    """Success message for a finished action, mode-aware for power."""
+    if kind == "power":
+        return _POWER_DONE.get(argument, "Estado de {name} alterado.").format(name=name)
+    spec = ACTIONS.get(kind)
+    return spec.done.format(name=name) if spec else "Pronto."
+
+
+def action_risk(kind: str, argument: str) -> str:
+    """Risk sentence shown in the approval e-mail, mode-aware for power."""
+    if kind == "power":
+        return _POWER_RISK.get(argument, "O computador desliga, reinicia ou suspende.")
+    spec = ACTIONS.get(kind)
+    return spec.risk if spec else ""
+
+
+def _valid_argument(kind: str, argument: str) -> bool:
+    """Whether ``argument`` is acceptable for this action (closed catalogue, ADR-016)."""
+    if kind == "send_file":
+        return valid_file_name(argument)
+    if kind == "power":
+        return argument in POWER_MODES
+    return argument == ""
 
 
 def _returns_payload(kind: str) -> bool:
@@ -242,8 +302,8 @@ def request_action(
     """
     if kind not in ACTIONS or (device_name is None) == (device_id is None):
         raise UnknownAction
-    if kind != "send_file" and argument:
-        raise UnknownAction  # these actions take no parameters
+    if not _valid_argument(kind, argument):
+        raise UnknownAction  # argument must match the action's exact parameter (ADR-016)
     code = f"{secrets.randbelow(10**CODE_DIGITS):0{CODE_DIGITS}d}"
     with session_factory() as session, session.begin():
         user = session.scalar(select(User).where(User.id == user_id).with_for_update())
@@ -334,15 +394,14 @@ def request_action(
 
 def approval_email(intent: ApprovalIntent) -> tuple[str, str]:
     """(subject, body) of the approval e-mail, in Portuguese."""
-    spec = ACTIONS[intent.kind]
     code = intent.code.get_secret_value()
-    what = f"enviar o arquivo {intent.file_name}" if intent.kind == "send_file" else spec.verb
+    what = action_verb(intent.kind, intent.file_name)
     subject = f"Aval — aprovar: {what} ({intent.device_name})"
     body = (
         "Pedido no Aval:\n\n"
         f"  Ação: {what}\n"
         f"  No computador: {intent.device_name}\n"
-        f"  O que acontece: {spec.risk}\n\n"
+        f"  O que acontece: {action_risk(intent.kind, intent.file_name)}\n\n"
         f"Código de aprovação: {code[:4]} {code[4:]}\n"
         "Vale 5 minutos e só para esta ação. Responda ao bot: /aprovar CÓDIGO\n\n"
         "Se não foi você, NÃO use o código e desvincule o Telegram no painel.\n"
@@ -820,7 +879,7 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
         ).all()
         for command, device_name in done:
             assert command.chat_id is not None
-            done_text = ACTIONS[command.kind].done.format(name=device_name)
+            done_text = action_done(command.kind, command.file_name, device_name)
             notices.append(Notice(command.chat_id, done_text))
             command.status = "delivered"
             audit.record(
@@ -848,12 +907,8 @@ def pending_deliveries(session_factory: SessionFactory) -> tuple[list[Delivery],
 
 
 def _closed_text(command: DeviceCommand) -> str:
-    spec = ACTIONS.get(command.kind)
-    what = (
-        f"de {command.file_name}"
-        if command.kind == "send_file"
-        else f"para {spec.verb if spec else 'a ação'}"
-    )
+    verb = action_verb(command.kind, command.file_name)
+    what = f"de {command.file_name}" if command.kind == "send_file" else f"para {verb}"
     if command.status == "denied":
         return f"Pedido {what} bloqueado: código errado demais vezes."
     if command.status == "expired":
@@ -877,13 +932,16 @@ def _closed_text(command: DeviceCommand) -> str:
     if command.kind == "network_scan":
         reasons["unsupported"] = "falta o programa nmap no computador"
         reasons["failed"] = "a varredura não terminou ou não há rede local"
+    if command.kind == "power":
+        reasons["unsupported"] = "este sistema não suporta essa opção de energia"
+        reasons["failed"] = "o sistema recusou desligar, reiniciar ou suspender"
     if command.kind == "send_file":
         reasons["too_large"] = "o arquivo passa de 10 MB"
         reasons["disabled"] = "o envio de arquivos está desligado nesse computador"
         reason = reasons.get(command.error_code or "", "erro ao ler o arquivo")
         return f"Não foi possível enviar {command.file_name}: {reason}."
     reason = reasons.get(command.error_code or "", "erro no computador")
-    return f"Não foi possível {spec.verb if spec else 'concluir a ação'}: {reason}."
+    return f"Não foi possível {verb}: {reason}."
 
 
 # --- web panel action control (ADR-021) -------------------------------------------------
@@ -907,6 +965,7 @@ def start_web_action(
     device_id: uuid.UUID,
     kind: str,
     pin: str,
+    argument: str = "",
 ) -> tuple[uuid.UUID | None, action_pin.PinCheck]:
     """Request one catalogue action from the panel and approve it with the PIN, in one step.
 
@@ -921,6 +980,7 @@ def start_web_action(
         chat_id=None,
         kind=kind,
         device_id=device_id,
+        argument=argument,
         by_pin=True,
     )
     command, check = approve_with_pin(session_factory, key, user_id=user_id, pin=pin)
@@ -974,7 +1034,7 @@ def web_action_status(
         if command.status in ("failed", "expired", "denied"):
             return WebActionResult(status=command.status, message=_closed_text(command))
         # completed or delivered
-        done = spec.done.format(name=device_name) if spec else "Pronto."
+        done = action_done(command.kind, command.file_name, device_name)
         was_completed = command.status == "completed"
         reported = "completed" if was_completed else command.status  # delivered after first read
         if spec and spec.returns_file:
