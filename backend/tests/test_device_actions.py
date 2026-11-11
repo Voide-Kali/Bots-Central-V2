@@ -152,3 +152,15 @@ def test_power_requires_a_known_mode(setup: Any) -> None:
     subject, body = commands.approval_email(intent)
     assert "reiniciar o computador" in subject
     assert "reinicia agora" in body
+
+
+def test_scan_without_a_scannable_network_does_not_blame_nmap() -> None:
+    from app.db.models import DeviceCommand
+
+    command = DeviceCommand(kind="network_scan", file_name="", status="failed")
+    command.error_code = "no_network"
+    assert "no_network" in commands.ERROR_CODES
+    text = commands._closed_text(command)
+    assert "grande demais" in text and "nmap" not in text
+    command.error_code = "unsupported"
+    assert "nmap" in commands._closed_text(command)

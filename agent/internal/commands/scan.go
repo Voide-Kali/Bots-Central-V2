@@ -131,7 +131,7 @@ func (hostSystem) NetworkScan(ctx context.Context) ([]byte, error) {
 	}
 	targets := scanTargets(addrs)
 	if len(targets) == 0 {
-		return nil, errUnsupported
+		return nil, errNoNetwork // not "nmap missing": there is simply nothing it may scan
 	}
 	// launchd gives a LaunchAgent a minimal PATH without Homebrew, so look there explicitly.
 	path, err := exec.LookPath(firstExisting("/opt/homebrew/bin/nmap", "/usr/local/bin/nmap", "nmap"))
