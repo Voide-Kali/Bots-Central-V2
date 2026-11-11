@@ -30,6 +30,13 @@ NAMES = ["MacMaker", "tropa"]
         ("faz um scan de rede no MacMaker", Intent("network_scan", "MacMaker")),
         ("quem esta na minha rede", Intent("network_scan", None)),
         ("manda um oi", None),
+        ("suspende o macmaker", Intent("power", "MacMaker", "suspend")),
+        ("Suspender o Mac Maker", Intent("power", None, "suspend")),
+        ("reinicia o tropa", Intent("power", "tropa", "reboot")),
+        ("desliga o macmaker", Intent("power", "MacMaker", "shutdown")),
+        ("o tropa desligou sozinho", None),
+        ("o macmaker está reiniciando", None),
+        ("desliga a tela do tropa", None),
         ("/status", None),
     ],
 )

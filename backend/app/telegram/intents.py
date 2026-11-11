@@ -17,6 +17,14 @@ _LOCK = re.compile(r"\b(bloqueia|bloquear|bloqueie|trava|travar|trave|tranca|tra
 _PHOTO = re.compile(r"\b(foto\w*|webcam|camera)\b")
 # Network scan: a scan verb, or "na (minha) rede" (e.g. "quem esta na minha rede").
 _SCAN = re.compile(r"\b(scan\w*|escane\w*|escaneia|varre\w*|varredura)\b|\bna (minha )?rede\b")
+# Power (ADR-016): imperative forms only. "desligou" or "reiniciando" describe a problem and go
+# to the assistant; "desliga a tela" is about the screen, not the machine.
+_POWER = (
+    ("shutdown", re.compile(r"\b(desliga|desligar|desligue)\b")),
+    ("reboot", re.compile(r"\b(reinicia|reiniciar|reinicie|reboot)\b")),
+    ("suspend", re.compile(r"\b(suspende|suspender|suspenda)\b")),
+)
+_SCREEN = re.compile(r"\b(tela|monitor)\b")
 _SEND = re.compile(r"\b(mand\w*|envi\w*|passa\w*|traz\w*|traga)\b")
 _FILE = re.compile(r"^(.+?\.[a-z0-9]{1,8})(?![\w])", re.IGNORECASE)
 _FILLER = {"me", "pra", "para", "mim", "o", "a", "os", "as", "um", "uma", "meu", "minha", "arquivo"}
@@ -59,6 +67,10 @@ def parse(text: str, device_names: list[str]) -> Intent | None:
         match = _FILE.search(" ".join(words))
         if match:
             return Intent("send_file", device, match.group(1).strip())
+    if not _SCREEN.search(folded):
+        for mode, pattern in _POWER:
+            if pattern.search(folded):
+                return Intent("power", device, mode)
     if _PHOTO.search(folded):
         return Intent("webcam_photo", device)
     if _LOCK.search(folded):
