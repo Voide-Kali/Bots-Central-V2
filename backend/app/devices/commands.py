@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import events as audit
 from app.auth import action_pin, device_online
-from app.auth.abuse_control import AbuseControlKey
+from app.auth.abuse_control import HKDF_PURPOSE_APPROVAL_CODE, AbuseControlKey
 from app.core.timezone import local
 from app.db.enums import AccountStatus, DeviceLifecycleStatus
 from app.db.models import (
@@ -255,7 +255,10 @@ def _now(session: Session) -> datetime:
 
 
 def _mac(key: AbuseControlKey, command_id: uuid.UUID, code: str) -> bytes:
-    return key.pseudonymize("device-command-approval", f"{command_id}:{code}")
+    return key.pseudonymize(
+        "device-command-approval", f"{command_id}:{code}",
+        purpose=HKDF_PURPOSE_APPROVAL_CODE,
+    )
 
 
 # --- owner side (Telegram) --------------------------------------------------------------

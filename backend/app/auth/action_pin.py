@@ -19,7 +19,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.audit import events as audit
-from app.auth.abuse_control import AbuseControlKey
+from app.auth.abuse_control import HKDF_PURPOSE_ACTION_PIN, AbuseControlKey
 from app.auth.passwords import verify_password
 from app.db.models import ActionPin, PasswordCredential
 
@@ -72,7 +72,7 @@ def looks_like_pin(text_: str) -> bool:
 
 
 def _mac(key: AbuseControlKey, user_id: uuid.UUID, pin: str) -> bytes:
-    return key.pseudonymize("action-pin", f"{user_id}:{pin}")
+    return key.pseudonymize("action-pin", f"{user_id}:{pin}", purpose=HKDF_PURPOSE_ACTION_PIN)
 
 
 def _now(session: Session) -> datetime:

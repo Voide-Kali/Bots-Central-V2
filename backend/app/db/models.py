@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
     text,
@@ -729,6 +730,9 @@ class ActionPin(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     pin_mac: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
+    key_version: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=2, server_default="2",
+    )
     failed_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
