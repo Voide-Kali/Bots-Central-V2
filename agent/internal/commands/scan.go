@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -133,11 +134,23 @@ func (hostSystem) NetworkScan(ctx context.Context) ([]byte, error) {
 	if len(targets) == 0 {
 		return nil, errUnsupported
 	}
-	path, err := exec.LookPath("nmap")
+	// launchd gives a LaunchAgent a minimal PATH without Homebrew, so look there explicitly.
+	path, err := exec.LookPath(firstExisting("/opt/homebrew/bin/nmap", "/usr/local/bin/nmap", "nmap"))
 	if err != nil {
 		return nil, err
 	}
-	args := append([]string{"-sn", "-oG", "-"}, targets...)
+	base := append([]string{"-sn", "-oG", "-"}, targets...)
+	if runtime.GOOS == "linux" {
+		// The service is not root but holds CAP_NET_RAW: --privileged makes nmap use ARP, which
+		// finds phones and TVs that ignore the TCP probes an unprivileged scan falls back to.
+		if out, err := runNmap(ctx, path, append([]string{"--privileged"}, base...)); err == nil {
+			return out, nil
+		}
+	}
+	return runNmap(ctx, path, base)
+}
+
+func runNmap(ctx context.Context, path string, args []string) ([]byte, error) {
 	command := exec.CommandContext(ctx, path, args...)
 	var out bytes.Buffer
 	command.Stdin = nil

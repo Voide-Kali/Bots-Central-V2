@@ -146,6 +146,7 @@ case ",${AVAL_ACTIONS:-}," in *,network_scan,*)
 [Service]
 AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
+RestrictAddressFamilies=AF_PACKET
 CONF
   ;;
 esac
