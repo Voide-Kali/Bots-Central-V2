@@ -301,6 +301,7 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .device__details > .charts { grid-column: 1 / -1; }
 .charts { display: grid; gap: 12px; }
 .charts__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.charts__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .charts__live { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--fs-small); }
 .charts__live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--control); }
 .charts__live--on { color: var(--text); }
