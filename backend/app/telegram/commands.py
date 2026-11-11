@@ -34,10 +34,11 @@ HELP = (
     "Escreva do seu jeito e o Aval entende:\n"
     "- qual computador esta mais quente? (a IA responde)\n"
     "- bloqueia o Mac / tira uma foto do servidor\n"
+    "- suspende o Mac / reinicia o servidor / desliga o PC\n"
     "- manda o relatorio.pdf do Mac\n\n"
     "Toda acao pede o seu PIN (crie no painel do Aval). Sem PIN, o codigo vai por e-mail.\n\n"
     "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC /scan PC "
-    "/enviar PC arquivo /desvincular /ajuda"
+    "/suspender PC /reiniciar PC /desligar PC /enviar PC arquivo /desvincular /ajuda"
 )
 NOT_LINKED = (
     "Este chat nao esta vinculado.\n"
@@ -101,6 +102,8 @@ MENU_ALIASES = {
     MENU_FILE: "/arquivo",
 }
 ACTION_BUTTONS = {"lock": "lock_screen", "photo": "webcam_photo", "scan": "network_scan"}
+# Power has no one-tap button on purpose: it is typed, so it cannot be hit by accident.
+POWER_COMMANDS = {"/desligar": "shutdown", "/reiniciar": "reboot", "/suspender": "suspend"}
 CALLBACKS = {
     "menu:home": "/painel",
     "menu:status": "/computadores",
@@ -385,7 +388,7 @@ def _dispatch(
     if not body.startswith("/") and action_pin.looks_like_pin(body):
         return _pin_reply(chat_id, user_id, body, session_factory, actions)
     intent = None if body.startswith("/") else intents.parse(body, device_names)
-    action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/scan", "/_acao"}
+    action_names = {"/enviar", "/aprovar", "/bloquear", "/foto", "/scan", "/_acao", *POWER_COMMANDS}
     if intent is None and not body.startswith("/"):
         if _is_greeting(body):
             return Reply(chat_id, GREETING_REPLY, MAIN_MENU)
@@ -409,6 +412,18 @@ def _dispatch(
             except ValueError:
                 return Reply(chat_id, "Computador não encontrado.")
             return _start_action(chat_id, user_id, kind, session_factory, actions, device_id=target)
+        if name in POWER_COMMANDS:
+            if not argument:
+                return Reply(chat_id, f"Use: {name} NOME-DO-PC")
+            return _start_action(
+                chat_id,
+                user_id,
+                "power",
+                session_factory,
+                actions,
+                device_name=argument,
+                argument=POWER_COMMANDS[name],
+            )
         if name in {"/bloquear", "/foto", "/scan"}:
             if not argument:
                 return Reply(chat_id, f"Use: {name} NOME-DO-PC")
@@ -518,9 +533,7 @@ def _intent_reply(
 
 
 def _what(kind: str, argument: str) -> str:
-    if kind == "send_file":
-        return f"enviar o arquivo {argument}"
-    return commands.ACTIONS[kind].verb
+    return commands.action_verb(kind, argument)
 
 
 def _start_action(
