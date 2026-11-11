@@ -22,7 +22,29 @@ type DeviceState =
   | { readonly kind: "unavailable" };
 
 type Filter = "all" | Device["status"];
+type Sort = "status" | "name" | "cpu" | "recent";
 const noDevices: readonly Device[] = [];
+
+const SORTS: ReadonlyArray<{ readonly id: Sort; readonly label: string }> = [
+  { id: "status", label: "Status (online primeiro)" },
+  { id: "name", label: "Nome (A a Z)" },
+  { id: "cpu", label: "CPU (maior primeiro)" },
+  { id: "recent", label: "Visto por último" }
+];
+
+/** Order the (already filtered) list. Stable ties fall back to the name, so the order never jitters. */
+export function sortDevices(devices: readonly Device[], sort: Sort): readonly Device[] {
+  const byName = (a: Device, b: Device): number => a.name.localeCompare(b.name, "pt-BR");
+  const lastSeen = (device: Device): number => (device.lastSeenAt ? Date.parse(device.lastSeenAt) : Number.NEGATIVE_INFINITY);
+  const cpu = (device: Device): number => device.telemetry?.cpuPercent ?? Number.NEGATIVE_INFINITY;
+  const copy = [...devices];
+  switch (sort) {
+    case "name": return copy.sort(byName);
+    case "cpu": return copy.sort((a, b) => cpu(b) - cpu(a) || byName(a, b));
+    case "recent": return copy.sort((a, b) => lastSeen(b) - lastSeen(a) || byName(a, b));
+    case "status": return copy.sort((a, b) => (a.status === b.status ? byName(a, b) : a.status === "online" ? -1 : 1));
+  }
+}
 
 function Skeletons(): ReactElement {
   return <section aria-label="Carregando" className="panel panel--loading">
@@ -63,6 +85,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [sort, setSort] = useState<Sort>("status");
   const [selectedId, setSelectedId] = useState<string>();
   const [feedback, setFeedback] = useState<string>();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -141,8 +164,9 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
   const pending = devices.filter((device) => device.lifecycleStatus === "pending").length;
   const filteredDevices = useMemo(() => {
     const term = search.trim().toLocaleLowerCase();
-    return devices.filter((device) => (filter === "all" || device.status === filter) && (term === "" || [device.id, device.name, device.platform].some((value) => value.toLocaleLowerCase().includes(term))));
-  }, [devices, filter, search]);
+    const matched = devices.filter((device) => (filter === "all" || device.status === filter) && (term === "" || [device.id, device.name, device.platform].some((value) => value.toLocaleLowerCase().includes(term))));
+    return sortDevices(matched, sort);
+  }, [devices, filter, search, sort]);
 
   function refresh(): void { manualRefresh.current = true; setFeedback(undefined); setReload((current) => current + 1); }
   function clearFilters(): void { setSearch(""); setFilter("all"); }
@@ -311,6 +335,7 @@ export function DevicesPage({ api }: { readonly api: ApiClient }): ReactElement 
           {devices.length > 0 ? <div className="list-controls">
             <label className="list-controls__search"><span className="sr-only">Buscar computadores</span><input onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nome ou sistema" type="search" value={search} /></label>
             <div aria-label="Filtrar" className="segmented" role="group">{(["all", "online", "offline"] as const).map((nextFilter) => <button aria-pressed={filter === nextFilter} key={nextFilter} onClick={() => setFilter(nextFilter)} type="button">{nextFilter === "all" ? "Todos" : nextFilter === "online" ? "Online" : "Offline"}</button>)}</div>
+            <label className="list-controls__sort"><span className="sr-only">Ordenar</span><select aria-label="Ordenar" onChange={(event) => setSort(event.target.value as Sort)} value={sort}>{SORTS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
           </div> : null}
           {filteredDevices.length === 0 ? <div className="empty">
             {devices.length === 0 ? <><h3>Nenhum computador ainda.</h3><p>Clique em <strong>Adicionar computador</strong>, instale o agente na máquina e cole o código.</p></> : <><h3>Nada encontrado.</h3><p>Tente outro termo ou limpe os filtros.</p><button className="button" onClick={clearFilters} type="button">Limpar filtros</button></>}

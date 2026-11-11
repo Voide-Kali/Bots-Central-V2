@@ -222,6 +222,8 @@ input:disabled { background: var(--raised); color: var(--faint); }
 .list-controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 var(--card-pad) 16px; }
 .list-controls__search { flex: 1 1 220px; }
 .list-controls__search input { height: var(--control-height); }
+.list-controls__sort select { height: var(--control-height); padding: 0 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--ground); color: var(--text); font-size: var(--fs-body); cursor: pointer; }
+.list-controls__sort select:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
 .segmented { display: inline-flex; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--ground); box-shadow: none; }
 .segmented button { height: 30px; padding: 0 12px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); font-weight: 500; cursor: pointer; }
 .segmented button[aria-pressed="true"] { background: var(--active); color: var(--text); box-shadow: none; }
