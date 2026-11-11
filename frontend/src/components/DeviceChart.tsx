@@ -3,6 +3,7 @@ import type { PointerEvent, ReactElement } from "react";
 import type { DevicesApi } from "../api/client";
 import type { DeviceTelemetry } from "../api/contracts";
 import { UnauthenticatedError } from "../api/errors";
+import { csvText, downloadCsv } from "../lib/csv";
 
 /*
  * Live chart of one computer (ADR-018). While it is open the panel asks the agent for one
@@ -36,6 +37,40 @@ function ago(seconds: number): string {
   if (seconds <= 0) return "agora";
   if (seconds < 60) return `-${Math.round(seconds)} s`;
   return `-${Math.round(seconds / 60)} min`;
+}
+
+const csvWhen = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium" });
+
+/** A number with a comma decimal (pt-BR), or empty when there is no reading. */
+function dec(value: number | null | undefined, places: number): string {
+  return value === null || value === undefined || !Number.isFinite(value) ? "" : value.toFixed(places).replace(".", ",");
+}
+
+function ratio(used: number | null, total: number | null): number | null {
+  return used !== null && total ? (used / total) * 100 : null;
+}
+
+const TELEMETRY_HEADER = ["Quando", "CPU (%)", "Memória (%)", "Disco (%)", "Temperatura (°C)", "Carga (1 min)", "Uptime (s)", "Quando (ISO)"];
+
+/**
+ * The samples behind the chart as CSV, oldest first, so the owner can keep or analyse the
+ * history of one computer. Pure (no DOM): the export button calls it and tests check the text.
+ */
+export function telemetryToCsv(samples: readonly DeviceTelemetry[]): string {
+  const rows = [...samples]
+    .filter((sample) => Number.isFinite(Date.parse(sample.recordedAt)))
+    .sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt))
+    .map((sample) => [
+      csvWhen.format(new Date(sample.recordedAt)),
+      dec(sample.cpuPercent, 1),
+      dec(ratio(sample.memoryUsedBytes, sample.memoryTotalBytes), 1),
+      dec(ratio(sample.diskUsedBytes, sample.diskTotalBytes), 1),
+      dec(sample.temperatureC, 1),
+      dec(sample.load1, 2),
+      sample.uptimeSeconds !== null && Number.isFinite(sample.uptimeSeconds) ? String(Math.round(sample.uptimeSeconds)) : "",
+      sample.recordedAt
+    ]);
+  return csvText(TELEMETRY_HEADER, rows);
 }
 
 function Chart({ metric, points, now, range }: { readonly metric: Metric; readonly points: readonly Point[]; readonly now: number; readonly range: Range }): ReactElement {
@@ -114,7 +149,7 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
   </figure>;
 }
 
-export function DeviceChart({ api, deviceId, onUnauthenticated }: { readonly api: DevicesApi; readonly deviceId: string; onUnauthenticated(): void }): ReactElement | null {
+export function DeviceChart({ api, deviceId, onUnauthenticated, exportable = true }: { readonly api: DevicesApi; readonly deviceId: string; readonly exportable?: boolean; onUnauthenticated(): void }): ReactElement | null {
   const [range, setRange] = useState<Range>("live");
   const [samples, setSamples] = useState<readonly DeviceTelemetry[]>([]);
   const [failed, setFailed] = useState(false);
@@ -158,10 +193,18 @@ export function DeviceChart({ api, deviceId, onUnauthenticated }: { readonly api
   if (!api.history) return null;
   const lastAt = samples.length ? Date.parse(samples[samples.length - 1]!.recordedAt) : null;
   const liveNow = range === "live" && lastAt !== null && now - lastAt < 5_000;
+  const exportCsv = (): void => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const safeId = deviceId.replace(/[^A-Za-z0-9_-]+/g, "_");
+    downloadCsv(`aval-telemetria-${safeId}-${range}-${stamp}.csv`, telemetryToCsv(samples));
+  };
   return <section aria-label="Gráfico" className="charts">
     <div className="charts__head">
       <span className={liveNow ? "charts__live charts__live--on" : "charts__live"}>{liveNow ? "Ao vivo, 1 medição por segundo" : range === "live" ? (now - openedAt > 20_000 ? "Sem modo ao vivo: atualize o agente deste computador (por enquanto, 1 medição a cada 30 s)" : "Ligando o modo ao vivo (até 10 s)") : "Última hora, 1 medição a cada 30 s"}</span>
-      <div aria-label="Período" className="segmented" role="group">{(["live", "hour"] as const).map((item) => <button aria-pressed={range === item} key={item} onClick={() => setRange(item)} type="button">{RANGES[item].label}</button>)}</div>
+      <div className="charts__controls">
+        {exportable ? <button className="button" disabled={samples.length === 0} onClick={exportCsv} type="button">Exportar CSV</button> : null}
+        <div aria-label="Período" className="segmented" role="group">{(["live", "hour"] as const).map((item) => <button aria-pressed={range === item} key={item} onClick={() => setRange(item)} type="button">{RANGES[item].label}</button>)}</div>
+      </div>
     </div>
     {failed ? <p className="charts__error" role="status">Não foi possível atualizar o gráfico agora.</p> : null}
     <div className="charts__grid">{series.map(({ metric, points }) => <Chart key={metric.key} metric={metric} now={now} points={points} range={range} />)}</div>

@@ -144,7 +144,7 @@ export function FairMode({ api, onUnauthenticated }: { readonly api: ApiClient; 
       <div className="fair__chart">
         {featuredDevice ? <>
           <div className="fair__chart-head"><span className="fair__chart-name">{displayName(featuredDevice)}</span><span className="fair__chart-period">Atualização do gráfico</span></div>
-          <DeviceChart api={api.devices} deviceId={featuredDevice.id} key={featuredDevice.id} onUnauthenticated={onUnauthenticated} />
+          <DeviceChart api={api.devices} deviceId={featuredDevice.id} key={featuredDevice.id} exportable={false} onUnauthenticated={onUnauthenticated} />
         </> : <div className="fair__chart-empty"><p>Nenhum computador ativo para exibir.</p></div>}
       </div>
       <aside className="fair__feed" aria-label="Atividade recente">
