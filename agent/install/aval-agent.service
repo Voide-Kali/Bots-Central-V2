@@ -23,7 +23,9 @@ ProtectControlGroups=yes
 ProtectKernelModules=yes
 ProtectClock=yes
 ProtectHostname=yes
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK: listing this machine's own interfaces (local IPs, network_scan targets) goes
+# through netlink. It opens no network path; without it the listing fails outright.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
