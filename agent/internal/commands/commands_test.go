@@ -232,6 +232,47 @@ func TestPowerRunsOnlyApprovedModesWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestPowerReportsRealErrorForSuspend(t *testing.T) {
+	system := &fakeSystem{err: errors.New("permission denied")}
+	executor, err := NewExecutor("", []string{"power"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	executor.powerGrace = 0
+
+	// Suspend must report the real error, not "ok".
+	got := executor.Execute(approved("power", "suspend"))
+	if got.OK || got.Error != "failed" {
+		t.Fatalf("suspend failure must be reported: %+v", got)
+	}
+
+	// Shutdown and reboot also report errors when grace=0 (test mode).
+	got = executor.Execute(approved("power", "shutdown"))
+	if got.OK || got.Error != "failed" {
+		t.Fatalf("shutdown failure must be reported in test mode: %+v", got)
+	}
+	got = executor.Execute(approved("power", "reboot"))
+	if got.OK || got.Error != "failed" {
+		t.Fatalf("reboot failure must be reported in test mode: %+v", got)
+	}
+}
+
+func TestPowerUnsupportedErrorCode(t *testing.T) {
+	system := &fakeSystem{err: errUnsupported}
+	executor, err := NewExecutor("", []string{"power"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	executor.powerGrace = 0
+
+	got := executor.Execute(approved("power", "suspend"))
+	if got.OK || got.Error != "unsupported" {
+		t.Fatalf("unsupported platform must use the right code: %+v", got)
+	}
+}
+
 func TestPowerRefusedWhenNotEnabled(t *testing.T) {
 	system := &fakeSystem{}
 	executor, err := NewExecutor("", []string{"lock_screen"})
