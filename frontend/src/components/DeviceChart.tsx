@@ -25,7 +25,6 @@ const RANGES: Readonly<Record<Range, { readonly minutes: number; readonly second
 };
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
-const H = 180;
 const PAD_L = 36;
 const PAD_R = 10;
 const PAD_T = 14;
@@ -44,10 +43,11 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
   // Draw in real pixels so the labels are never stretched.
   const frame = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(640);
+  const [H, setH] = useState(180);
   useEffect(() => {
     const element = frame.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(([entry]) => { if (entry) setW(Math.max(200, Math.round(entry.contentRect.width))); });
+    const observer = new ResizeObserver(([entry]) => { if (entry) { setW(Math.max(200, Math.round(entry.contentRect.width))); setH(Math.max(140, Math.round(entry.contentRect.height))); } });
     observer.observe(element);
     return () => { observer.disconnect(); };
   }, []);
@@ -90,7 +90,7 @@ function Chart({ metric, points, now, range }: { readonly metric: Metric; readon
       <span className="chart__value num">{shown ? number.format(shown.v) : "—"}<small>{shown ? ` ${metric.unit}` : ""}</small></span>
       <span className="chart__meta num">{hover ? new Date(hover.t).toLocaleTimeString("pt-BR") : peak && low && average !== null ? `pico ${number.format(peak.v)} · baixa ${number.format(low.v)} · média ${number.format(average)}` : "sem medições"}</span>
     </figcaption>
-    <div ref={frame}><svg className="chart__svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric.label}: ${shown ? number.format(shown.v) + " " + metric.unit : "sem medições"}`} onPointerMove={onMove} onPointerLeave={() => setHover(undefined)}>
+    <div className="chart__plot" ref={frame}><svg className="chart__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${metric.label}: ${shown ? number.format(shown.v) + " " + metric.unit : "sem medições"}`} onPointerMove={onMove} onPointerLeave={() => setHover(undefined)}>
       {[0, 0.25, 0.5, 0.75, 1].map((f) => <g key={f}>
         <line className="chart__grid" x1={PAD_L} x2={W - PAD_R} y1={y(top * f)} y2={y(top * f)} />
         <text className="chart__tick" x={PAD_L - 6} y={y(top * f) + 3} textAnchor="end">{number.format(top * f)}</text>
