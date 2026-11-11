@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
+)
 
 func TestParseValidConfig(t *testing.T) {
 	config, err := Parse([]byte(`{"state_dir":"/var/lib/bots-central-agent","backend_base_url":"https://backend.example","heartbeat_interval":"30s","transport_timeout":"10s","backoff_initial":"1s","backoff_max":"1m"}`))
@@ -49,8 +54,14 @@ func TestSensorsAreValidated(t *testing.T) {
 
 func TestAllowedActionsAreValidated(t *testing.T) {
 	base := `{"state_dir":"/state","backend_base_url":"https://backend.example","heartbeat_interval":"30s","transport_timeout":"10s","backoff_initial":"1s","backoff_max":"1m",`
-	config, err := Parse([]byte(base + `"allowed_actions":["lock_screen","webcam_photo","network_scan"]}`))
-	if err != nil || len(config.AllowedActions) != 3 {
+	// Derived from the executor's catalogue on purpose: a second hardcoded list here is what
+	// once let "power" pass the installer and then kill the agent at startup.
+	names := make([]string, 0, len(commands.KnownActions))
+	for action := range commands.KnownActions {
+		names = append(names, `"`+action+`"`)
+	}
+	config, err := Parse([]byte(base + `"allowed_actions":[` + strings.Join(names, ",") + `]}`))
+	if err != nil || len(config.AllowedActions) != len(commands.KnownActions) {
 		t.Fatalf("every known action must be accepted: config=%+v err=%v", config, err)
 	}
 	for _, bad := range []string{`"allowed_actions":["telnet"]}`, `"allowed_actions":["network_scan","network_scan"]}`} {

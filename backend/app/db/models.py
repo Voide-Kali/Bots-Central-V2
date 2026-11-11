@@ -648,7 +648,7 @@ class DeviceCommand(Base):
     __tablename__ = "device_commands"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('send_file', 'lock_screen', 'webcam_photo', 'network_scan')",
+            "kind IN ('send_file', 'lock_screen', 'webcam_photo', 'network_scan', 'power')",
             name="ck_device_commands_kind",
         ),
         CheckConstraint(
