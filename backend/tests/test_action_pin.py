@@ -160,6 +160,26 @@ def test_plain_portuguese_request_and_pin_in_telegram(pinned: Any) -> None:
 
 
 @pytest.mark.postgresql
+def test_power_by_telegram_text_and_command_asks_for_the_pin(pinned: Any) -> None:
+    from test_device_commands import _Mailer
+
+    factory, user_id, _, _ = pinned
+    mailer = _Mailer()
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    asked = _say(factory, "suspende o telemetry-agent", mailer)
+    assert "Para suspender o computador no telemetry-agent, digite seu PIN" in asked.text
+    done = _say(factory, "482913", mailer, message_id=91)
+    assert done.text.startswith("Aprovado: suspender o computador")
+    by_command = _say(factory, "/reiniciar telemetry-agent", mailer)
+    assert "Para reiniciar o computador no telemetry-agent" in by_command.text
+    usage = _say(factory, "/desligar", mailer)
+    assert usage.text == "Use: /desligar NOME-DO-PC"
+    # Describing a problem is not a command: it goes to the assistant (disabled here).
+    story = _say(factory, "o telemetry-agent desligou sozinho", mailer)
+    assert "IA" in story.text
+
+
+@pytest.mark.postgresql
 def test_several_actions_in_a_row_are_not_rate_limited_like_linking(pinned: Any) -> None:
     """Regression (E2E 22/10): actions shared the 5-per-10-min linking budget."""
     from test_device_commands import _Mailer
