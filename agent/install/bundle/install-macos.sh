@@ -40,7 +40,7 @@ xattr -d com.apple.quarantine "$BIN" 2>/dev/null || true
 actions_json=""
 IFS=',' read -ra _acts <<< "$ACTIONS"
 for a in "${_acts[@]+"${_acts[@]}"}"; do
-  case "$a" in lock_screen|webcam_photo|network_scan) actions_json="$actions_json${actions_json:+, }\"$a\"";; esac
+  case "$a" in lock_screen|webcam_photo|network_scan|power) actions_json="$actions_json${actions_json:+, }\"$a\"";; esac
 done
 cat > "$CONFIG" <<JSON
 {

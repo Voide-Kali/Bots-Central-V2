@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Voide-Kali/Bots-Central-V2/agent/internal/commands"
 )
 
 const maxConfigSize = 64 * 1024
@@ -121,7 +123,9 @@ func Parse(data []byte) (Config, error) {
 	}
 	seen := map[string]bool{}
 	for _, action := range raw.AllowedActions {
-		if action != "lock_screen" && action != "webcam_photo" && action != "network_scan" {
+		// Single source of truth: the executor's catalogue. Keeping a second list here is what
+		// once let an action be installable but unstartable.
+		if !commands.KnownActions[action] {
 			return Config{}, fmt.Errorf("config: unknown action %q in allowed_actions", action)
 		}
 		if seen[action] {
