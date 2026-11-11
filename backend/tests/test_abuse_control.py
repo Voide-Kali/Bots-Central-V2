@@ -10,9 +10,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.abuse_control import (
+    HKDF_PURPOSE_ACTION_PIN,
+    HKDF_PURPOSE_APPROVAL_CODE,
+    HKDF_PURPOSE_RATE_LIMIT,
+    HKDF_PURPOSE_RESET_CODE,
     AbuseControlKey,
     AbuseController,
     ClientAddressUnavailable,
+    _hkdf_expand,
     client_network,
 )
 from app.db.models import AuthAbuseBucket
@@ -166,3 +171,55 @@ def test_expired_bucket_resets_and_cleanup_removes_expired_rows(
     assert abuse.cleanup_expired() > 0
     with Session(migrated_postgresql_engine) as session:
         assert session.scalar(select(AuthAbuseBucket)) is None
+
+
+# ---------- HKDF key derivation (ADR-038) ----------
+
+
+def test_hkdf_expand_produces_32_bytes_deterministically() -> None:
+    prk = b"a" * 32
+    out1 = _hkdf_expand(prk, b"aval/rate-limit/v1", 32)
+    out2 = _hkdf_expand(prk, b"aval/rate-limit/v1", 32)
+    assert len(out1) == 32
+    assert out1 == out2  # deterministic
+
+
+def test_hkdf_different_purposes_yield_different_subkeys() -> None:
+    key = abuse_key()
+    purposes = [
+        HKDF_PURPOSE_RATE_LIMIT,
+        HKDF_PURPOSE_RESET_CODE,
+        HKDF_PURPOSE_APPROVAL_CODE,
+        HKDF_PURPOSE_ACTION_PIN,
+    ]
+    subkeys = [key.derive(p) for p in purposes]
+    # All are 32 bytes.
+    assert all(len(sk) == 32 for sk in subkeys)
+    # All are distinct.
+    assert len(set(subkeys)) == len(purposes)
+
+
+def test_hkdf_derived_mac_differs_from_legacy_raw_key_mac() -> None:
+    """The whole point: a MAC computed with a derived subkey must NOT match
+    one computed with the raw master key (legacy scheme)."""
+    key = abuse_key()
+    # Legacy: HMAC directly with the master key (simulated).
+    import hashlib
+    import hmac as _hmac
+
+    legacy = _hmac.digest(key._key, b"action-pin\x00some-value", hashlib.sha256)
+    derived = key.pseudonymize("action-pin", "some-value", purpose=HKDF_PURPOSE_ACTION_PIN)
+    assert legacy != derived
+
+
+def test_derive_caches_subkey() -> None:
+    key = abuse_key()
+    first = key.derive(HKDF_PURPOSE_RATE_LIMIT)
+    second = key.derive(HKDF_PURPOSE_RATE_LIMIT)
+    assert first is second  # same object, not just equal
+
+
+def test_derive_rejects_empty_purpose() -> None:
+    key = abuse_key()
+    with pytest.raises(ValueError, match="purpose must not be empty"):
+        key.derive(b"")

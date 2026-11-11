@@ -221,8 +221,38 @@ def _decode_key(encoded: str) -> bytes:
     return key
 
 
+def _hkdf_expand(prk: bytes, info: bytes, length: int = 32) -> bytes:
+    """HKDF-Expand (RFC 5869 section 2.3), SHA-256 only.
+
+    We skip HKDF-Extract because the master key is already a uniformly random
+    secret (base64url-decoded, >= 32 bytes).  Using the raw key as PRK is safe
+    per RFC 5869 section 3.3 when the input key material is already
+    cryptographically strong.
+    """
+    if length > 255 * 32:
+        raise ValueError("HKDF-Expand: length too large")
+    n = (length + 31) // 32
+    okm = b""
+    t = b""
+    for i in range(1, n + 1):
+        t = hmac.digest(prk, t + info + bytes([i]), hashlib.sha256)
+        okm += t
+    return okm[:length]
+
+
+# Versioned purpose strings for HKDF key derivation (ADR-038).
+HKDF_PURPOSE_RATE_LIMIT = b"aval/rate-limit/v1"
+HKDF_PURPOSE_RESET_CODE = b"aval/reset-code/v1"
+HKDF_PURPOSE_APPROVAL_CODE = b"aval/approval-code/v1"
+HKDF_PURPOSE_ACTION_PIN = b"aval/action-pin/v1"
+
+
 class AbuseControlKey:
-    """Separate keyed pseudonymization primitive; never reuse email-code HMAC keys."""
+    """Keyed pseudonymization with per-purpose HKDF-derived subkeys (ADR-038).
+
+    Each consumer calls ``derive(purpose)`` to get an independent 32-byte
+    subkey.  The master key is never used directly for HMAC any more.
+    """
 
     def __init__(self, encoded_key: SecretStr | str | None) -> None:
         secret = (
@@ -233,15 +263,30 @@ class AbuseControlKey:
         if not isinstance(secret, str):
             raise InvalidAbuseControlConfiguration("abuse-control HMAC key is not configured")
         self._key = _decode_key(secret)
+        self._derived: dict[bytes, bytes] = {}
 
     @classmethod
     def from_settings(cls, settings: object) -> "AbuseControlKey":
         return cls(getattr(settings, "abuse_control_hmac_key", None))
 
-    def pseudonymize(self, namespace: str, value: str) -> bytes:
+    def derive(self, purpose: bytes) -> bytes:
+        """Return a 32-byte subkey for *purpose* via HKDF-Expand (cached)."""
+        if not purpose:
+            raise ValueError("HKDF purpose must not be empty")
+        if purpose not in self._derived:
+            self._derived[purpose] = _hkdf_expand(self._key, purpose, 32)
+        return self._derived[purpose]
+
+    def pseudonymize(self, namespace: str, value: str, *, purpose: bytes | None = None) -> bytes:
+        """HMAC-SHA256 keyed by the derived subkey for *purpose*.
+
+        When *purpose* is ``None`` the rate-limit subkey is used (the most
+        common caller is ``AbuseController._bucket_key``).
+        """
         if not namespace or not isinstance(value, str):
             raise TypeError("abuse-control namespace and value must be strings")
-        return hmac.digest(self._key, f"{namespace}\x00{value}".encode(), hashlib.sha256)
+        subkey = self.derive(purpose or HKDF_PURPOSE_RATE_LIMIT)
+        return hmac.digest(subkey, f"{namespace}\x00{value}".encode(), hashlib.sha256)
 
     def __repr__(self) -> str:
         return "AbuseControlKey(configured=True)"

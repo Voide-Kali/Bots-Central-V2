@@ -20,7 +20,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.audit import events as audit
-from app.auth.abuse_control import AbuseControlKey
+from app.auth.abuse_control import HKDF_PURPOSE_RESET_CODE, AbuseControlKey
 from app.auth.emails import EmailValidationError, validate_and_canonicalize_email
 from app.auth.passwords import hash_password, validate_password
 from app.db.enums import AccountStatus, SessionRevocationReason
@@ -49,7 +49,9 @@ class ResetIntent:
 
 
 def _mac(key: AbuseControlKey, user_id: uuid.UUID, code: str) -> bytes:
-    return key.pseudonymize("password-reset-code", f"{user_id}:{code}")
+    return key.pseudonymize(
+        "password-reset-code", f"{user_id}:{code}", purpose=HKDF_PURPOSE_RESET_CODE,
+    )
 
 
 def _now(session: Session) -> datetime:
