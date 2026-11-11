@@ -32,7 +32,7 @@ OUT_DEB="$OUT/aval-instalar-linux-$friendly.deb"
 actions_json=""
 IFS=',' read -ra _a <<< "$ACTIONS"
 for a in "${_a[@]+"${_a[@]}"}"; do
-  case "$a" in lock_screen|webcam_photo|network_scan) actions_json="$actions_json${actions_json:+, }\"$a\"";; esac
+  case "$a" in lock_screen|webcam_photo|network_scan|power) actions_json="$actions_json${actions_json:+, }\"$a\"";; esac
 done
 sensors_json=""
 case ",$SENSORS," in *,failed_login_photo,*) sensors_json="\"failed_login_photo\"";; esac
@@ -76,6 +76,23 @@ case ",$ACTIONS," in *,lock_screen,*)
   cat > "$root/etc/polkit-1/rules.d/49-aval-agent-lock.rules" <<'RULE'
 polkit.addRule(function (action, subject) {
   if (action.id == "org.freedesktop.login1.lock-sessions" && subject.user == "aval-agent") {
+    return polkit.Result.YES;
+  }
+});
+RULE
+  ;;
+esac
+case ",$ACTIONS," in *,power,*)
+  install -d "$root/etc/polkit-1/rules.d"
+  cat > "$root/etc/polkit-1/rules.d/49-aval-agent-power.rules" <<'RULE'
+polkit.addRule(function (action, subject) {
+  if (subject.user == "aval-agent" && (
+      action.id == "org.freedesktop.login1.power-off" ||
+      action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+      action.id == "org.freedesktop.login1.reboot" ||
+      action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
+      action.id == "org.freedesktop.login1.suspend" ||
+      action.id == "org.freedesktop.login1.suspend-multiple-sessions")) {
     return polkit.Result.YES;
   }
 });
