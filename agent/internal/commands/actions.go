@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,22 +48,33 @@ func (e *Executor) lockScreen() Result {
 	return okEmpty()
 }
 
-// power turns the machine off, reboots or suspends it. It answers "ok" right away and does the
-// deed after a short grace period, so the server records the result before the computer goes
-// down. mode has already been checked against PowerModes by Execute.
+// power turns the machine off, reboots or suspends it. mode has already been
+// checked against PowerModes by Execute.
+//
+// Suspend runs synchronously: the machine stays on after it wakes, so the agent
+// can report the real outcome (success or permission error).
+//
+// Shutdown and reboot must send the result before the machine goes down, so the
+// agent returns "ok" first and executes after a short grace period. If the OS
+// rejects the command (e.g. permission denied), the error is logged but cannot
+// reach the server — the response is already on the wire.
 func (e *Executor) power(mode string) Result {
-	do := func() {
+	if mode == "suspend" || e.powerGrace <= 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 		defer cancel()
-		_ = e.system.Power(ctx, mode)
-	}
-	if e.powerGrace <= 0 { // tests run it synchronously
-		do()
+		if err := e.system.Power(ctx, mode); err != nil {
+			return Result{Error: failure(err)}
+		}
 		return okEmpty()
 	}
+	// shutdown / reboot in production: grace period so the result reaches the server.
 	go func() {
 		time.Sleep(e.powerGrace)
-		do()
+		ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
+		defer cancel()
+		if err := e.system.Power(ctx, mode); err != nil {
+			log.Printf("power %s failed after grace: %v", mode, err)
+		}
 	}()
 	return okEmpty()
 }
