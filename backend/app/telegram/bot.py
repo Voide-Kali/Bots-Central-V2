@@ -25,6 +25,7 @@ from app.devices import commands, events
 from app.telegram.alerts import collect_presence_alerts
 from app.telegram.client import TelegramClient, TelegramUnavailable
 from app.telegram.commands import ActionDeps, Reply, handle_update
+from app.telegram.daily_summary import DailySummarySender
 from app.telegram.resource_alerts import ResourceAlerter
 
 ALERT_INTERVAL_SECONDS = 15
@@ -166,6 +167,7 @@ def run() -> None:
         else None
     )
     resources = ResourceAlerter()
+    daily = DailySummarySender()
     conversations = Conversations()
     queue = ChatQueue()
     stopping = False
@@ -191,6 +193,10 @@ def run() -> None:
                 _send(client, resources.collect(factory))
             except Exception:
                 logger.exception("resource alert pass failed")
+            try:
+                _send(client, daily.collect(factory))
+            except Exception:
+                logger.exception("daily summary pass failed")
             try:
                 _deliver_files(client, factory)
             except Exception:
