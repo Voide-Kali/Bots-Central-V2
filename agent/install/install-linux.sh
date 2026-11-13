@@ -1,28 +1,106 @@
 #!/usr/bin/env bash
-# Install the Aval agent as a hardened systemd service (Kali/Debian/Ubuntu).
-# Usage: sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
-# Optional ADR-016 actions (each one still needs your PIN, or the e-mail code, every time):
+# Instalador do agente Aval para Linux (Debian/Ubuntu/Kali).
+#
+# Uso:
+#   sudo ./install-linux.sh https://SEU_SERVIDOR.tailXXXX.ts.net
+#
+# Acoes opcionais (cada uma ainda pede seu PIN ou codigo por e-mail):
 #   sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan,power ./install-linux.sh https://...
-# Optional sensors (comma-separated), off by default:
-#   failed_login_photo (ADR-019): a photo to your Telegram on a wrong password (Linux only).
-#   network_location (ADR-036): reports this computer's public/local IP in the heartbeat.
+#
+# Sensores opcionais (desligados por padrao):
+#   failed_login_photo — foto pro Telegram quando alguem erra a senha (ADR-019)
+#   network_location   — reporta o IP publico/local no heartbeat (ADR-036)
 #   sudo AVAL_SENSORS=network_location ./install-linux.sh https://...
+#
 set -euo pipefail
-[ "$(id -u)" -eq 0 ] || { echo "Run with sudo." >&2; exit 1; }
+
+# --------------------------------------------------------------------------
+# Funcoes auxiliares
+# --------------------------------------------------------------------------
+_ok()   { echo "  [OK] $*"; }
+_info() { echo ""; echo ">>> $*"; }
+_erro() { echo "  [ERRO] $*" >&2; }
+_passo() { echo ""; echo "========================================"; echo "  $*"; echo "========================================"; }
+
+# --------------------------------------------------------------------------
+# Validacoes iniciais
+# --------------------------------------------------------------------------
+_passo "Instalador do Agente Aval"
+
+echo ""
+echo "Este script instala o agente Aval neste computador."
+echo "Ele permite que voce monitore e controle esta maquina"
+echo "pelo painel web ou pelo Telegram."
+echo ""
+
+if [ "$(id -u)" -ne 0 ]; then
+  _erro "Execute com sudo:"
+  echo "  sudo $0 https://SEU_SERVIDOR.tailXXXX.ts.net"
+  exit 1
+fi
+
 SERVER="${1:-}"
-case "$SERVER" in https://*) ;; *) echo "Usage: sudo $0 https://SERVER.tailXXXX.ts.net" >&2; exit 1;; esac
+if [ -z "$SERVER" ]; then
+  _erro "Faltou o endereco do servidor."
+  echo ""
+  echo "Uso:"
+  echo "  sudo $0 https://SEU_SERVIDOR.tailXXXX.ts.net"
+  echo ""
+  echo "Voce encontra o endereco no painel do Aval ou no Tailscale."
+  exit 1
+fi
+
+case "$SERVER" in
+  https://*) ;;
+  http://*)
+    _erro "O endereco precisa comecar com https://, nao http://."
+    echo "  Exemplo: sudo $0 https://meu-servidor.tailXXXX.ts.net"
+    exit 1
+    ;;
+  *)
+    _erro "Endereco invalido: $SERVER"
+    echo "  O endereco precisa comecar com https://"
+    echo "  Exemplo: sudo $0 https://meu-servidor.tailXXXX.ts.net"
+    exit 1
+    ;;
+esac
 SERVER="${SERVER%/}"
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$(cd "$HERE/.." && pwd)"
-command -v go >/dev/null || { echo "Go not found: sudo apt install -y golang" >&2; exit 1; }
 
+# --------------------------------------------------------------------------
+# Verificar dependencias
+# --------------------------------------------------------------------------
+_info "Verificando dependencias..."
+
+if ! command -v go >/dev/null 2>&1; then
+  _erro "Go nao esta instalado."
+  echo ""
+  echo "Instale com:"
+  echo "  sudo apt update && sudo apt install -y golang"
+  echo ""
+  echo "Depois execute este script de novo."
+  exit 1
+fi
+_ok "Go encontrado: $(go version | cut -d' ' -f3)"
+
+# --------------------------------------------------------------------------
+# Acoes e sensores
+# --------------------------------------------------------------------------
 ACTIONS_JSON=""
 IFS=',' read -ra ACTIONS <<< "${AVAL_ACTIONS:-}"
 for action in "${ACTIONS[@]+"${ACTIONS[@]}"}"; do
   case "$action" in
-    lock_screen|webcam_photo|network_scan|power) ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\"";;
+    lock_screen|webcam_photo|network_scan|power|unlock_screen)
+      ACTIONS_JSON="$ACTIONS_JSON${ACTIONS_JSON:+, }\"$action\""
+      ;;
     "") ;;
-    *) echo "Unknown action: $action (use lock_screen,webcam_photo,network_scan,power)" >&2; exit 1;;
+    *)
+      _erro "Acao desconhecida: $action"
+      echo "  Acoes disponiveis: lock_screen, unlock_screen, webcam_photo, network_scan, power"
+      exit 1
+      ;;
   esac
 done
 
@@ -32,23 +110,45 @@ for sensor in "${SENSORS[@]+"${SENSORS[@]}"}"; do
   case "$sensor" in
     failed_login_photo|network_location)
       [ -n "$SENSORS_JSON" ] && SENSORS_JSON="$SENSORS_JSON, "
-      SENSORS_JSON="$SENSORS_JSON\"$sensor\"";;
+      SENSORS_JSON="$SENSORS_JSON\"$sensor\""
+      ;;
     "") ;;
-    *) echo "Unknown sensor: $sensor (use failed_login_photo or network_location)" >&2; exit 1;;
+    *)
+      _erro "Sensor desconhecido: $sensor"
+      echo "  Sensores disponiveis: failed_login_photo, network_location"
+      exit 1
+      ;;
   esac
 done
 
-echo "==> Building"
+# --------------------------------------------------------------------------
+# 1. Compilar o agente
+# --------------------------------------------------------------------------
+_passo "Passo 1/4 — Compilando o agente"
+
+echo "Compilando... (pode levar alguns segundos)"
 (cd "$AGENT_DIR" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/aval-agent ./cmd/bots-central-agent)
 install -m 0755 /tmp/aval-agent /usr/local/bin/aval-agent && rm -f /tmp/aval-agent
+_ok "Agente compilado e instalado em /usr/local/bin/aval-agent"
 
-echo "==> User and folders"
+# --------------------------------------------------------------------------
+# 2. Usuario, pastas e configuracao
+# --------------------------------------------------------------------------
+_passo "Passo 2/4 — Criando usuario e pastas"
+
 id aval-agent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin aval-agent
+_ok "Usuario do sistema: aval-agent"
+
 install -d -m 0700 -o aval-agent -g aval-agent /var/lib/aval-agent
+_ok "Pasta de dados: /var/lib/aval-agent"
+
 install -d -m 0755 /etc/aval-agent
-# Folder whose files may be sent after your approval (ADR-015/016). Add yourself to the
-# aval-agent group to drop files here:  sudo usermod -aG aval-agent "$SUDO_USER"
+_ok "Pasta de configuracao: /etc/aval-agent"
+
 install -d -m 2770 -o root -g aval-agent /srv/aval-compartilhado
+_ok "Pasta compartilhada: /srv/aval-compartilhado"
+echo "  (Coloque aqui os arquivos que voce quer poder buscar pelo Aval)"
+
 cat > /etc/aval-agent/config.json <<JSON
 {
   "state_dir": "/var/lib/aval-agent",
@@ -63,49 +163,105 @@ cat > /etc/aval-agent/config.json <<JSON
 }
 JSON
 chmod 0644 /etc/aval-agent/config.json
+_ok "Configuracao salva em /etc/aval-agent/config.json"
 
+if [ -n "${AVAL_ACTIONS:-}" ]; then
+  echo ""
+  echo "  Acoes habilitadas: ${AVAL_ACTIONS}"
+  echo "  (Cada acao ainda precisa do seu PIN para ser executada)"
+else
+  echo ""
+  echo "  Nenhuma acao habilitada. Para habilitar, reinstale com:"
+  echo "  sudo AVAL_ACTIONS=lock_screen,webcam_photo,network_scan,power $0 $SERVER"
+fi
+
+if [ -n "${AVAL_SENSORS:-}" ]; then
+  echo "  Sensores habilitados: ${AVAL_SENSORS}"
+fi
+
+# --------------------------------------------------------------------------
+# 3. Pareamento
+# --------------------------------------------------------------------------
 ENROLLED=/var/lib/aval-agent/device-enrollment-v1.json
 if [ ! -e "$ENROLLED" ]; then
-  echo
-  echo "==> Pairing. In the Aval panel click 'Adicionar dispositivo' and paste the code here."
-  read -rsp "Pairing code (hidden): " TOKEN; echo
-  # The token goes through a pipe (bash builtin printf): never in argv, history or files.
+  _passo "Passo 3/4 — Pareamento com o servidor"
+
+  echo "Para parear este computador:"
+  echo ""
+  echo "  1. Abra o painel do Aval no navegador"
+  echo "  2. Clique em 'Adicionar dispositivo'"
+  echo "  3. Copie o codigo que aparece"
+  echo "  4. Cole aqui embaixo"
+  echo ""
+  read -rsp "Codigo de pareamento (nao aparece na tela): " TOKEN; echo
+  echo ""
+
+  if [ -z "$TOKEN" ]; then
+    _erro "Codigo vazio. Execute o script de novo."
+    exit 1
+  fi
+
+  echo "Conectando ao servidor..."
   set +e
   printf '%s\n' "$TOKEN" | runuser -u aval-agent -- /usr/local/bin/aval-agent \
     -config /etc/aval-agent/config.json -pairing-token-stdin &
   PID=$!
   unset TOKEN
-  # Wait (max 60 s) until the enrollment is persisted, then stop the foreground run.
   for _ in $(seq 1 60); do [ -e "$ENROLLED" ] && break; kill -0 "$PID" 2>/dev/null || break; sleep 1; done
   sleep 2
   kill "$PID" 2>/dev/null; wait "$PID" 2>/dev/null
-  [ -e "$ENROLLED" ] || { echo "Pairing failed (expired code or server unreachable). Run the script again." >&2; exit 1; }
+
+  if [ ! -e "$ENROLLED" ]; then
+    _erro "Pareamento falhou."
+    echo ""
+    echo "Possiveis causas:"
+    echo "  - Codigo expirado (gere um novo no painel)"
+    echo "  - Servidor fora do ar ou inacessivel"
+    echo "  - Este computador nao esta na rede Tailscale"
+    echo ""
+    echo "Execute este script de novo para tentar outra vez."
+    exit 1
+  fi
   set -e
-  echo "Compare the fingerprint printed above with the one shown in the panel, then approve it there."
+
+  echo ""
+  _ok "Pareamento concluido."
+  echo ""
+  echo "  IMPORTANTE: Compare o fingerprint mostrado acima com o que"
+  echo "  aparece no painel do Aval. Se forem iguais, aprove o"
+  echo "  computador la. Se forem diferentes, recuse — pode ser"
+  echo "  outra maquina tentando se passar por esta."
+else
+  echo ""
+  _info "Este computador ja esta pareado. Pulando o passo 3."
 fi
 
-echo "==> Actions: ${AVAL_ACTIONS:-none}"
+# --------------------------------------------------------------------------
+# 4. Permissoes de acoes e servico
+# --------------------------------------------------------------------------
+_passo "Passo 4/4 — Configurando servico"
+
 DROPIN=/etc/systemd/system/aval-agent.service.d
 rm -f "$DROPIN/webcam.conf" "$DROPIN/journal.conf" "$DROPIN/scan.conf" \
   /etc/polkit-1/rules.d/49-aval-agent-lock.rules \
   /etc/polkit-1/rules.d/49-aval-agent-power.rules
-case ",${AVAL_ACTIONS:-}," in *,lock_screen,*)
-  # Let only the aval-agent user ask logind to lock the sessions (nothing else).
+
+case ",${AVAL_ACTIONS:-}," in *,lock_screen,*|*,unlock_screen,*)
   install -d -m 0755 /etc/polkit-1/rules.d
   cat > /etc/polkit-1/rules.d/49-aval-agent-lock.rules <<'RULE'
 polkit.addRule(function (action, subject) {
-  if (action.id == "org.freedesktop.login1.lock-sessions" && subject.user == "aval-agent") {
+  if ((action.id == "org.freedesktop.login1.lock-sessions" ||
+       action.id == "org.freedesktop.login1.allow-multiple-sessions") &&
+      subject.user == "aval-agent") {
     return polkit.Result.YES;
   }
 });
 RULE
+  _ok "Permissao: bloquear/desbloquear tela"
   ;;
 esac
 
 case ",${AVAL_ACTIONS:-}," in *,power,*)
-  # power (ADR-016): let only the aval-agent user ask logind to power off, reboot or suspend.
-  # The agent runs "systemctl poweroff|reboot|suspend"; logind (PID 1) does the work, so the
-  # service itself needs no extra capabilities, only this polkit authorization.
   install -d -m 0755 /etc/polkit-1/rules.d
   cat > /etc/polkit-1/rules.d/49-aval-agent-power.rules <<'RULE'
 polkit.addRule(function (action, subject) {
@@ -120,63 +276,89 @@ polkit.addRule(function (action, subject) {
   }
 });
 RULE
-  echo "==> Action: desligar, reiniciar e suspender liberados para este computador (com aval)."
+  _ok "Permissao: desligar, reiniciar e suspender (com aval)"
   ;;
 esac
+
 case ",${AVAL_ACTIONS:-},${AVAL_SENSORS:-}," in *,webcam_photo,*|*,failed_login_photo,*)
-  command -v fswebcam >/dev/null || apt-get install -y fswebcam
+  command -v fswebcam >/dev/null || { echo "  Instalando fswebcam..."; apt-get install -y fswebcam > /dev/null 2>&1; }
   install -d -m 0755 "$DROPIN"
   cat > "$DROPIN/webcam.conf" <<'CONF'
-# webcam_photo (ADR-016): expose only video devices to the agent.
 [Service]
 PrivateDevices=no
 DevicePolicy=closed
 DeviceAllow=char-video4linux rw
 SupplementaryGroups=video
 CONF
+  _ok "Webcam configurada"
   ;;
 esac
 
 case ",${AVAL_ACTIONS:-}," in *,network_scan,*)
-  # network_scan (ADR-020): host discovery on the own local network with nmap -sn.
-  command -v nmap >/dev/null || apt-get install -y nmap
+  command -v nmap >/dev/null || { echo "  Instalando nmap..."; apt-get install -y nmap > /dev/null 2>&1; }
   install -d -m 0755 "$DROPIN"
   cat > "$DROPIN/scan.conf" <<'CONF'
-# network_scan (ADR-020): raw sockets let nmap -sn send ICMP/ARP probes.
 [Service]
 AmbientCapabilities=CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_RAW
 CONF
+  _ok "Scan de rede configurado"
   ;;
 esac
 
 case ",${AVAL_SENSORS:-}," in *,failed_login_photo,*)
-  # The sensor reads the system journal (journalctl, read-only) to see wrong passwords.
   install -d -m 0755 "$DROPIN"
   cat > "$DROPIN/journal.conf" <<'CONF'
-# failed_login_photo (ADR-019): read-only access to the system journal.
 [Service]
 SupplementaryGroups=systemd-journal
 CONF
-  echo "==> Sensor: a photo goes to your Telegram when someone types a wrong password here."
+  _ok "Sensor de senha errada configurado"
   ;;
 esac
 
-echo "==> Service"
+echo ""
+echo "Instalando e iniciando o servico..."
 install -m 0644 "$HERE/aval-agent.service" /etc/systemd/system/aval-agent.service
 systemctl daemon-reload
 systemctl enable aval-agent
 systemctl restart aval-agent
-# Confirm the agent is really up: the state right after restart is not meaningful because the
-# agent validates its config a moment later and may exit. Wait, then check the true state and
-# surface the log on failure (e.g. an unknown action in the config) instead of a false "running".
+
 sleep 3
 if systemctl is-active --quiet aval-agent; then
-  echo "OK: aval-agent esta ativo."
+  _ok "Agente Aval esta rodando."
 else
-  echo "ERRO: aval-agent nao ficou ativo. Ultimas linhas do log:" >&2
-  journalctl -u aval-agent -n 15 --no-pager >&2 || true
+  _erro "O agente nao ficou ativo."
+  echo ""
+  echo "Ultimas linhas do log:"
+  journalctl -u aval-agent -n 15 --no-pager 2>&1 || true
+  echo ""
+  echo "Tente corrigir o problema e execute este script de novo."
   exit 1
 fi
-echo "Done. Logs: journalctl -u aval-agent -f"
-echo "Files you allow Aval to send (after your approval with the PIN) go in: /srv/aval-compartilhado"
+
+# --------------------------------------------------------------------------
+# Resumo final
+# --------------------------------------------------------------------------
+echo ""
+echo "========================================"
+echo "  Instalacao concluida!"
+echo "========================================"
+echo ""
+echo "  Servidor: $SERVER"
+echo "  Acoes: ${AVAL_ACTIONS:-nenhuma}"
+echo "  Sensores: ${AVAL_SENSORS:-nenhum}"
+echo ""
+echo "  Proximos passos:"
+echo "  1. Aprove o computador no painel do Aval (compare o fingerprint)"
+echo "  2. Vincule o Telegram no painel para receber alertas"
+echo "  3. Se quiser buscar arquivos, coloque-os em /srv/aval-compartilhado"
+echo ""
+echo "  Comandos uteis:"
+echo "  - Ver logs: journalctl -u aval-agent -f"
+echo "  - Parar:    sudo systemctl stop aval-agent"
+echo "  - Iniciar:  sudo systemctl start aval-agent"
+echo "  - Status:   sudo systemctl status aval-agent"
+echo ""
+echo "  Para compartilhar arquivos, adicione seu usuario ao grupo:"
+echo "  sudo usermod -aG aval-agent \$USER"
+echo ""

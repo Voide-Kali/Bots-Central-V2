@@ -31,19 +31,35 @@ from app.telegram.formatting import device_card, device_line
 SessionFactory = Callable[[], Session]
 
 HELP = (
-    "Escreva do seu jeito e o Aval entende:\n"
-    "- qual computador esta mais quente? (a IA responde)\n"
-    "- bloqueia o Mac / tira uma foto do servidor\n"
+    "Pode escrever do seu jeito que eu entendo:\n\n"
+    "Exemplos:\n"
+    "- bloqueia o Mac\n"
+    "- tira uma foto do servidor\n"
+    "- mostra quem ta na rede\n"
     "- suspende o Mac / reinicia o servidor / desliga o PC\n"
-    "- manda o relatorio.pdf do Mac\n\n"
-    "Toda acao pede o seu PIN (crie no painel do Aval). Sem PIN, o codigo vai por e-mail.\n\n"
-    "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC /scan PC "
-    "/suspender PC /reiniciar PC /desligar PC /enviar PC arquivo /desvincular /ajuda"
+    "- manda o relatorio.pdf do Mac\n"
+    "- qual computador esta mais quente? (a IA responde)\n\n"
+    "Toda acao pede o seu PIN de 6 numeros. Se voce ainda nao criou, "
+    "entre no painel do Aval e crie um na secao PIN.\n"
+    "Sem PIN, o codigo vai por e-mail.\n\n"
+    "Comandos diretos:\n"
+    "/painel — menu principal\n"
+    "/computadores — seus PCs\n"
+    "/historico — acoes recentes\n"
+    "/bloquear PC — bloqueia a tela\n"
+    "/foto PC — foto pela webcam\n"
+    "/scan PC — quem esta na rede\n"
+    "/suspender PC · /reiniciar PC · /desligar PC\n"
+    "/enviar PC arquivo — buscar um arquivo\n"
+    "/desvincular — desvincular este chat"
 )
 NOT_LINKED = (
-    "Este chat nao esta vinculado.\n"
-    "No painel do Aval, gere um codigo em Vincular Telegram e envie aqui:\n"
-    "/vincular SEU-CODIGO"
+    "Este chat ainda nao esta vinculado a sua conta.\n\n"
+    "Para vincular:\n"
+    "1. Abra o painel do Aval no navegador\n"
+    "2. Va em Vincular Telegram e gere um codigo\n"
+    "3. Envie aqui: /vincular SEU-CODIGO\n\n"
+    "Depois disso voce controla seus computadores por aqui."
 )
 
 
@@ -113,19 +129,25 @@ CALLBACKS = {
     "menu:help": "/ajuda",
 }
 AI_HINT = (
-    "Escreva sua pergunta em texto livre, por exemplo:\n"
-    "- qual computador está mais quente?\n"
-    "- quanto de memória o Mac está usando?\n"
-    "- algum computador está offline?\n\n"
-    "A IA só lê os dados dos seus computadores. Ela não consegue executar nada."
+    "Pode me perguntar qualquer coisa sobre os seus computadores.\n"
+    "Escreva normalmente, por exemplo:\n\n"
+    "- qual computador esta mais quente?\n"
+    "- quanto de memoria o Mac esta usando?\n"
+    "- algum computador esta offline?\n"
+    "- esta tudo normal com os meus PCs?\n\n"
+    "Eu leio os dados dos seus computadores e respondo. "
+    "Nao consigo executar nenhuma acao — para isso, use os comandos."
 )
 FILE_HINT = (
-    "Para receber um arquivo de um computador:\n"
-    "1. Coloque o arquivo na pasta compartilhada do computador "
-    "(Mac: ~/Aval-Compartilhado, Linux: /srv/aval-compartilhado).\n"
-    "2. Escreva aqui, por exemplo: manda o relatorio.pdf do Mac\n"
-    "3. Confirme com o seu PIN.\n\n"
-    "Sem a sua confirmação, nenhum arquivo sai do computador."
+    "Para receber um arquivo de um computador:\n\n"
+    "1. Coloque o arquivo na pasta compartilhada do computador\n"
+    "   Mac: ~/Aval-Compartilhado\n"
+    "   Linux: /srv/aval-compartilhado\n\n"
+    "2. Escreva aqui o que voce quer, por exemplo:\n"
+    "   manda o relatorio.pdf do Mac\n"
+    "   pega o backup.zip do servidor\n\n"
+    "3. Confirme com o seu PIN de 6 numeros.\n\n"
+    "Nenhum arquivo sai do computador sem a sua confirmacao."
 )
 
 
@@ -219,7 +241,10 @@ def _user_devices(session: Session, user_id: Any) -> tuple[datetime, list[Device
 def status_text(session: Session, user_id: Any) -> str:
     now, devices = _user_devices(session, user_id)
     if not devices:
-        return "Você ainda não tem computadores. Adicione um pelo painel do Aval."
+        return (
+            "Voce ainda nao tem computadores cadastrados.\n"
+            "Para adicionar, instale o agente Aval no computador e faca o pareamento pelo painel."
+        )
     latest = telemetry.latest_for_devices(session, [item.id for item in devices])
     presences = [device_online.presence(now, item) for item in devices]
     online = sum(
@@ -230,10 +255,11 @@ def status_text(session: Session, user_id: Any) -> str:
     active = sum(1 for item in devices if item.lifecycle_status.value == "active")
     waiting = sum(1 for item in devices if item.lifecycle_status.value == "pending")
     safe = online == active and waiting == 0
+    status_word = "Tudo certo" if safe else "Atencao"
     header = (
-        f"AVAL — {'PROTEGIDO' if safe else 'ATENÇÃO'}\n"
-        f"Computadores online: {online} de {active}"
-        + (f"\nAguardando aprovação no painel: {waiting}" if waiting else "")
+        f"AVAL — {status_word}\n"
+        f"{online} de {active} computador(es) online"
+        + (f"\n{waiting} aguardando aprovacao no painel" if waiting else "")
     )
     lines = [
         device_line(item, presence, latest.get(item.id))
@@ -260,7 +286,7 @@ def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> R
         wanted = raw_id.strip().casefold()
         device = next((item for item in devices if item.name.casefold() == wanted), None)
     if device is None:  # never reveal other users' devices
-        return Reply(chat_id, "Computador não encontrado.")
+        return Reply(chat_id, "Computador nao encontrado. Use /computadores para ver seus PCs.")
     sample = telemetry.latest_for_devices(session, [device.id]).get(device.id)
     card = device_card(device, device_online.presence(now, device), sample, now)
     rows: list[list[dict[str, str]]] = []
@@ -462,8 +488,13 @@ _GREETINGS = frozenset(
     }
 )
 GREETING_REPLY = (
-    "Oi! Eu cuido dos seus computadores. Toque em /painel para o menu, "
-    "ou me faça uma pergunta, por exemplo: qual computador está mais quente?"
+    "Oi! Eu sou o Aval, cuido dos seus computadores.\n\n"
+    "Pode me perguntar qualquer coisa ou pedir uma acao.\n"
+    "Exemplos:\n"
+    "- como esta o Mac?\n"
+    "- bloqueia o servidor\n"
+    "- tira uma foto do tropa\n\n"
+    "Ou toque em /painel para ver o menu."
 )
 
 
@@ -515,11 +546,10 @@ def _intent_reply(
     if device is None and len(device_names) == 1:
         device = device_names[0]
     if device is None:
+        example = device_names[0] if device_names else "Mac"
         return Reply(
             chat_id,
-            "Em qual computador? Diga o nome, por exemplo: “bloqueia o "
-            + (device_names[0] if device_names else "Mac")
-            + "”.",
+            f"Em qual computador? Diga o nome junto.\nExemplo: bloqueia o {example}",
         )
     return _start_action(
         chat_id,
@@ -570,20 +600,22 @@ def _start_action(
     if has_pin:
         return Reply(
             chat_id,
-            f"Para {what} {where}, digite seu PIN (6 números).\n"
-            "Vale 5 minutos. A mensagem com o PIN é apagada em seguida.",
+            f"Entendido: {what} {where}.\n"
+            "Digite seu PIN de 6 numeros para confirmar.\n"
+            "(Vale 5 minutos. A mensagem com o PIN e apagada em seguida.)",
         )
     subject, body = commands.approval_email(intent)
     try:
         actions.mailer.send_plain(recipient=intent.recipient, subject=subject, body=body)
     except Exception:
         commands.cancel_request(session_factory, command_id=intent.command_id)
-        return Reply(chat_id, "Não consegui enviar o e-mail com o código. Tente de novo.")
+        return Reply(chat_id, "Nao consegui enviar o e-mail com o codigo. Tente de novo.")
     return Reply(
         chat_id,
-        f"Enviei um código para o seu e-mail para {what} {where}. "
-        "Responda aqui: /aprovar CÓDIGO (vale 5 minutos).\n"
-        "Dica: crie um PIN no painel do Aval para aprovar sem e-mail.",
+        f"Entendido: {what} {where}.\n"
+        "Enviei um codigo para o seu e-mail. Responda aqui:\n"
+        "/aprovar CODIGO\n\n"
+        "(Vale 5 minutos. Dica: crie um PIN no painel para aprovar sem e-mail.)",
     )
 
 
@@ -603,22 +635,28 @@ def _pin_reply(
         what = _what(command.kind, command.file_name)
         return Reply(
             chat_id,
-            f"Aprovado: {what}. O computador faz isso em até 1 minuto.",
+            f"Aprovado. O computador vai {what} em ate 1 minuto.",
             delete_message_id=-1,
         )
     if check.locked_until is not None:
         return Reply(
             chat_id,
-            "PIN errado demais vezes. As ações ficam travadas por 15 minutos.",
+            "PIN errado muitas vezes. As acoes ficam travadas por 15 minutos.\n"
+            "Tente de novo depois.",
             delete_message_id=-1,
         )
     if check.remaining:
         return Reply(
             chat_id,
-            f"PIN incorreto. Restam {check.remaining} tentativas.",
+            f"PIN incorreto. Voce ainda tem {check.remaining} tentativa(s).",
             delete_message_id=-1,
         )
-    return Reply(chat_id, "Nenhum pedido esperando PIN agora.", delete_message_id=-1)
+    return Reply(
+        chat_id,
+        "Nao tem nenhum pedido esperando PIN agora.\n"
+        "Primeiro peca uma acao (ex: bloqueia o Mac), depois digite o PIN.",
+        delete_message_id=-1,
+    )
 
 
 def _approve(

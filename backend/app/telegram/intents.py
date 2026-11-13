@@ -5,29 +5,86 @@ instead of tapping a button. This module only reads the OWNER'S OWN MESSAGE
 (never device data) and is plain pattern matching, not the language model:
 the assistant still has no way to start an action (ADR-013), and every action
 still needs the owner's PIN or e-mail code (ADR-016).
+
+The patterns cover imperative forms and colloquial variants commonly used in
+Brazilian Portuguese ("tira uma foto", "mostra a rede", "da pra bloquear").
+Past tenses ("bloqueou", "travou") and adjectives ("bloqueado") describe a
+*problem* and are left for the assistant.
 """
 
 import re
 import unicodedata
 from dataclasses import dataclass
 
-# Commands only ("bloqueia", "trava", "tranca"); "travou" or "bloqueado" describe a
+# ---------------------------------------------------------------------------
+# Lock screen — imperative commands only.  "travou" or "bloqueado" describe a
 # problem and go to the assistant instead.
-_LOCK = re.compile(r"\b(bloqueia|bloquear|bloqueie|trava|travar|trave|tranca|trancar|tranque)\b")
-_PHOTO = re.compile(r"\b(foto\w*|webcam|camera)\b")
-# Network scan: a scan verb, or "na (minha) rede" (e.g. "quem esta na minha rede").
-_SCAN = re.compile(r"\b(scan\w*|escane\w*|escaneia|varre\w*|varredura)\b|\bna (minha )?rede\b")
-# Power (ADR-016): imperative forms only. "desligou" or "reiniciando" describe a problem and go
-# to the assistant; "desliga a tela" is about the screen, not the machine.
+# ---------------------------------------------------------------------------
+_LOCK = re.compile(
+    r"\b("
+    r"bloqueia|bloquear|bloqueie|bloquei[ae] la"
+    r"|trava|travar|trave|trava la"
+    r"|tranca|trancar|tranque|tranca la"
+    r"|protege|proteger|proteja"        # "protege meu PC"
+    r"|fecha|fechar|feche"              # "fecha a tela"
+    r")\b"
+)
+
+# ---------------------------------------------------------------------------
+# Webcam photo — "tira uma foto", "mostra a camera", "deixa eu ver"
+# ---------------------------------------------------------------------------
+_PHOTO = re.compile(
+    r"\b("
+    r"foto\w*|webcam|camera|câmera"
+    r"|tira(r)? (uma )?foto"            # "tira uma foto"
+    r"|mostra(r)? (a )?camera"          # "mostra a camera"
+    r"|deixa (eu )?ver"                 # "deixa eu ver (o PC)"
+    r"|captura|capturar"                # "captura uma imagem"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Network scan: a scan verb, or "na (minha) rede" (e.g. "quem esta na minha
+# rede"), or "mostra a rede / quem ta conectado".
+# ---------------------------------------------------------------------------
+_SCAN = re.compile(
+    r"\b(scan\w*|escane\w*|escaneia|varre\w*|varredura)\b"
+    r"|\bna (minha )?rede\b"
+    r"|\b(mostra|ver|veja|lista|listar) .{0,15}(rede|conectado|aparelho|dispositivo)"
+    r"|\bquem (ta|esta|tá|está) (na|conectado)"
+)
+
+# ---------------------------------------------------------------------------
+# Power (ADR-016): imperative forms only.  "desligou" or "reiniciando"
+# describe a problem and go to the assistant; "desliga a tela" is about the
+# screen, not the machine.
+# ---------------------------------------------------------------------------
 _POWER = (
-    ("shutdown", re.compile(r"\b(desliga|desligar|desligue)\b")),
-    ("reboot", re.compile(r"\b(reinicia|reiniciar|reinicie|reboot)\b")),
-    ("suspend", re.compile(r"\b(suspende|suspender|suspenda)\b")),
+    ("shutdown", re.compile(
+        r"\b(desliga|desligar|desligue|apaga|apagar|apague|derruba|derrubar)\b"
+    )),
+    ("reboot", re.compile(
+        r"\b(reinicia|reiniciar|reinicie|reboot|restarta|restartar|rebota)\b"
+    )),
+    ("suspend", re.compile(
+        r"\b(suspende|suspender|suspenda|hiberna|hibernar"
+        r"|dorme|dormir|coloca(r)? (pra|para) dormir)\b"
+    )),
 )
 _SCREEN = re.compile(r"\b(tela|monitor)\b")
-_SEND = re.compile(r"\b(mand\w*|envi\w*|passa\w*|traz\w*|traga)\b")
+
+# ---------------------------------------------------------------------------
+# Send file
+# ---------------------------------------------------------------------------
+_SEND = re.compile(
+    r"\b(mand\w*|envi\w*|passa\w*|traz\w*|traga|pega\w*|busca\w*|puxa\w*)\b"
+)
 _FILE = re.compile(r"^(.+?\.[a-z0-9]{1,8})(?![\w])", re.IGNORECASE)
-_FILLER = {"me", "pra", "para", "mim", "o", "a", "os", "as", "um", "uma", "meu", "minha", "arquivo"}
+_FILLER = {
+    "me", "pra", "para", "mim", "o", "a", "os", "as",
+    "um", "uma", "meu", "minha", "arquivo", "esse", "aquele",
+}
 
 
 @dataclass(frozen=True)
