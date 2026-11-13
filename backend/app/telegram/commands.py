@@ -24,7 +24,7 @@ from app.audit import events as audit
 from app.auth import action_pin, device_online
 from app.auth.abuse_control import AbuseControlKey, AbuseControlUnavailable
 from app.db.models import Device
-from app.devices import commands, telemetry
+from app.devices import commands, network_intel, telemetry
 from app.telegram import intents, linking
 from app.telegram.formatting import device_card, device_line
 
@@ -37,7 +37,7 @@ HELP = (
     "- suspende o Mac / reinicia o servidor / desliga o PC\n"
     "- manda o relatorio.pdf do Mac\n\n"
     "Toda acao pede o seu PIN (crie no painel do Aval). Sem PIN, o codigo vai por e-mail.\n\n"
-    "Comandos: /painel (menu) /computadores /historico /bloquear PC /foto PC /scan PC "
+    "Comandos: /painel (menu) /computadores /historico /rede PC /bloquear PC /foto PC /scan PC "
     "/suspender PC /reiniciar PC /desligar PC /enviar PC arquivo /desvincular /ajuda"
 )
 NOT_LINKED = (
@@ -250,6 +250,42 @@ def status_keyboard(session: Session, user_id: Any) -> dict[str, Any]:
     return {"inline_keyboard": rows}
 
 
+def _rede_reply(
+    session: Session,
+    user_id: Any,
+    chat_id: int,
+    argument: str,
+    device_names: list[str],
+) -> Reply:
+    """Show the latest network scan summary for a device, or list devices if none given."""
+    if not argument:
+        if len(device_names) == 1:
+            argument = device_names[0]
+        else:
+            return Reply(chat_id, "Use: /rede NOME-DO-PC")
+    wanted = argument.strip().casefold()
+    _, devices = _user_devices(session, user_id)
+    device = next((d for d in devices if d.name.casefold() == wanted), None)
+    if device is None:
+        return Reply(chat_id, "Computador nao encontrado.")
+    summary = network_intel.latest_scan_summary(session, device.id)
+    if summary is None:
+        return Reply(
+            chat_id,
+            f"Nenhum scan de rede registrado para {device.name}.\n"
+            f"Use /scan {device.name} para fazer um.",
+            {"inline_keyboard": [[BACK_BUTTON]]},
+        )
+    # Show recent history count.
+    history = network_intel.scan_history(session, device.id, limit=10)
+    footer = f"\n\n{len(history)} scans registrados. Use /scan {device.name} para um novo."
+    return Reply(
+        chat_id,
+        summary + footer,
+        {"inline_keyboard": [[BACK_BUTTON]]},
+    )
+
+
 def device_reply(session: Session, user_id: Any, chat_id: int, raw_id: str) -> Reply:
     """The card of one of the owner's computers, by id (buttons) or by name (/pc tropa)."""
     now, devices = _user_devices(session, user_id)
@@ -312,7 +348,7 @@ def handle_update(
         # new ones; action buttons still answer with a new message.
         navigation = body.startswith(
             ("/painel", "/menu", "/computadores", "/status", "/pc ", "/historico",
-             "/ia", "/arquivo", "/ajuda")
+             "/rede", "/ia", "/arquivo", "/ajuda")
         )
         edit = message_id if navigation and reply.keyboard is not None else None
         return Reply(reply.chat_id, reply.text, reply.keyboard, callback_id, edit_message_id=edit)
@@ -381,6 +417,8 @@ def _dispatch(
                 "Últimas ações:\n" + body_text,
                 {"inline_keyboard": [[BACK_BUTTON]]},
             )
+        if name == "/rede":
+            return _rede_reply(session, user_id, chat_id, argument, device_names)
     if name == "/ia":
         return Reply(chat_id, AI_HINT, {"inline_keyboard": [[BACK_BUTTON]]})
     if name == "/arquivo":

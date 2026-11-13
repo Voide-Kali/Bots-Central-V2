@@ -16,6 +16,7 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -767,3 +768,42 @@ class DeviceEvent(Base):
     photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NetworkScan(Base):
+    """One completed network_scan action with its parsed results."""
+
+    __tablename__ = "network_scans"
+    __table_args__ = (
+        Index("ix_network_scans_device_scanned", "device_id", "scanned_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    command_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("device_commands.id", ondelete="SET NULL"), nullable=True
+    )
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    host_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class NetworkScanHost(Base):
+    """One host found during a network scan."""
+
+    __tablename__ = "network_scan_hosts"
+    __table_args__ = (
+        Index("ix_network_scan_hosts_scan_id", "scan_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("network_scans.id", ondelete="CASCADE"), nullable=False
+    )
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_seen_scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("network_scans.id", ondelete="SET NULL"), nullable=True
+    )
