@@ -141,7 +141,7 @@ export interface AuditEvent {
 }
 
 /** ADR-021: run a Telegram action from the panel, approved with the PIN. */
-export type ActionKind = "lock_screen" | "webcam_photo" | "network_scan" | "power";
+export type ActionKind = "lock_screen" | "unlock_screen" | "webcam_photo" | "network_scan" | "power";
 
 export type StartActionResult =
   | { readonly ok: true; readonly commandId: string }

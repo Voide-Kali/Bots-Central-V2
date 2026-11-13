@@ -96,6 +96,7 @@ func TestExecuteReadsOnlyRegularFilesInsideSharedDir(t *testing.T) {
 
 type fakeSystem struct {
 	locked    int
+	unlocked  int
 	photo     []byte
 	scanRaw   []byte
 	scanned   int
@@ -106,6 +107,11 @@ type fakeSystem struct {
 
 func (f *fakeSystem) LockScreen(context.Context) error {
 	f.locked++
+	return f.err
+}
+
+func (f *fakeSystem) UnlockScreen(context.Context) error {
+	f.unlocked++
 	return f.err
 }
 
@@ -202,6 +208,38 @@ func TestDigestMatchesBackendFormat(t *testing.T) {
 	sum := sha256.Sum256([]byte("aval-action-v1\nlock_screen\n" + testDevice + "\n"))
 	if got != hex.EncodeToString(sum[:]) {
 		t.Fatal("digest format changed")
+	}
+}
+
+func TestUnlockScreenRunsWhenAllowed(t *testing.T) {
+	system := &fakeSystem{}
+	executor, err := NewExecutor("", []string{"unlock_screen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	got := executor.Execute(approved("unlock_screen", ""))
+	if !got.OK || len(got.Content) != 0 || system.unlocked != 1 {
+		t.Fatalf("unlock: %+v (unlocked=%d)", got, system.unlocked)
+	}
+	// argument must be empty
+	if got := executor.Execute(approved("unlock_screen", "x")); got.OK || got.Error != "digest" {
+		t.Fatalf("unlock_screen takes no argument: %+v", got)
+	}
+}
+
+func TestUnlockScreenDisabledByDefault(t *testing.T) {
+	system := &fakeSystem{}
+	executor, err := NewExecutor("", []string{"lock_screen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.system = system
+	if got := executor.Execute(approved("unlock_screen", "")); got.OK || got.Error != "disabled" {
+		t.Fatalf("unlock not allowed: %+v", got)
+	}
+	if system.unlocked != 0 {
+		t.Fatal("unlock must not run when not allowed")
 	}
 }
 

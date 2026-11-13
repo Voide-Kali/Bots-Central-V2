@@ -99,7 +99,16 @@ ACTIONS: dict[str, ActionSpec] = {
         verb="bloquear a tela",
         done="Tela de {name} bloqueada.",
         returns_file=False,
-        risk="Quem estiver usando o computador terá que digitar a senha de novo.",
+        risk="Quem estiver usando o computador tera que digitar a senha de novo.",
+    ),
+    "unlock_screen": ActionSpec(
+        verb="desbloquear a tela",
+        done="Tela de {name} desbloqueada.",
+        returns_file=False,
+        risk=(
+            "O computador sai da tela de bloqueio. "
+            "Quem tiver acesso fisico podera usa-lo."
+        ),
     ),
     "webcam_photo": ActionSpec(
         verb="tirar uma foto pela webcam",

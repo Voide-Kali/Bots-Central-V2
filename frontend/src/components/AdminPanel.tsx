@@ -8,7 +8,7 @@ type Data = { readonly overview: AdminOverview; readonly users: readonly AdminUs
 type State = { readonly kind: "loading" } | { readonly kind: "ready"; readonly data: Data } | { readonly kind: "unavailable" };
 
 const STATUS: Readonly<Record<string, string>> = { active: "ativa", pending_verification: "aguardando e-mail", locked: "travada", disabled: "desativada" };
-const ACTIONS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", webcam_photo: "foto" };
+const ACTIONS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", unlock_screen: "desbloquear tela", webcam_photo: "foto" };
 const OUTCOMES: Readonly<Record<string, string>> = { failed: "falhou", denied: "negado", expired: "expirou" };
 
 function when(value: string): string {

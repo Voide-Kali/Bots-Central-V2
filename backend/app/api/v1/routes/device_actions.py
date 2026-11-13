@@ -29,7 +29,7 @@ device_actions_router = APIRouter(prefix="/devices", tags=["devices"])
 
 # Actions offered from the panel. send_file needs a file name and keeps its own flow; power
 # carries its mode in ``mode``. Must stay a subset of the ADR-016 catalogue.
-WEB_ACTIONS = frozenset({"lock_screen", "webcam_photo", "network_scan", "power"})
+WEB_ACTIONS = frozenset({"lock_screen", "unlock_screen", "webcam_photo", "network_scan", "power"})
 
 
 class ActionRequest(_AuthRequest):

@@ -14,6 +14,10 @@ from dataclasses import dataclass
 # Commands only ("bloqueia", "trava", "tranca"); "travou" or "bloqueado" describe a
 # problem and go to the assistant instead.
 _LOCK = re.compile(r"\b(bloqueia|bloquear|bloqueie|trava|travar|trave|tranca|trancar|tranque)\b")
+_UNLOCK = re.compile(
+    r"\b(desbloqueia|desbloquear|desbloqueie|destrava|destravar|destrave|"
+    r"destranca|destrancar|destranque)\b"
+)
 _PHOTO = re.compile(r"\b(foto\w*|webcam|camera)\b")
 # Network scan: a scan verb, or "na (minha) rede" (e.g. "quem esta na minha rede").
 _SCAN = re.compile(r"\b(scan\w*|escane\w*|escaneia|varre\w*|varredura)\b|\bna (minha )?rede\b")
@@ -73,6 +77,8 @@ def parse(text: str, device_names: list[str]) -> Intent | None:
                 return Intent("power", device, mode)
     if _PHOTO.search(folded):
         return Intent("webcam_photo", device)
+    if _UNLOCK.search(folded):
+        return Intent("unlock_screen", device)
     if _LOCK.search(folded):
         return Intent("lock_screen", device)
     if _SCAN.search(folded):

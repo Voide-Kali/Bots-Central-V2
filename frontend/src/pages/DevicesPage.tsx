@@ -72,7 +72,7 @@ function serverOrigin(): string {
 // person copies the line for their computer; nothing to type or guess. The pairing code is still
 // pasted when the installer asks, so this changes no security property.
 function installCommands(origin: string): { readonly linux: string; readonly macos: string } {
-  const env = "AVAL_ACTIONS=lock_screen,webcam_photo,network_scan AVAL_SENSORS=failed_login_photo";
+  const env = "AVAL_ACTIONS=lock_screen,unlock_screen,webcam_photo,network_scan AVAL_SENSORS=failed_login_photo";
   return {
     linux: `cd ~/aval/agent && sudo ${env} ./install/install-linux.sh ${origin}`,
     macos: `cd ~/aval/agent && ${env} ./install/install-macos.sh ${origin}`,
