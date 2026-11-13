@@ -32,6 +32,7 @@ var errNoNetwork = errors.New("no_network")
 // System runs the fixed programs behind each action. Tests replace it.
 type System interface {
 	LockScreen(ctx context.Context) error
+	UnlockScreen(ctx context.Context) error
 	TakePhoto(ctx context.Context, path string) error
 	// NetworkScan returns nmap's greppable output for the host's own private subnets.
 	NetworkScan(ctx context.Context) ([]byte, error)
@@ -43,6 +44,15 @@ func (e *Executor) lockScreen() Result {
 	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 	defer cancel()
 	if err := e.system.LockScreen(ctx); err != nil {
+		return Result{Error: failure(err)}
+	}
+	return okEmpty()
+}
+
+func (e *Executor) unlockScreen() Result {
+	ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
+	defer cancel()
+	if err := e.system.UnlockScreen(ctx); err != nil {
 		return Result{Error: failure(err)}
 	}
 	return okEmpty()
@@ -131,6 +141,15 @@ func (hostSystem) LockScreen(ctx context.Context) error {
 		return run(ctx, "loginctl", "lock-sessions")
 	case "darwin":
 		return run(ctx, "/usr/bin/pmset", "displaysleepnow")
+	default:
+		return errUnsupported
+	}
+}
+
+func (hostSystem) UnlockScreen(ctx context.Context) error {
+	switch runtime.GOOS {
+	case "linux":
+		return run(ctx, "loginctl", "unlock-sessions")
 	default:
 		return errUnsupported
 	}

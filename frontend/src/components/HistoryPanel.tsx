@@ -39,7 +39,7 @@ const SOURCES: Readonly<Record<string, string>> = {
   login: "login no terminal", sudo: "sudo", su: "su", sshd: "acesso remoto (SSH)", "polkit-agent-helper-1": "pedido de senha do sistema"
 };
 
-const KINDS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", webcam_photo: "foto da webcam" };
+const KINDS: Readonly<Record<string, string>> = { send_file: "enviar arquivo", lock_screen: "bloquear tela", unlock_screen: "desbloquear tela", webcam_photo: "foto da webcam" };
 
 /** "bloquear tela · com PIN", "enviar arquivo relatorio.pdf · tropa"; a dash when the event has nothing to add. */
 export function eventDetail(event: AuditEvent): string {

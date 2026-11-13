@@ -29,7 +29,7 @@ import (
 const DigestPrefix = "aval-action-v1"
 
 // Actions that need explicit opt-in through allowed_actions.
-var KnownActions = map[string]bool{"lock_screen": true, "webcam_photo": true, "network_scan": true, "power": true}
+var KnownActions = map[string]bool{"lock_screen": true, "unlock_screen": true, "webcam_photo": true, "network_scan": true, "power": true}
 
 // PowerModes are the only arguments the power action accepts (ADR-016).
 var PowerModes = map[string]bool{"shutdown": true, "reboot": true, "suspend": true}
@@ -112,7 +112,7 @@ func (e *Executor) Execute(command Command) Result {
 	switch command.Type {
 	case "send_file":
 		return e.sendFile(command)
-	case "lock_screen", "webcam_photo":
+	case "lock_screen", "unlock_screen", "webcam_photo":
 		if command.FileName != "" {
 			return Result{Error: "digest"}
 		}
@@ -121,6 +121,9 @@ func (e *Executor) Execute(command Command) Result {
 		}
 		if command.Type == "lock_screen" {
 			return e.lockScreen()
+		}
+		if command.Type == "unlock_screen" {
+			return e.unlockScreen()
 		}
 		return e.webcamPhoto()
 	case "network_scan":

@@ -39,6 +39,24 @@ def test_web_lock_screen_runs_with_pin_and_reports_done(pinned: Any) -> None:
 
 
 @pytest.mark.postgresql
+def test_web_unlock_screen_runs_with_pin_and_reports_done(pinned: Any) -> None:
+    factory, user_id, device_id, private = pinned
+    action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")
+    command_id, check = commands.start_web_action(
+        factory, KEY, user_id=user_id, device_id=device_id, kind="unlock_screen", pin="482913"
+    )
+    assert check.ok and command_id is not None
+    command = _poll(factory, private, device_id, 101)
+    assert command is not None and command["type"] == "unlock_screen"
+    _result(factory, private, device_id, command_id, 102, b"")
+    status = commands.web_action_status(
+        factory, user_id=user_id, device_id=device_id, command_id=command_id
+    )
+    assert status is not None and status.status == "completed"
+    assert status.message == "Tela de telemetry-agent desbloqueada."
+
+
+@pytest.mark.postgresql
 def test_web_wrong_pin_leaves_no_stale_request(pinned: Any) -> None:
     factory, user_id, device_id, private = pinned
     action_pin.set_pin(factory, KEY, user_id=user_id, password=PASSWORD, pin="482913")

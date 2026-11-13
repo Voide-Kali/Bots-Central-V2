@@ -13,6 +13,7 @@ import { UnauthenticatedError } from "../api/errors";
 
 const ACTIONS: ReadonlyArray<{ readonly kind: ActionKind; readonly label: string; readonly effect: string }> = [
   { kind: "lock_screen", label: "Bloquear tela", effect: "trava a tela deste computador. Nenhum dado é enviado a você." },
+  { kind: "unlock_screen", label: "Desbloquear tela", effect: "desbloqueia a tela deste computador remotamente (somente Linux)." },
   { kind: "webcam_photo", label: "Foto", effect: "tira uma foto da webcam e envia a imagem para você." },
   { kind: "network_scan", label: "Rede", effect: "lista os aparelhos na rede local e envia o texto para você." }
 ];
