@@ -25,6 +25,7 @@ Security properties:
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 import uuid
 from collections.abc import Callable
@@ -49,6 +50,9 @@ from app.db.models import (
     User,
     UserEmail,
 )
+from app.devices import network_intel
+
+logger = logging.getLogger("bots_central.commands")
 
 SessionFactory = Callable[[], Session]
 
@@ -813,6 +817,23 @@ def _collect_text_results(session: Session, now: datetime, notices: list[Notice]
         header = ACTIONS[command.kind].done.format(name=device_name)
         body = payload.content.decode("utf-8", "replace")[:MAX_TEXT_RESULT_CHARS].strip()
         notices.append(Notice(command.chat_id, f"{header}\n\n{body}" if body else header))
+
+        # Network Intelligence: persist scan results and alert on changes.
+        if command.kind == "network_scan" and body:
+            try:
+                diff = network_intel.persist_scan(
+                    session,
+                    device_id=command.device_id,
+                    command_id=command.id,
+                    raw_text=body,
+                )
+                if diff is not None:
+                    alert_text = network_intel.format_diff(diff, device_name)
+                    if alert_text:
+                        notices.append(Notice(command.chat_id, alert_text))
+            except Exception:
+                logger.exception("network intel persist failed for command %s", command.id)
+
         command.status = "delivered"
         session.execute(delete(CommandPayload).where(CommandPayload.command_id == command.id))
         audit.record(
