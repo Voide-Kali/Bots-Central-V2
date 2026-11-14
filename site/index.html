@@ -94,10 +94,6 @@ main:focus { outline: none; }
 .hero__links { display: flex; gap: 32px; font-size: var(--step-body); }
 .hero__links a { text-decoration: none; color: var(--muted); transition: color .2s; }
 .hero__links a:hover { color: var(--ink); }
-.hero__auth { display: flex; align-items: center; gap: 18px; }
-.auth-link { text-decoration: none; color: var(--muted); font-size: var(--step-body); font-weight: 500; transition: color .2s; }
-.auth-link:hover { color: var(--ink); }
-.hero__auth .btn { min-height: 46px; padding: 0 20px; }
 .hero__bar .btn { min-height: 46px; padding: 0 20px; }
 .hero__intro { position: relative; z-index: 2; grid-row: 2; align-self: center; justify-self: start; max-width: 40ch; width: min(100%, 460px); }
 .hero__lead { max-width: 34ch; color: var(--muted); font-size: var(--step-lead); line-height: 1.35; text-wrap: pretty; }
@@ -299,8 +295,7 @@ main:focus { outline: none; }
   .hero__title { font-size: 16.5vw; }
   .hero__lead { font-size: 18px; }
   .seal-stage { width: 62vw; top: 13%; right: 50%; transform: translateX(50%); }
-  .hero__auth .btn { font-size: 14px; min-height: 40px; padding: 0 14px; }
-  .auth-link { font-size: 14px; }
+  .hero__bar .btn { display: none; }
   .intro, .how, .proof, .cmds, .faq { padding-block: 96px; }
   .try { padding-block: 96px; }
   .resp { margin-left: 0; }
@@ -326,10 +321,7 @@ main:focus { outline: none; }
   <div class="hero__bar">
     <a class="mark" href="#topo" aria-label="Aval, início"><svg viewBox="0 0 40 24" aria-hidden="true"><path d="M3 13.5c3.2 2.4 5.6 5.2 7.4 8C15.6 12.8 24 5.4 37 2.5"/></svg><span>Aval</span></a>
     <nav class="hero__links" aria-label="Seções"><a href="#como">Como funciona</a><a href="#pesquisa">Pesquisa</a><a href="#perguntas">Perguntas</a></nav>
-    <div class="hero__auth">
-      <a class="auth-link" href="/painel/login">Entrar</a>
-      <a class="btn btn--accent" href="/painel/register">Criar conta</a>
-    </div>
+    <a class="btn btn--accent" href="#contato">Pedir uma demonstração</a>
   </div>
 
   <div class="seal-stage" aria-hidden="true">
@@ -445,11 +437,11 @@ main:focus { outline: none; }
     <h2 id="cta-t" class="display">Seus computadores</h2>
     <div class="cta__mid">
       <div class="cta__choice">
-        <a class="btn btn--accent" href="/painel/register">Criar conta</a>
+        <a class="btn btn--accent" href="mailto:aval.app.br@gmail.com?subject=Quero%20uma%20demonstra%C3%A7%C3%A3o%20do%20Aval&body=Ol%C3%A1!%20Quero%20ver%20o%20Aval%20funcionando.%0A%0AQuantos%20computadores%3A%20%0ACasa%20ou%20empresa%3A%20%0A">Pedir uma demonstração</a>
         <span>ou</span>
-        <a class="btn btn--ghost" href="/painel/login">Entrar</a>
+        <a class="btn btn--ghost" href="https://github.com/Voide-Kali/Bots-Central-V2">Ler o código</a>
       </div>
-      <p>Crie sua conta, instale o agente nos seus computadores e comece a monitorar. O <a class="textlink" href="https://github.com/Voide-Kali/Bots-Central-V2">codigo e a pesquisa</a> sao abertos para quem quiser conferir.</p>
+      <p>A demonstração é por e-mail e chamada de vídeo. O código e a pesquisa são abertos para quem quiser conferir.</p>
     </div>
     <h2 class="display" aria-hidden="true">com o seu aval</h2>
   </section>
