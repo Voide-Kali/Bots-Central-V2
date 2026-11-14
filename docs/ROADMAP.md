@@ -61,19 +61,6 @@ de pesquisa *"como permitir que uma IA atue sobre computadores sem poder ser man
 | D9 | **Acesso remoto via RustDesk** auto-hospedado, quando chegar a hora. Licença AGPL. **[ADR]** | Não reimplementar. |
 | D10 | **Instalação de programas só por gerenciadores oficiais** (`brew`, `apt`, `winget`). | Cadeia de suprimentos. |
 
-## Equipe de IAs
-
-| Papel | Ferramenta |
-|---|---|
-| Arquitetura, revisão e implementação na nuvem | Claude (chat) |
-| Implementação local e servidor via SSH | Claude Code no Mac |
-| Revisão independente de PR antes do merge | Gemini |
-| Pentest do sistema rodando | Grok |
-| Segunda opinião pontual | ChatGPT |
-
-Regras: nenhuma IA aprova o próprio trabalho; nunca colar senhas, tokens ou `.env` em nenhuma IA;
-o merge é sempre do responsável.
-
 ## Plano até 30/11/2026 (demo)
 
 | # | Entrega | Pronto quando |
@@ -85,7 +72,7 @@ o merge é sempre do responsável.
 | 5 | **IA local no Telegram**: perguntas sobre dispositivos (só leitura) | "Qual PC está mais quente?" responde certo |
 | 6 | **Auditoria + recuperação de conta**: registro de ações; redefinição de senha por e-mail + códigos de recuperação | Ações aparecem no histórico; senha esquecida é recuperável |
 | 7 | **Ação aprovada por e-mail**: enviar arquivo de pasta autorizada | Pedido no Telegram → código no e-mail → arquivo chega |
-| 8 | **Teste de ataque**: tentativas de prompt injection contra a IA (Grok como pentester), registradas | Relatório com tentativas e resultado |
+| 8 | **Teste de ataque**: tentativas de prompt injection contra a IA, registradas | Relatório com tentativas e resultado |
 | 9 | **Material da feira**: relatório, banner, roteiro de demo, vídeo de backup | Demo ensaiada de ponta a ponta |
 | 10 | Meta extra: agente Windows (PC da escola) ou alerta de senha errada | Funciona em 1 dispositivo real |
 
