@@ -1,4 +1,4 @@
-# Regras de trabalho (pessoas e IAs)
+# Regras de trabalho
 
 Leia antes: `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`.
 
@@ -9,7 +9,7 @@ Leia antes: `docs/CURRENT_STATE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODE
 - Merge só com CI verde no SHA exato e aprovação do responsável.
 - Nunca: `push --force` na `main`, apagar branches, mudar visibilidade do repo ou mesclar sem
   confirmação explícita.
-- Nenhuma IA aprova o próprio trabalho: peça revisão a outra pessoa/sessão.
+- Ninguém aprova o próprio trabalho: peça revisão a outra pessoa/sessão.
 - Não commite binários, `.env`, chaves, tokens ou dumps.
 
 ## Mudanças
